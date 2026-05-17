@@ -1,0 +1,26 @@
+# --- Sekrety i klucze API (KRYTYCZNE) ---
+.env
+credentials.json
+
+# --- Pamięć podręczna i logi systemowe ---
+cron_log.txt
+sent_today.json
+debug_pogoda.json
+
+# --- Wygenerowane pliki i assety ---
+output/*
+assets/icons/KOPIE/*
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+env/
+
+# --- Pliki systemowe i IDE ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

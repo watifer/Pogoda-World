@@ -1,0 +1,33 @@
+name: Location Bot Nasluchiwanie
+
+on:
+  
+  workflow_dispatch: # Pozwala na ręczne uruchomienie z panelu GitHuba oraz przez cron-job.org
+
+jobs:
+  check-telegram:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Pobranie kodu z repozytorium
+        uses: actions/checkout@v4
+        
+      - name: Instalacja środowiska Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Instalacja bibliotek
+        run: pip install -r requirements.txt
+        
+      - name: Uruchomienie Bota Nasłuchującego
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
+          GROQ_MODEL_FALLBACK: ${{ secrets.GROQ_MODEL_FALLBACK }}
+          AIRLY_API_KEY: ${{ secrets.AIRLY_API_KEY }}
+          YRNO_USER_AGENT: ${{ secrets.YRNO_USER_AGENT }}
+          GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+        run: 

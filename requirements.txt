@@ -1,0 +1,12 @@
+requests
+python-dateutil
+openai
+google-generativeai
+gspread
+google-auth
+pytz
+timezonefinder
+python-dotenv
+geopy
+Pillow
+tzdata

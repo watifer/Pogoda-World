@@ -1,0 +1,52 @@
+name: Pogoda World Bot
+
+on:
+  workflow_dispatch: # Punktualne wyzwalanie przez zewnętrzne API (cron-job.org)
+  
+concurrency:
+  group: weather-bot-run
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  run-weather-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Pobranie kodu
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Instalacja Pythona
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+
+    - name: Instalacja bibliotek
+      run: pip install -r requirements.txt
+
+    - name: Uruchomienie bota
+      env:
+        TG_TOKEN: ${{ secrets.TG_TOKEN }}
+        AIRLY_API_KEY: ${{ secrets.AIRLY_API_KEY }}
+        YRNO_USER_AGENT: ${{ secrets.YRNO_USER_AGENT }}
+        GOOGLE_CREDS_JSON: ${{ secrets.GOOGLE_CREDS_JSON }}
+        GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+        GOOGLE_SHEET_TAB: ${{ secrets.GOOGLE_SHEET_TAB }}
+        GOOGLE_SHEET_NAME: ${{ secrets.GOOGLE_SHEET_NAME }}
+      run: python main_card.py
+
+    # --- TO DOKLEJ NA SAMYM DOLE ---
+    - name: Zapisanie pamięci wysyłek (Anti-Spam)
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        touch sent_today.json
+        git add -A sent_today.json
+        git commit -m "🤖 Auto-zapis: historia wysyłek [skip ci]" || echo "Brak nowych wysyłek"
+        git pull --rebase || true
+        git push
