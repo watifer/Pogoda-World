@@ -15,6 +15,10 @@ import json
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
 _HOUR_RE = re.compile(r"\b([01]?\d|2[0-3]):00\b")
 
+
+
+
+
 def _num_tokens(s: str) -> set[str]:
     # Najpierw bezlitośnie wymazujemy z tekstu zegary (np. 21:00, 10:00), 
     # żeby walidator liczb w ogóle ich nie widział.
@@ -54,6 +58,33 @@ def _eff_cld_consensus(h: dict) -> float:
     base = _eff_cld(h)
     alt = _eff_cld_alt(h.get("clouds_low_pct_yr"), h.get("clouds_mid_pct_yr"), h.get("clouds_pct_yr"))
     return max(base, alt)
+    
+    
+def _uncertain_sky(ta: list) -> bool:
+    """Sprawdza czy modele prognozują zupełnie co innego (rozjazd chmur >= 40%)."""
+    if not ta:
+        return False
+    
+    diffs = []
+    for h in ta:
+        # Zgodnie z audytorem: wyliczamy chmury dla OM i Yr osobno
+        om_cld = _eff_cld(h) 
+        yr_cld = _eff_cld_alt(h.get("clouds_low_pct_yr"), h.get("clouds_mid_pct_yr"), h.get("clouds_pct_yr"))
+        
+        # Jeśli Yr.no nie ma danych (puste pola), pomijamy
+        if h.get("clouds_pct_yr") is None:
+            continue
+            
+        diffs.append(abs(om_cld - yr_cld))
+    
+    if not diffs:
+        return False
+        
+    # Jeśli w co najmniej 1/3 godzin różnica >= 40% -> to jest "niepewne niebo"
+    big_diffs = sum(1 for d in diffs if d >= 40)
+    return big_diffs >= max(2, len(diffs) // 3)
+    
+
 
 
 def _build_wk_facts(ta: list, blocks: list, current_hour: int, is_afternoon_report: bool,
@@ -406,48 +437,60 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                 "wx": ["storm"]
             })
             
-        # 2. INTELIGENTNY ALERT UV (Uwzględnia zdradliwe chmury)
+        # 2. INTELIGENTNY ALERT UV (Zakotwiczony, z kontrastem i niższym priorytetem)
         day_clouds = []
+        sun_windows = []
+        uv_peaks = []
+        
         for h in ta:
             try:
                 hh = int(h["time_local"][11:13])
-                # SPRAWDZAMY CHMURY TYLKO W SZCZYCIE UV (11:00 - 16:00)
-                # Dzięki temu słoneczny poranek nie "zepsuje" nam pochmurnego popołudnia
-                if 11 <= hh <= 16:
-                    day_clouds.append(_eff_cld_consensus(h))
+                if 10 <= hh <= 16:
+                    cld = _eff_cld_consensus(h)
+                    day_clouds.append(cld)
+                    sun_windows.append((hh, cld))
+                    uv_peaks.append((hh, _f(h.get("uv_index"))))
             except Exception:
                 pass
                 
         avg_day_clouds = sum(day_clouds) / len(day_clouds) if day_clouds else 100
-        uv = round(max_uv)
+        
+        best_sun_h, best_sun_c = min(sun_windows, key=lambda x: x[1], default=(12, 100))
+        
+        # UV bierzemy DOKŁADNIE z tej godziny, w której przewidujemy przejaśnienie
+        uv_at_best = next((uvv for hh, uvv in uv_peaks if hh == best_sun_h), 0)
+        uv = round(uv_at_best)
 
-        if uv >= 4.0:
+        if uv >= 5.0:
             uv_text = ""
-            is_deceptively_cloudy = avg_day_clouds >= 65
             
-            if uv >= 8:
-                if is_deceptively_cloudy:
-                    uv_text = f"Zdradliwa pogoda! Mimo chmur ekstremalne promieniowanie (UV {uv}). Użyj mocnego filtra!"
-                else:
+            is_cloudy_day = avg_day_clouds >= 65
+            # Nowy warunek: chmury spadają do <= 70% I JEST PRZYNAJMNIEJ 15% RÓŻNICY względem średniej!
+            has_sun_window = (best_sun_c <= 70) and ((avg_day_clouds - best_sun_c) >= 15)
+            
+            if not is_cloudy_day:
+                if uv >= 8:
                     uv_text = f"Ekstremalne promieniowanie (UV {uv}). Unikaj słońca w południe, nałóż mocny filtr!"
-            elif uv >= 6:
-                if is_deceptively_cloudy:
-                    uv_text = f"Zdradliwe słońce — mimo chmur promieniowanie UV wynosi aż {uv}. Użyj kremu z filtrem."
-                else:
+                elif uv >= 6:
                     uv_text = f"Wysokie promieniowanie słoneczne (UV {uv}). Pamiętaj o kremie z filtrem i ochronie głowy."
-            elif month in [5, 6, 7, 8]: # Dla UV 4 i 5 ostrzegamy tylko w ciepłych miesiącach
-                if is_deceptively_cloudy:
-                    uv_text = f"Uwaga na UV — mimo pochmurnego nieba, promieniowanie jest podwyższone ({uv})."
-                else:
+                elif month in [5, 6, 7, 8]:
                     uv_text = f"Słońce dziś mocno operuje (UV {uv}). Przy dłuższym pobycie na zewnątrz użyj kremu."
+            
+            elif is_cloudy_day and has_sun_window:
+                if uv >= 7:
+                    uv_text = f"Zdradliwe słońce — przy przejaśnieniach ok. {best_sun_h:02d}:00 promieniowanie UV sięgnie aż {uv}."
+                elif month in [5, 6, 7, 8]:
+                    uv_text = f"Jeśli ok. {best_sun_h:02d}:00 wyjdzie słońce, promieniowanie UV będzie podwyższone ({uv})."
 
             if uv_text:
+                # Priorytet 12-14 oznacza, że UV nie zagłuszy już informacji o ulewie czy wichurze!
+                uv_prio = 12 if uv >= 7 else 14
                 candidates.append({
-                    "priority": 1 if uv >= 6 else 2, # Ekstremalne UV ma wyższy priorytet
+                    "priority": uv_prio,
                     "text": uv_text,
                     "category": "uv_alert",
                     "kind": "impact",
-                    "wx": ["sun"]
+                    "wx": []  # Puste, aby nie kolidowało z walidatorem unikalności
                 })
                 
         # 3. WSKAŹNIK DUCHOTY (Punkt rosy)
@@ -1014,6 +1057,22 @@ def build_worth_knowing(
             alert_categories.add(cat)
 
     visible_categories = _extract_visible_categories(built_blocks, summary_line, context_line_text or "")
+    
+    # --- NOWY TRUST GATING ---
+    if os.environ.get("WK_TRUST_GATING", "1") == "1":
+        # Jeśli nie ma alertów krytycznych (wichura/upał), włączamy cenzurę niepewności
+        if not alerts:
+            # 1. Sprawdź czy niebo jest niepewne (rozjazd modeli)
+            if _uncertain_sky(ta or []):
+                return None
+            
+            # 2. Sprawdź czy opady są niepewne (Wysoki POP ale brak deszczu)
+            if ta:
+                pop_peak = max((_f(h.get("precip_prob_pct"), 0) for h in ta), default=0)
+                precip_peak = max((_f(h.get("precip_mm"), 0) for h in ta), default=0)
+                if pop_peak >= 60 and precip_peak < 0.2:
+                    return None # "Model nie wie, czy będzie padać, milczymy"
+    # --------------------------
 
     candidates = _candidates_level1(
         blocks, temp_min, temp_max, total_precip_mm,
@@ -1197,12 +1256,16 @@ def build_worth_knowing(
 
     final_text = winner["text"]
     
+    
+        
     if winner.get("category") == "ai":
         final_text = f"[AI] {final_text}"
 
     if len(final_text) > MAX_WK_LEN + 5:
         truncated = final_text[:MAX_WK_LEN].rsplit(' ', 1)[0]
         final_text = truncated + "…"
+
+    
 
     return {
         "title": "Dziś warto wiedzieć",
