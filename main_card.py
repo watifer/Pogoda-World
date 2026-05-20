@@ -140,7 +140,13 @@ def send_telegram_photo(chat_id: str, image_path: str,
         
         # --- PRECYZYJNY SCANER BLOKAD ---
         # Usuwamy tylko gdy mamy pewność, że bot nie ma już tam wstępu
-        trigger_words = ["blocked by the user", "kicked from the group", "user is deactivated", "chat not found"]
+        trigger_words = [
+            "blocked by the user", 
+            "kicked from",               # <--- Zmienione! Wyłapie "group" oraz "supergroup chat"
+            "user is deactivated", 
+            "chat not found",
+            "group chat was deactivated" # Opcjonalnie warto to dodać, gdy cała grupa zostanie usunięta
+        ]
         
         if error_code in [400, 403] and any(word in error_msg for word in trigger_words):
             print(f"⚠️ [AUTO-CLEANUP] Wykryto trwałą blokadę dla {chat_id}. Rozpoczynam procedurę Soft-Delete...")
