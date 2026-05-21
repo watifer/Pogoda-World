@@ -562,28 +562,38 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                 "wx": ["rain", "snow"]
             })
 
-        if len(future_ta) >= 4:
-            max_drop = 0
-            max_rise = 0
-            drop_hr = None
-            rise_hr = None
+        if len(future_ta) >= 2:
+            max_drop, max_rise = 0, 0
+            drop_hr, rise_hr = None, None
+            drop_dur, rise_dur = 3, 3
             
-            for i in range(len(future_ta) - 3):
+            for i in range(len(future_ta)):
                 t1 = future_ta[i].get("temp_c")
-                t2 = future_ta[i+3].get("temp_c")
-                if t1 is not None and t2 is not None:
+                if t1 is None: continue
+                
+                # Skanujemy okna o szerokości 1, 2 i 3 godzin
+                for duration in range(1, 4):
+                    if i + duration >= len(future_ta): break
+                    t2 = future_ta[i + duration].get("temp_c")
+                    if t2 is None: continue
+                    
                     diff = t2 - t1
+                    
                     if diff <= -5 and diff < max_drop:
                         max_drop = diff
                         drop_hr = int(future_ta[i]["time_local"][11:13])
+                        drop_dur = duration
                     elif diff >= 5 and diff > max_rise:
                         max_rise = diff
                         rise_hr = int(future_ta[i]["time_local"][11:13])
+                        rise_dur = duration
+
+            dur_str = {1: "1 godziny", 2: "2 godzin", 3: "3 godzin"}
 
             if max_drop <= -5:
                 candidates.append({
                     "priority": 2,
-                    "text": f"po {drop_hr:02d}:00 bardzo szybkie ochłodzenie (o {abs(round(max_drop))}°C)",
+                    "text": f"Nagłe ochłodzenie! Po {drop_hr:02d}:00 odczuwalnie spadnie temperatura w ciągu {dur_str.get(drop_dur, '3 godzin')}.",
                     "category": "gradient",
                     "kind": "fast_drop",
                     "wx": ["temp_change"]
@@ -591,7 +601,7 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
             elif max_rise >= 5:
                 candidates.append({
                     "priority": 2,
-                    "text": f"po {rise_hr:02d}:00 bardzo szybkie ocieplenie (o {round(max_rise)}°C)",
+                    "text": f"Nagłe ocieplenie! Po {rise_hr:02d}:00 temperatura odczuwalnie wzrośnie w ciągu {dur_str.get(rise_dur, '3 godzin')}.",
                     "category": "gradient",
                     "kind": "fast_rise",
                     "wx": ["temp_change"]
@@ -1025,6 +1035,63 @@ def _candidates_future(ta: list) -> list:
     return candidates
 
 
+HAZARD_WX = {"rain", "snow", "storm", "wind", "frost", "fog"}
+
+# Te kategorie są “ważne” nawet jeśli wx jest puste (biomet/duchota/ciśnienie itp.)
+PRIORITY_EXEMPT_CATEGORIES = {
+    "storm_risk",
+    "peak_impact",
+    "wind_rain",
+    "wind_cold",
+    "pressure_drop",
+    "dewpoint_alert",
+    "gradient",
+    "window",
+    "storm_start",
+    "tomorrow",
+    "future_wind",
+    "future_pressure",
+    "future_warming",
+    "future_cooling",
+    "precip_sum",
+}
+
+# Kategorie stricte lifestyle/miękkie — nie chcemy żeby miały priorytet < 14
+LIFESTYLE_CATEGORIES = {
+    "sun",
+    "temperature",
+    "comfort_window",
+    "uv_alert",
+    "extrema_time",
+    "contrast",
+}
+
+def _wx_tags(c: dict) -> list[str]:
+    wx = c.get("wx")
+    if isinstance(wx, str):
+        return [wx]
+    if isinstance(wx, list):
+        return [str(x) for x in wx]
+    return []
+
+def enforce_priority_policy(c: dict) -> dict:
+    pr = int(c.get("priority", 99) or 99)
+    cat = str(c.get("category") or "")
+    wx_tags = set(_wx_tags(c))
+
+    # 1) lifestyle zawsze >= 14
+    if cat in LIFESTYLE_CATEGORIES:
+        pr = max(pr, 14)
+    else:
+        # 2) jeśli brak hazard wx i nie jest “ważnym wyjątkiem” => też >= 14
+        has_hazard = any(t in HAZARD_WX for t in wx_tags)
+        if (not has_hazard) and (cat not in PRIORITY_EXEMPT_CATEGORIES):
+            pr = max(pr, 14)
+
+    c["priority"] = pr
+    return c
+
+
 # ═══════════════════════════════════════
 # GŁÓWNA FUNKCJA
 # ═══════════════════════════════════════
@@ -1082,6 +1149,8 @@ def build_worth_knowing(
     
     if ta:
         candidates += _candidates_future(ta)
+        
+    candidates = [enforce_priority_policy(c) for c in candidates]
 
     if not candidates:
         return None

@@ -378,7 +378,7 @@ def _day_descriptor(hours_day: list) -> Optional[str]:
     return "pochmurno"
 
 
-def _build_day_summary(hp: list, date_str: str) -> Optional[dict]:
+def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> Optional[dict]:
     dh = [h for h in hp if h.get("time_local", "").startswith(date_str)]
     if not dh: return None
 
@@ -585,13 +585,13 @@ def _build_day_summary(hp: list, date_str: str) -> Optional[dict]:
         # ŻELAZNA DRABINKA CHMUR (Zsynchronizowana)
         if avg_eff_c <= 10:
             descriptor = "Bezchmurnie"
-            icon = "wk_clear"
+            icon = "wk_clear_night" if is_night_mode else "wk_clear"
         elif avg_eff_c <= 35:
-            descriptor = "Słonecznie"
-            icon = "wk_sun_one_cloud"
+            descriptor = "Pogodnie" if is_night_mode else "Słonecznie"
+            icon = "wk_moon_one_cloud" if is_night_mode else "wk_sun_one_cloud"
         elif avg_eff_c < 70:
             descriptor = "Przejaśnienia"
-            icon = "wk_partlycloudy"
+            icon = "wk_partlycloudy_night" if is_night_mode else "wk_partlycloudy"
         elif avg_eff_c < 85:
             descriptor = "Dużo chmur"
             icon = "wk_mostly_cloudy"
@@ -612,7 +612,7 @@ def _build_day_summary(hp: list, date_str: str) -> Optional[dict]:
 
     # 1. Określenie tła wizualnego
     if avg_eff_c <= 10: base_sky = "Bezchmurnie"
-    elif avg_eff_c <= 35: base_sky = "Słonecznie"
+    elif avg_eff_c <= 35: base_sky = "Pogodnie" if is_night_mode else "Słonecznie"
     elif avg_eff_c < 70: base_sky = "Przejaśnienia"
     elif avg_eff_c < 85: base_sky = "Dużo chmur"
     else: base_sky = "Pochmurno"
@@ -690,11 +690,18 @@ def _get_time_blocks(hour: int) -> tuple[str, list]:
             {"label": "Wieczór",    "start": 17,   "end": 22},
         ]
     if hour < 18:
-        return "Reszta dnia", [
-            {"label": "Popołudnie", "start": hour, "end": 18},
-            {"label": "Wieczór",    "start": 18,   "end": 22},
-            {"label": "Noc",        "start": 22,   "end": 6},
-        ]
+        # Inteligentne, nienachodzące na siebie bloki dla raportów popołudniowych
+        blocks = []
+        if hour <= 14:
+            blocks.append({"label": "Popołudnie", "start": hour, "end": 17})
+            blocks.append({"label": "Wieczór",    "start": 17,   "end": 22})
+        else:
+            blocks.append({"label": "Późne popoł.", "start": hour, "end": 19})
+            blocks.append({"label": "Wieczór",      "start": 19,   "end": 22})
+            
+        # Noc pozostaje żelazną kotwicą
+        blocks.append({"label": "Noc", "start": 22, "end": 6})
+        return "Reszta dnia", blocks
         
     blocks = []
     if hour < 22:
@@ -872,9 +879,23 @@ def prepare_layout_data(payload, now=None):
     
     hp_hero = [h for h in hp if h.get("time_local", "")[:10] > today_str or (h.get("time_local", "")[:10] == today_str and _hour(h) >= hero_start_hour)]
     
-    day_hero = _build_day_summary(hp_hero, today_str)
+    # --- INTELIGENTNY DETEKTOR NOCY (Astronomiczny) ---
+    hero_is_night = False
+    if hp_hero:
+        current_sym = (hp_hero[0].get("symbol_code") or "").lower()
+        if "_night" in current_sym:
+            hero_is_night = True
+        elif "_day" in current_sym:
+            hero_is_night = False
+        else:
+            hero_is_night = now.hour >= 20 or now.hour < 6
+    else:
+        hero_is_night = now.hour >= 20 or now.hour < 6
+
+    day_hero = _build_day_summary(hp_hero, today_str, is_night_mode=hero_is_night)
     if not day_hero:
-        day_hero = _build_day_summary(hp_hero, tomorrow_str)
+        # Przyszłe dni (np. jutro) w Hero zawsze podsumowujemy dziennymi ikonami
+        day_hero = _build_day_summary(hp_hero, tomorrow_str, is_night_mode=False)
         
     if day_hero:
         hero_icon = day_hero["icon"]
@@ -885,8 +906,12 @@ def prepare_layout_data(payload, now=None):
         else:
             base_desc = b_desc[0].upper() + b_desc[1:] if b_desc else ""
     else:
-        hero_icon = "wk_mostly_sunny" if ac < 50 else "wk_overcast"
-        base_desc = "Pogodnie" if ac < 50 else "Pochmurno"
+        if ac < 50:
+            hero_icon = "wk_moon_one_cloud" if hero_is_night else "wk_sun_one_cloud"
+            base_desc = "Pogodnie" if hero_is_night else "Słonecznie"
+        else:
+            hero_icon = "wk_overcast"
+            base_desc = "Pochmurno"
         
     # --- EASTER EGG: POGODA JAK KRYSZTAŁ ---
     if base_desc.lower() == "bezchmurnie" and 6 <= now.hour < 20:

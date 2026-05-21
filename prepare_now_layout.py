@@ -135,11 +135,31 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     if (max_precip > 0.1 or pop_val >= 40) and avg_clouds < 30:
         avg_clouds = 30  
 
-    if avg_clouds <= 10: base_sky = "Bezchmurnie"; hero_icon_bg = "wk_clear"
-    elif avg_clouds <= 35: base_sky = "Pogodnie"; hero_icon_bg = "wk_sun_one_cloud"
-    elif avg_clouds < 70: base_sky = "Przejaśnienia"; hero_icon_bg = "wk_partlycloudy"
-    elif avg_clouds < 85: base_sky = "Dużo chmur"; hero_icon_bg = "wk_mostly_cloudy"
-    else: base_sky = "Pochmurno"; hero_icon_bg = "wk_overcast"
+    # Odpytujemy Norwegów, czy w tej chwili na tych współrzędnych słońce jest pod horyzontem
+    current_sym = (ta_tuples[0][1].get("symbol_code") or "").lower()
+    if "_night" in current_sym:
+        hero_is_night = True
+    elif "_day" in current_sym:
+        hero_is_night = False
+    else:
+        # Ratunkowy fallback, gdyby pole symbol_code było puste
+        hero_is_night = now.hour >= 20 or now.hour < 6
+
+    if avg_clouds <= 10: 
+        base_sky = "Bezchmurnie"
+        hero_icon_bg = "wk_clear_night" if hero_is_night else "wk_clear"
+    elif avg_clouds <= 35: 
+        base_sky = "Pogodnie" if hero_is_night else "Słonecznie"
+        hero_icon_bg = "wk_moon_one_cloud" if hero_is_night else "wk_sun_one_cloud"
+    elif avg_clouds < 70: 
+        base_sky = "Przejaśnienia"
+        hero_icon_bg = "wk_partlycloudy_night" if hero_is_night else "wk_partlycloudy"
+    elif avg_clouds < 85: 
+        base_sky = "Dużo chmur"
+        hero_icon_bg = "wk_mostly_cloudy"
+    else: 
+        base_sky = "Pochmurno"
+        hero_icon_bg = "wk_overcast"
 
     # 2. Łączenie chmur z opadami
     if max_precip > 0:
