@@ -12,6 +12,7 @@ except ImportError:
 # Importujemy sprawdzoną logikę z głównego skryptu (w tym efektywne chmury)
 from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus
 from forecast_text import classify_precip, KINDS
+from ui_softening import strip_mm_pct_parens, soften_possible_prefix
 
 
 def _now_icon(clouds: float, precip: float, temp: float, hour: int, kind: str = None, symbol_code: str = "") -> str:
@@ -303,6 +304,24 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             "primary_style": "alert" if is_precip_alert else "default",
             "extra_lines": extra_lines
         })
+        
+    # --- UI softening dla /now: spójne z prepare_layout (gdy POP straszy, ale mm nie potwierdza) ---
+    soft_now = (pop_val >= 60 and max_precip < 0.2)
+    if soft_now:
+        # 1) hero: jeśli było o opadach, zmiękcz
+        # hero_summary ma format "opis\nlinia2" (np. "Deszcz\nwietrznie")
+        parts = (hero_summary or "").split("\n", 1)
+        if parts:
+            parts[0] = soften_possible_prefix(strip_mm_pct_parens(parts[0]))
+            hero_summary = "\n".join(parts)
+            
+        # 2) godziny: zdejmij mm i dodaj prefiks "Możliwy..."
+        for b in today_blocks:
+            pd = b.get("primary_desc", "")
+            pd2 = strip_mm_pct_parens(pd)
+            pd2 = soften_possible_prefix(pd2)
+            b["primary_desc"] = pd2    
+    
 
     # === DATOWANIE ŹRÓDŁA DANYCH ===
     model_time_str = payload.get("model_updated_at_local")

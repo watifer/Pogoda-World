@@ -15,6 +15,8 @@ except ImportError:
 
 from forecast_text import WxEvent, BlockForecast, build_block_copy, classify_precip
 from worth_knowing import build_worth_knowing
+from confidence_gate import compute_trust_report
+from ui_softening import strip_mm_pct_parens, soften_possible_prefix
 
 
 # ═══════════════════════════════════════
@@ -46,6 +48,34 @@ WK_ICON_FALLBACK = {
 # ═══════════════════════════════════════
 # HELPERY POGODOWE
 # ═══════════════════════════════════════
+
+
+def _precip_consensus(h: dict, hp_all: list) -> float:
+    """Inteligentny konsensus: nie bierze Max, tylko sprawdza prawdopodobieństwo (POP)."""
+    p_base = float(h.get("precip_mm") or 0)
+    pop_base = float(h.get("precip_prob_pct", 0))
+    
+    t_loc = h.get("time_local")
+    if not t_loc or not hp_all: return p_base
+        
+    # Szukamy tego samego czasu w drugim modelu
+    alt_source = "yrno" if h.get("source") == "openmeteo" else "openmeteo"
+    h_alt = next((y for y in hp_all if y.get("time_local") == t_loc and y.get("source") == alt_source), None)
+    
+    if not h_alt: return p_base
+    
+    p_alt = float(h_alt.get("precip_mm") or 0)
+    pop_alt = float(h_alt.get("precip_prob_pct", 0))
+    
+    # LOGIKA KONSENSUSU:
+    # 1. Jeśli oba widzą deszcz -> średnia (realistyczne).
+    if p_base > 0 and p_alt > 0: return (p_base + p_alt) / 2
+    # 2. Jeśli jeden widzi deszcz, a drugi nie -> weryfikujemy POP (jeśli POP < 30%, to "duch").
+    if p_base > 0 and p_alt == 0: return p_base if pop_base > 30 else 0
+    if p_alt > 0 and p_base == 0: return p_alt if pop_alt > 30 else 0
+        
+    return 0.0
+
 
 def _eff_cld(h: dict) -> float:
     """Kalkulator efektywnego zachmurzenia, ignorujący wysokie chmury (cirrusy)."""
@@ -163,8 +193,6 @@ def _hour_safe(t_loc: str) -> Optional[int]:
 
 def _hour(h: dict) -> int:
     return datetime.fromisoformat(h["time_local"].replace("Z", "+00:00")).hour
-
-import re
 
 import re
 
@@ -427,7 +455,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
 
             eff_clouds.append(_eff_cld_consensus(h))
 
-            precip = float(h.get("precip_mm") or 0)
+            precip = _precip_consensus(h, hp)
             code = str(h.get("symbol_code") or "").lower()
             w_code = h.get("weather_code")
             temp_opadu = h.get("temp_c") if h.get("temp_c") is not None else 10
@@ -435,35 +463,48 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
             if "fog" in code or (w_code in [41,42,43,44,45,46,47,48,49]):
                 has_fog = True
 
-            # === PANCERNY BEZPIECZNIK OPADÓW ===
+            # === PANCERNY BEZPIECZNIK OPADÓW (Zsynchronizowany z blokami) ===
+            precip = _precip_consensus(h, hp) 
+            
+            # Resetujemy flagi dla każdej godziny
             is_snow = False
             is_rain = False
+            is_storm = False
+            
             if precip > 0:
-                if temp_opadu <= 2.0 or "snow" in code or "sleet" in code or w_code in [71, 73, 75, 77, 85, 86]:
+                # Jedyna funkcja decyzyjna (z forecast_text.py)
+                kind = classify_precip(precip, temp_opadu, symbol_code=code, weather_code=w_code)
+                
+                # Przypisujemy zdarzenia na podstawie wyniku classify_precip
+                if kind in ["snow", "light_snow", "heavy_snow", "snow_showers"]:
                     is_snow = True
-                else:
+                elif kind == "sleet":
+                    is_snow = True
                     is_rain = True
-                    # Rozróżniamy mżawkę od prawdziwego deszczu
-                    if w_code in [51, 53, 55, 56, 57] or "drizzle" in code or (w_code is None and precip <= 0.5):
+                elif kind in ["storm", "heavy_storm"]:
+                    is_storm = True
+                elif kind:
+                    is_rain = True
+                    if kind == "drizzle":
                         has_drizzle = True
                     else:
                         has_real_rain = True
 
-            is_storm = "thund" in code or w_code in [95, 96, 99]
-
-            if is_snow:
-                snow_hours.append(hour)
-                if is_morning: has_snow_m = True
-                else: has_snow_a = True
-            elif is_rain:
-                rain_hours.append(hour)
-                if is_morning: has_rain_m = True
-                else: has_rain_a = True
-
-            if is_storm:
-                storm_hours.append(hour)
-                if is_morning: has_storm_m = True
-                else: has_storm_a = True
+                # Zapisujemy godziny wystąpienia
+                if is_snow:
+                    snow_hours.append(hour)
+                    if is_morning: has_snow_m = True
+                    else: has_snow_a = True
+                
+                if is_rain:
+                    rain_hours.append(hour)
+                    if is_morning: has_rain_m = True
+                    else: has_rain_a = True
+                
+                if is_storm:
+                    storm_hours.append(hour)
+                    if is_morning: has_storm_m = True
+                    else: has_storm_a = True
 
     # Reguła pożerania: Jeśli jest jakikolwiek deszcz, nazywamy to deszczem. Mżawka wygrywa tylko, gdy cały opad to mżawka.
     rain_word = "deszcz" if has_real_rain else ("mżawka" if has_drizzle else "deszcz")
@@ -550,7 +591,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
                 icon = "wk_snow" if has_snow_m and has_snow_a else "wk_light_snow"
                 
     elif has_rain:
-        is_drizzle = (rain_word == "mżawka")
+        is_drizzle = has_drizzle  # has_drizzle obliczyłeś w Pancernym Bezpieczniku!
         
         if has_fog:
             if has_sun:
@@ -693,11 +734,11 @@ def _get_time_blocks(hour: int) -> tuple[str, list]:
         # Inteligentne, nienachodzące na siebie bloki dla raportów popołudniowych
         blocks = []
         if hour <= 14:
-            blocks.append({"label": "Popołudnie", "start": hour, "end": 17})
-            blocks.append({"label": "Wieczór",    "start": 17,   "end": 22})
+            blocks.append({"label": "Popołudnie", "start": hour, "end": 16})  
+            blocks.append({"label": "Wieczór",    "start": 17,   "end": 22}) 
         else:
-            blocks.append({"label": "Późne popoł.", "start": hour, "end": 19})
-            blocks.append({"label": "Wieczór",      "start": 19,   "end": 22})
+            blocks.append({"label": "Późne popoł.", "start": hour, "end": 18}) 
+            blocks.append({"label": "Wieczór",      "start": 19,   "end": 22}) 
             
         # Noc pozostaje żelazną kotwicą
         blocks.append({"label": "Noc", "start": 22, "end": 6})
@@ -734,6 +775,13 @@ def prepare_layout_data(payload, now=None):
     ho = [h for h in hours if h.get("source") == "openmeteo"]
     hy = [h for h in hours if h.get("source") == "yrno"]
     hp = ho if ho else hy
+    
+    trust_report = compute_trust_report(
+        ho=ho,
+        hy=hy,
+        today_str=today_str,
+        current_hour=now.hour
+    )
 
     # === DATOWANIE ŹRÓDŁA DANYCH ===
     model_time_str = payload.get("model_updated_at_local")
@@ -775,7 +823,32 @@ def prepare_layout_data(payload, now=None):
 
     section_title, block_defs = _get_time_blocks(now.hour)
     today_blocks = _build_time_blocks(hp, today_str, tomorrow_str, block_defs)
-
+    
+    if trust_report.hide_block_details and today_blocks:
+        for b in today_blocks:
+            pd = (b.get("primary_desc") or "").strip()
+            if not pd:
+                continue
+            
+            # Używamy naszego nowego modułu!
+            pd2 = strip_mm_pct_parens(pd)
+            pd2 = soften_possible_prefix(pd2)
+            
+            b["primary_desc"] = pd2
+            
+            # (opcjonalnie, ale bezpiecznie) zdejmij mm/% z extra_lines, bez prefiksów
+            extras = b.get("extra_lines") or []
+            for ex in extras:
+                if isinstance(ex, dict):
+                    if "text" in ex and ex["text"]:
+                        ex["text"] = re.sub(r"\s*\([^)]*(mm|%)[^)]*\)", "", ex["text"], flags=re.IGNORECASE).strip()
+                    if "spans" in ex and isinstance(ex["spans"], list):
+                        for sp in ex["spans"]:
+                            if isinstance(sp, dict) and sp.get("text"):
+                                sp["text"] = re.sub(r"\s*\([^)]*(mm|%)[^)]*\)", "", sp["text"], flags=re.IGNORECASE).strip()    
+                
+    
+    
     all_temps = []  
     for b in today_blocks:
         for part in b.get("temp_range", "").replace("°", "").split("/"):
@@ -821,7 +894,7 @@ def prepare_layout_data(payload, now=None):
     for off in summary_offsets:
         tgt = now + timedelta(days=off)
         ts  = tgt.strftime("%Y-%m-%d")
-        s   = _build_day_summary(hp, ts)
+        s = _build_day_summary(hp, ts, is_night_mode=False)
         if s:
             future_sections.append({
                 "type": "summary", "date": tgt,
@@ -938,6 +1011,15 @@ def prepare_layout_data(payload, now=None):
     line1 = base_desc
     line2_parts = []
     
+    if trust_report.soften_hero_language:
+        low = (line1 or "").lower()
+        if any(w in low for w in ["deszcz", "mżawk", "ulew", "burz", "śnieg", "opad"]):
+            line1 = "Niestabilna aura, możliwe opady"
+        elif any(w in low for w in ["słonecz", "bezchmurn", "pogodnie"]):
+            line1 = "Niepewna prognoza zachmurzenia"
+        else:
+            line1 = "Niepewna prognoza"
+    
     # Synchronizacja wiatru na głównym ekranie z widocznymi blokami
     future_ta_hero = [h for h in ta if int(h.get("time_local", "T00:")[11:13]) >= hero_start_hour]
     
@@ -986,6 +1068,9 @@ def prepare_layout_data(payload, now=None):
 
     agreement = payload.get("model_agreement") or {}
     agreement_note = agreement.get("note")
+    
+    if trust_report.is_volatile and not agreement_note:
+        agreement_note = trust_report.note
     
     if anomaly_text:
         final_context_line = anomaly_text

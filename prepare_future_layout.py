@@ -10,6 +10,7 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 from prepare_layout import _build_day_summary, DNI_PL, DNI_SHORT, _fmt_temp
+from ui_softening import strip_mm_pct_parens
 
 def prepare_future_layout_data(payload, now=None):
     tz = ZoneInfo(payload["location"]["tz"])
@@ -61,6 +62,13 @@ def prepare_future_layout_data(payload, now=None):
 
     overall_min = min(all_temps) if all_temps else 0
     overall_max = max(all_temps) if all_temps else 0
+    
+    # --- UI ujednolicenie: zdejmujemy %/mm w nawiasach z opisów w trendzie 14 dni ---
+    for d in future_days:
+        if d.get("precip_badge"):
+            d["precip_badge"] = strip_mm_pct_parens(d["precip_badge"])
+        if d.get("descriptor"):
+            d["descriptor"] = strip_mm_pct_parens(d["descriptor"])
     
     # === BEZPIECZNY HERO OPARTY NA TWARDYCH DANYCH ===
     icons_used = [d.get("icon", "") for d in future_days]

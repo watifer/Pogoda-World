@@ -1126,20 +1126,19 @@ def build_worth_knowing(
     visible_categories = _extract_visible_categories(built_blocks, summary_line, context_line_text or "")
     
     # --- NOWY TRUST GATING ---
-    if os.environ.get("WK_TRUST_GATING", "1") == "1":
-        # Jeśli nie ma alertów krytycznych (wichura/upał), włączamy cenzurę niepewności
-        if not alerts:
-            # 1. Sprawdź czy niebo jest niepewne (rozjazd modeli)
-            if _uncertain_sky(ta or []):
-                return None
-            
-            # 2. Sprawdź czy opady są niepewne (Wysoki POP ale brak deszczu)
-            if ta:
-                pop_peak = max((_f(h.get("precip_prob_pct"), 0) for h in ta), default=0)
-                precip_peak = max((_f(h.get("precip_mm"), 0) for h in ta), default=0)
-                if pop_peak >= 60 and precip_peak < 0.2:
-                    return None # "Model nie wie, czy będzie padać, milczymy"
-    # --------------------------
+    trust_block = False
+    if os.environ.get("WK_TRUST_GATING", "1") == "1" and not alerts:
+        # 1) niepewne niebo (rozjazd modeli)
+        if _uncertain_sky(ta or []):
+            trust_block = True
+
+        # 2) niepewne opady (wysoki POP, ale brak mm)
+        if ta:
+            pop_peak = max((_f(h.get("precip_prob_pct"), 0) for h in ta), default=0)
+            precip_peak = max((_f(h.get("precip_mm"), 0) for h in ta), default=0)
+            if pop_peak >= 60 and precip_peak < 0.2:
+                trust_block = True
+# --------------------------
 
     candidates = _candidates_level1(
         blocks, temp_min, temp_max, total_precip_mm,
@@ -1178,12 +1177,38 @@ def build_worth_knowing(
     # Bezpieczny fallback
     if winner is None:
         return None
+        
+    # --- Trust gating jako filtr stylu (nie zabijamy twardych wskazówek) ---
+    if trust_block:
+        # 1) lifestyle zawsze milczy w dni niepewne
+        if winner.get("category") in LIFESTYLE_CATEGORIES:
+            return None
+
+        # 2) jeśli brak hazard wx i nie jest wyjątkiem -> milczymy
+        wx = winner.get("wx")
+        if isinstance(wx, str):
+            wx_tags = {wx}
+        elif isinstance(wx, list):
+            wx_tags = set(wx)
+        else:
+            wx_tags = set()
+
+        has_hazard = any(t in HAZARD_WX for t in wx_tags)
+
+        if (not has_hazard) and (winner.get("category") not in PRIORITY_EXEMPT_CATEGORIES):
+            return None
 
     
     # ==============================================================
     # WSPARCIE AI (KREATYWNY KANDYDAT NA NUDNE DNI)
     # ==============================================================
-    if os.environ.get("ENABLE_WK_AI_CANDIDATE", "0") == "1":
+    
+    if os.environ.get("AI_DEBUG", "0") == "1":
+        print(f"[WK] trust_block={trust_block}, alerts={len(alerts) if alerts else 0}, winner_cat={winner.get('category')} prio={winner.get('priority')}")
+    
+    # AI uruchamiamy TYLKO gdy dzień jest “pewny”
+    #if os.environ.get("ENABLE_WK_AI_CANDIDATE", "0") == "1":
+    if (not trust_block) and os.environ.get("ENABLE_WK_AI_CANDIDATE", "0") == "1":
         BORING_PRIORITY_THRESHOLD = 12
         BORING_CATEGORIES = {"sun", "temperature", "generic"}
 
