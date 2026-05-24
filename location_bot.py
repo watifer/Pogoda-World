@@ -425,6 +425,32 @@ def main_bot():
                     send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
                     continue
                     
+                user_parsed = parsed_list[0]
+                
+                # --- OGRANICZENIE CZASOWE DLA KARTY DZIENNEJ (05:00 - 15:59 lokalnego czasu) ---
+                user_tz = user_parsed.get("tz", "UTC")
+                try:
+                    # Importy na wypadek, gdyby nie były na samej górze
+                    from datetime import datetime
+                    try:
+                        from zoneinfo import ZoneInfo
+                    except ImportError:
+                        from backports.zoneinfo import ZoneInfo
+                        
+                    local_now = datetime.now(ZoneInfo(user_tz))
+                    
+                    # Jeśli jest przed 5:00 rano lub po 15:59
+                    if local_now.hour < 5 or local_now.hour >= 16:
+                        send_reply(
+                            chat_id, 
+                            "ℹ️ Główny raport dzienny jest dostępny tylko od 05:00 do 15:59.\n\n"
+                            "Wybierz /now, aby sprawdzić radar taktyczny na wieczór i noc!"
+                        )
+                        continue
+                except Exception as e:
+                    print(f"Błąd sprawdzania czasu: {e}")
+                # --------------------------------------------------------------------------------
+                    
                 send_reply(chat_id, "☀️ Przygotowuję główną kartę pogodową na dzisiaj...")
                 user_parsed = parsed_list[0]
                 
