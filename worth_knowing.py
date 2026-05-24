@@ -71,8 +71,10 @@ def _uncertain_sky(ta: list) -> bool:
         om_cld = _eff_cld(h) 
         yr_cld = _eff_cld_alt(h.get("clouds_low_pct_yr"), h.get("clouds_mid_pct_yr"), h.get("clouds_pct_yr"))
         
-        # Jeśli Yr.no nie ma danych (puste pola), pomijamy
-        if h.get("clouds_pct_yr") is None:
+        # Jeśli Yr.no nie ma danych (żadnych pól z chmurami), pomijamy
+        if (h.get("clouds_pct_yr") is None 
+            and h.get("clouds_low_pct_yr") is None 
+            and h.get("clouds_mid_pct_yr") is None):
             continue
             
         diffs.append(abs(om_cld - yr_cld))
@@ -498,7 +500,7 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
             if max_dewpoint >= 20.0:
                 candidates.append({
                     "priority": 2,
-                    "text": f"Tropikalna duchota: Bardzo wysoka wilgotność sprawi, że powietrze będzie wyjątkowo ciężkie (wsk. duchoty: {round(max_dewpoint)}).",
+                    "text": f"Tropikalna duchota: Bardzo wysoka wilgotność sprawi, że powietrze będzie wyjątkowo ciężkie.",
                     "category": "dewpoint_alert",
                     "kind": "impact",
                     "wx": ["temp_change"]
@@ -506,7 +508,7 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
             elif max_dewpoint >= 17.0:
                 candidates.append({
                     "priority": 2,
-                    "text": f"Trudny biomet: Przez wysoką wilgotność odczujemy zaduch, a powietrze stanie się ciężkie (wsk. duchoty: {round(max_dewpoint)}).",
+                    "text": f"Trudny biomet: Przez wysoką wilgotność odczujemy zaduch, a powietrze stanie się ciężkie i lepkie.",
                     "category": "dewpoint_alert",
                     "kind": "impact",
                     "wx": ["temp_change"]
@@ -1127,7 +1129,13 @@ def build_worth_knowing(
     
     # --- NOWY TRUST GATING ---
     trust_block = False
-    if os.environ.get("WK_TRUST_GATING", "1") == "1" and not alerts:
+    
+    # Jeśli karta główna już ostrzega o niepewności, WK milknie (spójność systemu)
+    ctx_low = (context_line_text or "").lower()
+    if "modele są rozbieżne" in ctx_low or "wczesny raport" in ctx_low:
+        trust_block = True
+        
+    if os.environ.get("WK_TRUST_GATING", "1") == "1" and not alerts and not trust_block:
         # 1) niepewne niebo (rozjazd modeli)
         if _uncertain_sky(ta or []):
             trust_block = True

@@ -239,7 +239,7 @@ def main_bot():
                         "✅ *Rejestracja pomyślna!*\n"
                         "Witamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n"
                         "⚠️ *Ostatni krok, ale konieczny:*\n"
-                        "Aby raporty mogły działać, musisz ustawić swoją lokalizację:\n"
+                        "Aby raporty mogły działać i przychodzić do Ciebie o godz. 8:00 i 14:00, musisz ustawić swoją lokalizację:\n"
                         "1️⃣ Naciśnij tę wiadomość i wybierz *Odpowiedz* (Reply).\n"
                         "2️⃣ Wybierz 📎 (spinacz), a następnie 📍 *Lokalizacja*.\n"
                         "3️⃣ Wyślij 📎 *Pinezkę z mapy*."
@@ -293,7 +293,7 @@ def main_bot():
                         except Exception as e:
                             print(f"  [DEBUG] Nie udało się zapisać miasta do arkusza: {e}")
                             
-                    send_reply(chat_id, f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca.")
+                    send_reply(chat_id, f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca. ")
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
@@ -413,6 +413,31 @@ def main_bot():
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Wystąpił błąd podczas generowania karty.")
             
+            # 4.5. /day (karta dzienna)
+            elif message.get("text", "").startswith(("/day", "/dzis", "/dzien")):
+                print(f"  ☀️ Odebrano żądanie karty dziennej od [{user_data.get('Imię', chat_id)}]")
+                try:
+                    parsed_list = _parse_users([user_data])
+                    if not parsed_list:
+                        send_reply(chat_id, "⚠️ Brakuje współrzędnych! Wyślij najpierw pinezkę z mapy.")
+                        continue
+                except Exception as e:
+                    send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
+                    continue
+                    
+                send_reply(chat_id, "☀️ Przygotowuję główną kartę pogodową na dzisiaj...")
+                user_parsed = parsed_list[0]
+                
+                try:
+                    # Brak flag is_now=True i is_future=True sprawia, że system wygeneruje standardową kartę dzienną
+                    _send_card_to_user(user_parsed, is_quiet=False)
+                except Exception as e:
+                    send_reply(chat_id, "⚠️ Wystąpił błąd podczas generowania karty.")
+                    import traceback
+                    traceback.print_exc()
+            
+            
+            
             # 5. /future
             elif message.get("text", "").startswith(("/future", "/trend", "/14dni")):
                 print(f"  🔮 [DEBUG] Otrzymano komendę /future od {chat_id}")
@@ -442,12 +467,14 @@ def main_bot():
                     f"📍 *1. Dokładna Lokalizacja*\n"
                     f"Aby zmienić miejsce, kliknij na dowolną z moich wiadomości, wybierz *Odpowiedz*, potem 📎, *lokalizację* 📍 i wyślij *Pinezkę z lokalizacją*.\n\n"
                     f"⏰ *2. Codzienne Raporty (/menu)*\n"
-                    f"Ustawisz własne godziny, o których mam wysyłać Ci poranne podsumowanie dnia i popołudniową prognozę na jutro.\n\n"
-                    f"📡 *3. Radar Taktyczny (/now)*\n"
+                    f"Ustawisz własne godziny, o których mam wysyłać Ci poranne podsumowanie dnia i popołudniową prognozę.\n\n"
+                    f"⏰ *3. Dzienny raport na żądanie (/day)*\n"
+                    f"Odświeżysz dzienny raport wzbogacony o najnowsze dane pogodowe.\n\n"
+                    f"📡 *4. Radar Taktyczny (/now)*\n"
                     f"Wygeneruję natychmiast szczegółową, godzinową kartę na najbliższe 12 godzin.\n\n"
-                    f"🔮 *4. Trend długoterminowy (/trend)*\n"
+                    f"🔮 *5. Trend długoterminowy (/trend)*\n"
                     f"Wygeneruję wykres prognozy na 14 dni.\n\n"
-                    f"💌 *5. Zaproszenie (/zapros)*\n"
+                    f"💌 *6. Zaproszenie (/zapros)*\n"
                     f"Jeśli ci się podoba, przekaż link do aplikacji twoim znajomym."
                 )
                 send_reply(chat_id, info_msg)
@@ -469,7 +496,7 @@ def main_bot():
                     "🔕 *1. Ciche poranki*\n"
                     "Głośne powiadomienia są automatycznie wyłączone wcześnie rano (przed 7:00), aby Cię nie budzić. Możesz też ręcznie wyciszyć czat w opcjach Telegrama.\n\n"
                     "⏰ *2. Dodatkowy raport*\n"
-                    "Dostałeś już rano raport, ale pogoda jest dynamiczna i chcesz otrzymać powiadomienie z nowymi danymi za parę godzin? Wejdź w */menu* i zmień godzinę raportu na późniejszą. Bot potraktuje to jako nowy alarm i wyśle Ci zaktualizowaną, pełną prognozę! Z kolei do szybkiego podglądu bez zmieniania ustawień użyj komendy */now*.\n\n"
+                    "Dostałeś już rano raport, ale pogoda jest dynamiczna i chcesz otrzymać ponownie raport z najnowższymi danymi. Po prostu z menu wybierz */day* i od razu dostaniesz zaktualizowaną, pełną prognozę! Z kolei do szybkiego podglądu bez zmieniania ustawień użyj komendy */now*.\n\n"
                     "🌍 *3. Pogoda na drugim końcu świata*\n"
                     "Chcesz śledzić pogodę w Amazonii? Utwórz pustą grupę w Telegramie, dodaj tam bota przez */zapros* i wyślij tam pinezkę z mapy świata! *Uwaga:* Raporty przyjdą według czasu lokalnego dla tamtego miejsca.\n\n"
                     "🛑 *4. Urlop od powiadomień*\n"

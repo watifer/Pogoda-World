@@ -119,10 +119,18 @@ def prepare_future_layout_data(payload, now=None):
         time_suffix = f"dane z {data_time}"  # Bez nawiasu, dla lepszego wyglądu
     else:
         time_suffix = ""
+    
+    # === DYNAMICZNA LICZBA DNI ===
+    actual_days = len(future_days)
+    if actual_days == 0:
+        actual_days = 14 # Zabezpieczenie na wypadek całkowitego braku danych
+        
+    dynamic_weekday = f"Prognoza {actual_days}-dniowa"
+    dynamic_title = f"Trend na kolejne {actual_days} dni"
         
     return {
         "city": payload["location"]["name"],
-        "weekday": "Prognoza 14-dniowa",  
+        "weekday": dynamic_weekday,  
         "date": "",                       
         "report_type": time_suffix,  # Wstawi się jako np: Prognoza 14-dniowa · dane z 13:17             
         "main_icon": hero_icon,           
@@ -136,6 +144,6 @@ def prepare_future_layout_data(payload, now=None):
         "weekend_teaser": None,
         
         "section_title": "",  
-        "next_days_title": "Trend na kolejne 14 dni",
+        "next_days_title": dynamic_title,
         "next_days": future_days
     }

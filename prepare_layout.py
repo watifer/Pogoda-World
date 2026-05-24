@@ -257,22 +257,23 @@ def _select_block_hours(hp: list, date_str: str, next_date_str: str,
     ]
 
 
-def _build_wx_events(block_hours: list) -> list:
+def _build_wx_events(block_hours: list, hp_all: list = None) -> list:
     events = []
     for h in block_hours:
-        mm   = float(h.get("precip_mm") or 0)
+        mm = _precip_consensus(h, hp_all) #### if hp_all else float(h.get("precip_mm") or 0)
         temp = h.get("temp_c", 10)
-        hr   = _hour(h)
-        kind = classify_precip(mm, temp,
-                               symbol_code=h.get("symbol_code"),
-                               weather_code=h.get("weather_code"))
+        hr = _hour(h)
+        kind = classify_precip(
+            mm, temp,
+            symbol_code=h.get("symbol_code"),
+            weather_code=h.get("weather_code")
+        )
         if kind:
             events.append(WxEvent(kind, hr, hr + 1))
     return events
 
 
-def _build_time_blocks(hp: list, date_str: str,
-                       next_date_str: str, block_defs: list) -> list:
+def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: list, hp_all: list = None) -> list:
     blocks = []
     for bd in block_defs:
         label = bd["label"]
@@ -291,12 +292,25 @@ def _build_time_blocks(hp: list, date_str: str,
         # --- 1. INTELIGENTNE CHMURY ---
         eff_clouds = [_eff_cld_consensus(h) for h in bh]
                 
+        #avg_c = sum(eff_clouds) / len(eff_clouds) if eff_clouds else 0
+        #tot_p = sum(_precip_consensus(h, hp) for h in bh) # <--- KONSENSUS
+        #max_p = max([_precip_consensus(h, hp) for h in bh] + [0]) # <--- KONSENSUS
+        #max_w = max([float(h.get("wind_gust_kmh") or h.get("gust_kmh") or 0) for h in bh] + [0])
+        
+        #evs = _build_wx_events(bh, hp) # <--- PRZEKAZANIE HP DO EVENTÓW
+        
         avg_c = sum(eff_clouds) / len(eff_clouds) if eff_clouds else 0
-        tot_p = sum(float(h.get("precip_mm") or 0) for h in bh)
-        max_p = max([float(h.get("precip_mm") or 0) for h in bh] + [0])
+        
+        # --- OPADY: spójnie z _build_day_summary (prawdziwy konsensus z hp_all) ---
+        p_vals = [_precip_consensus(h, hp_all or hp) for h in bh]
+        tot_p = sum(p_vals) if p_vals else 0.0
+        max_p = max(p_vals + [0.0])
+        
         max_w = max([float(h.get("wind_gust_kmh") or h.get("gust_kmh") or 0) for h in bh] + [0])
         
-        evs = _build_wx_events(bh)
+        evs = _build_wx_events(bh, hp_all=hp_all)
+        
+        
         icon  = _choose_icon(avg_c, max_p, (t_min + t_max) / 2, wind=max_w, events=evs, hour_hint=s)
 
         fv = [_feels_like(h.get("temp_c"), h.get("wind_kmh"), h.get("rh_pct"))
@@ -398,7 +412,7 @@ def _day_descriptor(hours_day: list) -> Optional[str]:
         default=0)
     if max_gust >= 60:
         return "wietrznie"
-    avg_c = sum(_eff_cld(h) for h in hours_day) / len(hours_day) if hours_day else 0
+    avg_c = sum(_eff_cld_consensus(h) for h in hours_day) / len(hours_day) if hours_day else 0
     if avg_c <= 10: return "słonecznie"
     if avg_c <= 35: return "pogodnie"
     if avg_c < 70: return "przejaśnienia"
@@ -647,6 +661,14 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
     pop_val = int(max_pop)
     pop_str = f" ({pop_val}%)" if pop_val > 0 else ""
 
+    # NOWOŚĆ: Dopinamy POP tylko do opadów!
+    pop_for_badge = pop_str
+    if badge:
+        lowb = badge.lower()
+        is_precip_badge = any(w in lowb for w in ["deszcz", "mżawk", "śnieg", "burz", "opad"])
+        if not is_precip_badge:
+            pop_for_badge = ""   # wyciszamy % przy wietrze, mgle, chmurach itd.
+
     # --- BLOKADA FIZYCZNA
     if (badge or pop_val >= 40) and avg_eff_c < 45:
         avg_eff_c = 45  # Sztucznie podbijamy minimum do "Przejaśnienia"
@@ -665,7 +687,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
         if "wiatr" not in badge:
             badge = badge.replace("przelotne ", "przel. ").replace("przelotny ", "przel. ")
             if is_daytime_precip:
-                badge = f"{badge[0].upper()}{badge[1:]}{pop_str}"
+                badge = f"{badge[0].upper()}{badge[1:]}{pop_for_badge}" # <--- ZMIANA
             else:
                 if "mżawka" in badge: badge = "nocna mżawka"
                 elif "śnieg z deszczem" in badge: badge = "nocny deszcz ze śniegiem"
@@ -673,9 +695,9 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
                 elif "śnieg" in badge: badge = "nocny śnieg"
                 else: badge = "nocny deszcz"
                 
-                badge = f"{base_sky} · {badge}{pop_str}"
+                badge = f"{base_sky} · {badge}{pop_for_badge}" # <--- ZMIANA
         else:
-            badge += pop_str
+            badge += pop_for_badge # <--- ZMIANA
     else:
         # Twarda reguła Norwegów: 0.0 mm na radarze = 0 gadania o deszczu w Hero.
         if not descriptor:
@@ -783,13 +805,19 @@ def prepare_layout_data(payload, now=None):
         current_hour=now.hour
     )
 
-    # === DATOWANIE ŹRÓDŁA DANYCH ===
+    # === DATOWANIE ŹRÓDŁA DANYCH I AGE-GATING ===
+    is_morning_report = (now.hour < 12)
+    is_night_run = False
     model_time_str = payload.get("model_updated_at_local")
+    
     if model_time_str and len(model_time_str) >= 16:
-        # Przykładowy model_time_str dla Argentyny: "2026-05-15T03:04-03:00"
-        # Wycinamy znaki od 11 do 16, co daje "03:04"
         data_time = model_time_str[11:16]
         time_suffix = f" (dane z {data_time})"
+        try:
+            model_dt_loc = datetime.fromisoformat(model_time_str.replace("Z", "+00:00")).astimezone(tz)
+            is_night_run = (model_dt_loc.hour < 6)
+        except Exception:
+            pass
     else:
         time_suffix = ""
 
@@ -808,7 +836,7 @@ def prepare_layout_data(payload, now=None):
 
     ta = [h for h in hp if h.get("time_local", "").startswith(today_str)]
     tc = [_eff_cld_consensus(h) for h in ta]
-    tp = sum(float(h.get("precip_mm") or 0) for h in ta)
+    tp = sum(_precip_consensus(h, hours) for h in ta)
     ac = sum(tc) / len(tc) if tc else 0
 
     max_wind = max((float(h.get("wind_kmh") or 0) for h in ta), default=0)
@@ -822,7 +850,7 @@ def prepare_layout_data(payload, now=None):
             alerts.append("Zła jakość powietrza — normy zanieczyszczeń są przekroczone")
 
     section_title, block_defs = _get_time_blocks(now.hour)
-    today_blocks = _build_time_blocks(hp, today_str, tomorrow_str, block_defs)
+    today_blocks = _build_time_blocks(hp, today_str, tomorrow_str, block_defs, hp_all=hours)
     
     if trust_report.hide_block_details and today_blocks:
         for b in today_blocks:
@@ -894,13 +922,43 @@ def prepare_layout_data(payload, now=None):
     for off in summary_offsets:
         tgt = now + timedelta(days=off)
         ts  = tgt.strftime("%Y-%m-%d")
-        s = _build_day_summary(hp, ts, is_night_mode=False)
-        if s:
+        
+        # 1) Baza z Yr.no (żeby ikony i główny ton zgadzały się z /future)
+        base = _build_day_summary(hy, ts, is_night_mode=False) if hy else None
+        if not base:
+            base = _build_day_summary(hp, ts, is_night_mode=False)
+            
+        # 2) Poszukiwanie zagrożeń (hazardów) z Open-Meteo
+        haz = _build_day_summary(ho, ts, is_night_mode=False) if ho else None
+        
+        extra_note = None
+        if base and haz:
+            haz_icon = haz.get("icon") or ""
+            # Jeśli OM wygenerował ikonę ostrzegawczą...
+            if haz_icon in ("wk_wind", "wk_storm", "wk_snow", "wk_sleet"):
+                # Pobieramy konkretny opis tego zjawiska
+                extra_note = haz.get("precip_badge") or haz.get("descriptor")
+                
+        if base:
+            # 3) Inteligentne doklejanie alertu do bazy
+            if extra_note:
+                # Zabezpieczenie przed dublowaniem (jeśli oba modele wyłapały to samo)
+                base_badge = base.get("precip_badge") or ""
+                base_desc = base.get("descriptor") or ""
+                
+                if extra_note not in base_badge and extra_note not in base_desc:
+                    if base_badge:
+                        base["precip_badge"] = f"{base_badge} · {extra_note}"
+                    elif base_desc:
+                        base["descriptor"] = f"{base_desc} · {extra_note}"
+                    else:
+                        base["descriptor"] = extra_note
+
             future_sections.append({
                 "type": "summary", "date": tgt,
                 "name":      DNI_SHORT[tgt.weekday()],
                 "name_full": f"{DNI_PL[tgt.weekday()]}, {tgt.strftime('%d.%m')}",
-                **s,
+                **base,
             })
             
     future_sections.sort(key=lambda x: x["date"])
@@ -922,7 +980,7 @@ def prepare_layout_data(payload, now=None):
         tgt = now + timedelta(days=off)
         ts = tgt.strftime("%Y-%m-%d")
         ts_next = (tgt + timedelta(days=1)).strftime("%Y-%m-%d")
-        blocks = _build_time_blocks(hp, ts, ts_next, FULL_DAY_BLOCKS)
+        blocks = _build_time_blocks(hp, ts, ts_next, FULL_DAY_BLOCKS, hp_all=hours)
         if blocks:
             wdd.append({
                 "name": f"{DNI_PL[tgt.weekday()]}, {tgt.strftime('%d.%m')}",
@@ -1053,7 +1111,7 @@ def prepare_layout_data(payload, now=None):
     for bd in block_defs:
         s, e = bd["start"], bd["end"]
         bh = _select_block_hours(hp, today_str, tomorrow_str, s, e, bd["label"])
-        evs = _build_wx_events(bh)
+        evs = _build_wx_events(bh, hp_all=hours)
         hero_blocks.append({
             "start": s, "end": e,
             "events": [{"kind": ev.kind, "start": ev.start, "end": ev.end} for ev in evs],
@@ -1079,6 +1137,13 @@ def prepare_layout_data(payload, now=None):
         final_context_line = agreement_note
     else:
         final_context_line = hero_synoptic  
+
+    # --- AGE GATING: Ostateczne nadpisanie (najwyższy priorytet na wypadek starych danych) ---
+    is_dynamic = (tp >= 1.0) or (max_wind >= 45) or ((max_gust or 0) >= 60)
+    show_age_note = is_morning_report and is_night_run and (trust_report.is_volatile or is_dynamic)
+
+    if show_age_note:
+        final_context_line = "Nocne dane — odśwież prognozę z menu później"
 
     alerts = list(dict.fromkeys(alerts))
 

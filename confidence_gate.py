@@ -19,6 +19,19 @@ def _f(x, default=0.0) -> float:
         return float(x)
     except Exception:
         return default
+        
+def _get_eff_cloud(h_dict: dict, suffix: str = "") -> Optional[float]:
+    """Zwraca efektywne zachmurzenie (bez cirrusów) dla podanego sufiksu kluczy"""
+    low = h_dict.get(f"clouds_low_pct{suffix}")
+    mid = h_dict.get(f"clouds_mid_pct{suffix}")
+    tot = h_dict.get(f"clouds_pct{suffix}")
+    
+    if low is not None and mid is not None:
+        return min(100.0, float(low) + float(mid))
+    if tot is not None:
+        return float(tot)
+    return None        
+
 
 def compute_trust_report(
     ho: List[Dict],
@@ -65,9 +78,13 @@ def compute_trust_report(
     cloud_big = 0
     cloud_n = 0
     for hh, a, b in paired:
-        c_om = _f(a.get("clouds_pct"), 0.0)
-        c_yr = _f(b.get("clouds_pct"), _f(b.get("clouds_pct_yr"), None))
-        if c_yr is None: continue
+        c_om = _get_eff_cloud(a)
+        c_yr = _get_eff_cloud(b)
+        if c_yr is None:
+            c_yr = _get_eff_cloud(b, "_yr") # Fallback na klucze Yr.no
+            
+        if c_om is None or c_yr is None:
+            continue
         
         cloud_n += 1
         if abs(c_om - c_yr) >= 50:

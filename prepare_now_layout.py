@@ -10,7 +10,7 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 # Importujemy sprawdzoną logikę z głównego skryptu (w tym efektywne chmury)
-from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus
+from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _precip_consensus
 from forecast_text import classify_precip, KINDS
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
 
@@ -246,11 +246,17 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         if feels is None: feels = temp
         
         kind = None
-        if prc > 0:
-            kind = classify_precip(prc, temp, h.get("symbol_code"), h.get("weather_code"))
+        # Pobieramy pełną listę "hours" z payloadu do rzetelnego konsensusu
+        hours_all = payload.get("hours", [])
+        
+        # Wyliczamy opad z prawdziwego konsensusu obu modeli
+        prc_consensus = _precip_consensus(h, hours_all) if hours_all else prc
+        
+        if prc_consensus > 0:
+            kind = classify_precip(prc_consensus, temp, h.get("symbol_code"), h.get("weather_code"))
             
         # Przekazujemy symbol_code od Norwegów, by wiedzieć kiedy jest noc
-        icon = _now_icon(cld, prc, temp, dt.hour, kind=kind, symbol_code=h.get("symbol_code", ""))   
+        icon = _now_icon(cld, prc_consensus, temp, dt.hour, kind=kind, symbol_code=h.get("symbol_code", ""))   
         
         if prc > 0:
             if icon == "wk_drizzle": base_desc = "Mżawka"
@@ -323,13 +329,29 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             b["primary_desc"] = pd2    
     
 
-    # === DATOWANIE ŹRÓDŁA DANYCH ===
+    # === DATOWANIE ŹRÓDŁA DANYCH I AGE-GATING ===
+    is_morning_report = (now.hour < 12)
+    is_night_run = False
     model_time_str = payload.get("model_updated_at_local")
+    
     if model_time_str and len(model_time_str) >= 16:
         data_time = model_time_str[11:16]
         time_suffix = f" (dane z {data_time})"
+        try:
+            model_dt_loc = datetime.fromisoformat(model_time_str.replace("Z", "+00:00")).astimezone(tz)
+            is_night_run = (model_dt_loc.hour < 6)
+        except Exception:
+            pass
     else:
         time_suffix = ""
+
+    # Dynamiczny dzień dla okna 12h w /now
+    is_dynamic_now = (max_precip >= 1.0) or (max_wind_12h >= 45) or (pop_val >= 60)
+    
+    # Ostrzeżenie aktywuje się tylko w dynamiczne poranki oparte na nocnym runie
+    show_age_note = is_morning_report and is_night_run and is_dynamic_now
+    
+    now_context_line = "Nocne dane — możliwa korekta prognozy rano." if show_age_note else None
 
     forecast_source = payload.get("forecast_source", "OpenMeteo + Yr.no")
 
@@ -341,7 +363,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         "main_icon":           hero_icon,
         "temp_range":          _fmt_temp(round(bmin), round(bmax)),
         "summary":             hero_summary,
-        "context_line":        None,
+        "context_line":        now_context_line,  # <--- WSTRZYKNIĘTY AGE-GATING
         "pressure":            None,  
         "air_quality_text":    None,
         "air_quality_color":   None,
