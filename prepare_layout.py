@@ -1071,7 +1071,10 @@ def prepare_layout_data(payload, now=None):
     
     if trust_report.soften_hero_language:
         low = (line1 or "").lower()
-        if any(w in low for w in ["deszcz", "mżawk", "ulew", "burz", "śnieg", "opad"]):
+        # Zabezpieczenie: jeśli główny opis ostrzega o wietrze, NIE zamazujemy tego "niepewnością"!
+        if any(w in low for w in ["wiatr", "wichur", "poryw"]):
+            pass
+        elif any(w in low for w in ["deszcz", "mżawk", "ulew", "burz", "śnieg", "opad"]):
             line1 = "Niestabilna aura, możliwe opady"
         elif any(w in low for w in ["słonecz", "bezchmurn", "pogodnie"]):
             line1 = "Niepewna prognoza zachmurzenia"

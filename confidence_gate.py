@@ -61,10 +61,14 @@ def compute_trust_report(
         return TrustReport()
 
     precip_conflicts = 0
+    wind_conflicts = 0
+    cloud_big = 0
+    cloud_n = 0
+    
     for hh, a, b in paired:
+        # --- 1. ROZBIEŻNOŚĆ OPADÓW ---
         p_om = _f(a.get("precip_mm"), 0.0)
         p_yr = _f(b.get("precip_mm"), 0.0)
-
         pop_om = _f(a.get("precip_prob_pct"), _f(a.get("pop_pct"), _f(a.get("pop"), 0.0)))
         pop_yr = _f(b.get("precip_prob_pct"), _f(b.get("pop_pct"), _f(b.get("pop"), 0.0)))
 
@@ -73,32 +77,51 @@ def compute_trust_report(
         elif p_yr >= 2.0 and p_om <= 0.0 and pop_yr >= 40:
             precip_conflicts += 1
 
-    precip_hard = precip_conflicts >= 2
+        # --- 2. ROZBIEŻNOŚĆ WIATRU (NOWOŚĆ) ---
+        # Bierzemy najwyższą wartość z wiatru lub porywów
+        w_om = max(_f(a.get("gust_kmh")), _f(a.get("wind_kmh")))
+        w_yr = max(_f(b.get("gust_kmh")), _f(b.get("wind_kmh")))
+        
+        # Konflikt: różnica > 30 km/h, przy czym jeden z modeli widzi co najmniej silny wiatr (>= 55 km/h)
+        if abs(w_om - w_yr) >= 30 and max(w_om, w_yr) >= 55:
+            wind_conflicts += 1
 
-    cloud_big = 0
-    cloud_n = 0
-    for hh, a, b in paired:
+        # --- 3. ROZBIEŻNOŚĆ ZACHMURZENIA ---
         c_om = _get_eff_cloud(a)
         c_yr = _get_eff_cloud(b)
         if c_yr is None:
             c_yr = _get_eff_cloud(b, "_yr") # Fallback na klucze Yr.no
             
-        if c_om is None or c_yr is None:
-            continue
-        
-        cloud_n += 1
-        if abs(c_om - c_yr) >= 50:
-            cloud_big += 1
+        if c_om is not None and c_yr is not None:
+            cloud_n += 1
+            if abs(c_om - c_yr) >= 50:
+                cloud_big += 1
 
+    # Podsumowanie twardych rozjazdów
+    precip_hard = precip_conflicts >= 2
+    wind_hard = wind_conflicts >= 2
     clouds_soft = (cloud_n >= 4 and cloud_big >= max(2, cloud_n // 2))
 
-    is_volatile = bool(precip_hard or clouds_soft)
+    is_volatile = bool(precip_hard or wind_hard or clouds_soft)
     soften = is_volatile
+    # W kafelkach ukrywamy detale (mm/%/km/h) tylko jeśli dotyczy to opadów (brak zaufania = brak liczb)
     hide = bool(precip_hard)
 
+    # --- INTELIGENTNY DOBÓR NOTATKI (Zabezpieczenie UX) ---
     note = ""
-    if precip_hard: note = "Modele są rozbieżne co do opadów w ciągu dnia."
-    elif clouds_soft: note = "Modele są rozbieżne co do zachmurzenia."
+    if precip_hard: 
+        note = "Modele są rozbieżne co do opadów w ciągu dnia."
+    elif wind_hard:
+        note = "Modele są rozbieżne co do siły wiatru."
+    elif clouds_soft:
+        # Sprawdzamy, czy na zewnątrz fizycznie nie dzieje się armagedon (według któregokolwiek modelu)
+        max_p = max([max(_f(a.get("precip_mm")), _f(b.get("precip_mm"))) for hh, a, b in paired] + [0.0])
+        max_w = max([max(_f(a.get("gust_kmh")), _f(a.get("wind_kmh")), _f(b.get("gust_kmh")), _f(b.get("wind_kmh"))) for hh, a, b in paired] + [0.0])
+        
+        # O chmurach wspominamy TYLKO wtedy, gdy dzień jest w miarę spokojny
+        # Jeśli leje (>= 2 mm) albo mocno wieje (>= 50 km/h), oszczędzamy użytkownikowi gadania o chmurach
+        if max_p < 2.0 and max_w < 50.0:
+            note = "Modele są rozbieżne co do zachmurzenia."
 
     return TrustReport(
         is_volatile=is_volatile,
