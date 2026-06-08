@@ -9,16 +9,42 @@ from __future__ import annotations
 import os
 import time
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import urllib3  # <--- TEGO BRAKOWAŁO
 from datetime import datetime, timedelta
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
     from backports.zoneinfo import ZoneInfo
 
+# --- TARCZA NA ORACLE CLOUD (Wymuszenie IPv4) ---
+# Rozwiązuje 90% problemów z ReadTimeout na darmowych instancjach
+urllib3.util.connection.HAS_IPV6 = False
+# ------------------------------------------------
+
 
 # ═══════════════════════════════════════
 # HELPERY
 # ═══════════════════════════════════════
+
+def _get_retry_session() -> requests.Session:
+    """Zwraca sesję requests z wbudowanym mechanizmem ponawiania (Exponential Backoff)."""
+    session = requests.Session()
+    retry = Retry(
+        total=4,            # Maksymalnie 4 próby ponowienia
+        read=4,             # W tym na błędy ReadTimeout
+        connect=4,          # W tym na błędy połączenia
+        backoff_factor=1.5, # Odczekaj: 1.5s, 3s, 6s... przed kolejną próbą
+        status_forcelist=[429, 500, 502, 503, 504], # Błędy API, przy których walczymy dalej
+        allowed_methods=["GET"]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
+
+
 
 def _kmh_from_ms(ms):
     return None if ms is None else round(ms * 3.6, 1)
@@ -37,7 +63,8 @@ def _fetch_yrno(lat: float, lon: float, tz: ZoneInfo) -> tuple[list, str]:
     # ZMIANA NA TRYB COMPLETE: Pobieramy pełne warstwy chmur i porywy wiatru!
     url = (f"https://api.met.no/weatherapi/locationforecast/2.0/complete"
            f"?lat={lat}&lon={lon}")
-    r = requests.get(url, headers={"User-Agent": ua}, timeout=20)
+    session = _get_retry_session()
+    r = session.get(url, headers={"User-Agent": ua}, timeout=20)
     r.raise_for_status()
     
     data = r.json()
@@ -108,7 +135,8 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
         f"&timezone={tz_str}"
         "&forecast_days=15"  # <--- NOWOŚĆ: Twarde żądanie 14 dni ( bo 1 dzień jest bieżący )
     )
-    r = requests.get(url, timeout=20)
+    session = _get_retry_session()
+    r = session.get(url, timeout=20)
     r.raise_for_status()
     h = r.json()["hourly"]
     times = h["time"]
