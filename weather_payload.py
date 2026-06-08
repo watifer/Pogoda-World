@@ -37,7 +37,7 @@ def _get_retry_session() -> requests.Session:
         connect=4,          # W tym na błędy połączenia
         backoff_factor=1.5, # Odczekaj: 1.5s, 3s, 6s... przed kolejną próbą
         status_forcelist=[429, 500, 502, 503, 504], # Błędy API, przy których walczymy dalej
-        allowed_methods=["GET"]
+        #allowed_methods=["GET"]
     )
     adapter = HTTPAdapter(max_retries=retry)
     session.mount("http://", adapter)
