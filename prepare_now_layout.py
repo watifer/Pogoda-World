@@ -13,7 +13,7 @@ except ImportError:
 from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _precip_consensus
 from forecast_text import classify_precip, KINDS
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
-
+from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _drizzle_hint
 
 def _now_icon(clouds: float, precip: float, temp: float, hour: int, kind: str = None, symbol_code: str = "") -> str:
     """Logika ikon oparta na głównym klasyfikatorze z forecast_text."""
@@ -354,7 +354,13 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     now_context_line = "Nocne dane — możliwa korekta prognozy rano." if show_age_note else None
 
     forecast_source = payload.get("forecast_source", "OpenMeteo + Yr.no")
+    
+    ta_now = [h for dt, h in ta_tuples]
+    hint = _drizzle_hint(ta=ta_now, hp_all=hours, start_hour=start_dt.hour)
 
+    context_line = now_context_line or hint  # age-gating wygrywa
+    
+    
     return {
         "city":                payload["location"]["name"],
         "weekday":             weekday,
@@ -363,7 +369,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         "main_icon":           hero_icon,
         "temp_range":          _fmt_temp(round(bmin), round(bmax)),
         "summary":             hero_summary,
-        "context_line":        now_context_line,  # <--- WSTRZYKNIĘTY AGE-GATING
+        "context_line":        context_line,  # <--- WSTRZYKNIĘTY AGE-GATING
         "pressure":            None,  
         "air_quality_text":    None,
         "air_quality_color":   None,

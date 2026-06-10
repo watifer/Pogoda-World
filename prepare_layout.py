@@ -50,6 +50,93 @@ WK_ICON_FALLBACK = {
 # ═══════════════════════════════════════
 
 
+def _drizzle_hint(ta: list, hp_all: list, start_hour: int) -> str | None:
+    """
+    Miękka podpowiedź: możliwe pojedyncze krople mimo 0.0 mm w modelu.
+    Umiarkowane progi + warunek 2 kolejnych godzin, żeby nie spamować.
+    """
+    import os
+    if not ta or not hp_all:
+        return None
+
+    # patrzymy lekko wstecz (2h), żeby user o 13:40 mógł dostać hint,
+    # jeśli "siąpiło już od 12"
+    lookback_start = max(5, int(start_hour or 6) - 2)
+
+    hours = []
+    for h in ta:
+        hh = _hour_safe(h.get("time_local", ""))
+        if hh is None:
+            continue
+
+        # tylko dzień
+        
+        if hh < lookback_start or hh > 18:
+            continue
+
+        # modele nie widzą twardego opadu
+        mm = _precip_consensus(h, hp_all)
+        if mm >= 0.1:
+            continue
+
+        # beton chmur (efektywne)
+        cld = _eff_cld_consensus(h)
+        if cld < 98:
+            continue
+
+        # umiarkowana wilgotność + niezbyt duża różnica t-dp
+        rh = float(h.get("rh_pct") or 0)
+        if rh < 70:
+            continue
+
+        t_raw = h.get("temp_c")
+        dp_raw = h.get("dewpoint_c")
+        if t_raw is None or dp_raw is None:
+            continue
+        t = float(t_raw); dp = float(dp_raw)
+        if (t - dp) > 6.5:
+            continue
+
+        # spokojny wiatr (żeby nie łapać byle pochmurnego dnia z wiatrem)
+        wind = max(
+            float(h.get("wind_kmh") or 0),
+            float(h.get("gust_kmh") or h.get("wind_gust_kmh") or 0),
+        )
+        if wind > 15:
+            continue
+
+        hours.append(hh)
+
+    if not hours:
+        return None
+
+    # min. 2 kolejne godziny
+    hs = sorted(set(hours))
+    run = 1
+    best = 1
+    for i in range(1, len(hs)):
+        if hs[i] == hs[i - 1] + 1:
+            run += 1
+            best = max(best, run)
+        else:
+            run = 1
+    
+        
+    main_rain_hours = []
+    for h in ta:
+        hh = _hour_safe(h.get("time_local", ""))
+        if hh is None:
+            continue
+        if hh < (start_hour or 6):
+            continue
+        if _precip_consensus(h, hp_all) >= 0.2:
+            main_rain_hours.append(hh)
+
+    has_main_rain_later = bool(main_rain_hours)
+    if best >= 2:
+        return "Przed zapowiadanym deszczem może siąpić." if has_main_rain_later else "Możliwe lekkie siąpienie."
+    return None
+
 def _precip_consensus(h: dict, hp_all: list) -> float:
     """Inteligentny konsensus: nie bierze Max, tylko sprawdza prawdopodobieństwo (POP)."""
     p_base = float(h.get("precip_mm") or 0)
@@ -1182,6 +1269,32 @@ def prepare_layout_data(payload, now=None):
         sun_t   = _build_weekend_day_teaser(sun_h, "Ndz")
         if sat_t and sun_t:
             weekend_teaser = {"sat": sat_t, "sun": sun_t, "title": "Przyszły weekend"}
+    hint = _drizzle_hint(ta=ta, hp_all=hours, start_hour=hero_start_hour)
+
+    if hint:
+        low = (final_context_line or "").lower()
+
+        # Nadpisujemy tylko gdy context_line jest puste albo to tylko "hPa"/strzałki (meta),
+        # ale NIE nadpisujemy age-gatingu ani notek o rozbieżności modeli.
+        #is_pressure_only = ("hpa" in low) and ("modele" not in low) and ("nocne dane" not in low)
+        #if (not final_context_line) or is_pressure_only:
+        #    final_context_line = hint
+        
+        has_pressure_synoptic = any(x in low for x in [
+            "hpa",
+            "ciśnien", "cisnien",          # na wypadek braku polskich znaków
+            "spadek", "wzrost"             # Twoje synoptyki to zwykle spadek/wzrost ciśnienia
+        ])
+
+        has_other_meta = any(x in low for x in [
+            "nocne dane",
+            "modele są rozbieżne",
+            "odśwież"                      # age-gating / inne meta
+        ])
+
+        pressure_only = has_pressure_synoptic and not has_other_meta
+        if (not final_context_line) or pressure_only:
+            final_context_line = (final_context_line + " · " + hint) if final_context_line else hint
             
     return {
         "city":                payload["location"]["name"],
