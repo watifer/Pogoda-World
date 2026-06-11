@@ -97,6 +97,7 @@ def wk_candidate_from_facts(facts: dict, max_len: int, mode: str = "comfort") ->
         "Jesteśmy w trakcie spokojnego, stabilnego dnia.\n\n"
         "Reguły:\n"
         "- Dopasuj ton do 'current_hour' (jeśli jest po 18:00, pisz o spokojnym wieczorze; rano o dobrym dniu).\n"
+        "- CZAS: Pamiętaj, że 12:00 to południe (środek dnia). Unikaj absurdów typu '12:00 wieczorem' czy '15:00 w nocy'. Używaj naturalnego polskiego nazewnictwa i systemu 24-godzinnego.\n"
         "- Tekst MUSI być akcjonowalny (wskazywać konkretną godzinę lub zakres).\n"
         f"{constraint}"
         "- Unikaj w kółko słowa 'spacer'. Używaj synonimów: relaks, wietrzenie, rower, czas na zewnątrz.\n"
