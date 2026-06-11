@@ -29,15 +29,14 @@ urllib3.util.connection.HAS_IPV6 = False
 # ═══════════════════════════════════════
 
 def _get_retry_session() -> requests.Session:
-    """Zwraca sesję requests z wbudowanym mechanizmem ponawiania (Exponential Backoff)."""
+    """Zwraca sesję requests z wbudowanym mechanizmem ponawiania, skrojoną pod bota (Szybka ewakuacja)."""
     session = requests.Session()
     retry = Retry(
-        total=4,            # Maksymalnie 4 próby ponowienia
-        read=4,             # W tym na błędy ReadTimeout
-        connect=4,          # W tym na błędy połączenia
-        backoff_factor=1.5, # Odczekaj: 1.5s, 3s, 6s... przed kolejną próbą
-        status_forcelist=[429, 500, 502, 503, 504], # Błędy API, przy których walczymy dalej
-        #allowed_methods=["GET"]
+        total=2,              # Zmniejszamy do max 2 ponowień (nie mrozimy bota)
+        read=2,             
+        connect=2,          
+        backoff_factor=0.5,   # Odczeka tylko 0.5 sekundy, potem 1.0 s
+        status_forcelist=[429, 500, 502, 503, 504]
     )
     adapter = HTTPAdapter(max_retries=retry)
     session.mount("http://", adapter)
@@ -136,7 +135,8 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
         "&forecast_days=15"  # <--- NOWOŚĆ: Twarde żądanie 14 dni ( bo 1 dzień jest bieżący )
     )
     session = _get_retry_session()
-    r = session.get(url, timeout=20)
+    # Timeout 8 sekund - jeśli Open-Meteo dławi się dłużej, natychmiast uciekamy do Yr.no
+    r = session.get(url, timeout=8)
     r.raise_for_status()
     h = r.json()["hourly"]
     times = h["time"]
