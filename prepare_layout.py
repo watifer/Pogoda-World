@@ -2,9 +2,8 @@
 prepare_layout.py — Produkcyjny builder layoutu karty pogodowej
 Funkcja: prepare_layout_data(payload, now=None)
 """
-
 from __future__ import annotations
-
+from owm_nowcast import get_current_weather, nowcast_note
 import math
 from datetime import datetime, timedelta
 from typing import Optional
@@ -1296,14 +1295,59 @@ def prepare_layout_data(payload, now=None):
         if (not final_context_line) or pressure_only:
             final_context_line = (final_context_line + " · " + hint) if final_context_line else hint
             
+    # --- INTELIGENTNY GATING OWM (Leniwa Weryfikacja 2.0) ---
+    should_call_owm = False
+    forecast_source = payload.get("forecast_source", "OpenMeteo + Yr.no")
+    
+    # 1. Fallback (brak jednego ze źródeł)
+    if " + " not in forecast_source:
+        should_call_owm = True
+    # 2. Rozjazd modeli (wykorzystujemy Twoje obecne ostrzeżenia w final_context_line)
+    elif final_context_line and any(x in final_context_line.lower() for x in ["rozbieżne", "niepewn", "wczesny", "nocne"]):
+        should_call_owm = True
+    # 3. Ryzyko ukrytego opadu (0 mm, ale wysoka wilgotność i chmury)
+    elif hours:
+        today_str = now.strftime("%Y-%m-%d")
+        current_h = next((h for h in hours if h.get("time_local", "").startswith(today_str) and len(h.get("time_local", "")) >= 13 and int(h["time_local"][11:13]) == now.hour), None)
+        
+        if current_h:
+            rh = float(current_h.get("rh_pct") or 0)
+            mm_now = float(current_h.get("precip_mm") or 0)
+            # Obliczenie efektywnych chmur
+            cld = max(float(current_h.get("clouds_low_pct") or 0) + float(current_h.get("clouds_mid_pct") or 0), float(current_h.get("clouds_pct_yr") or 0))
+            
+            if mm_now < 0.1 and rh >= 85 and cld >= 85:
+                should_call_owm = True
+
+    owm_note = None
+    if should_call_owm:
+        owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=3)
+        owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm)
+
+    if owm_note:
+        low = (final_context_line or "").lower()
+        pressure_only = any(x in low for x in ["hpa", "ciśnien", "cisnien", "spadek", "wzrost"]) and not any(
+            x in low for x in ["nocne dane", "rozbieżne", "odśwież"]
+        )
+        if (not final_context_line) or pressure_only:
+            final_context_line = (final_context_line + " · " + owm_note) if final_context_line else owm_note
+
+    # --- AWARYJNY SENSOR MŻAWKI ---
+    # Jeśli OWM nie było potrzebne (should_call_owm=False) LUB API nie dało notatki, 
+    # zawsze możemy jeszcze użyć hintu
+    if not final_context_line:
+        hint = _drizzle_hint(ta=ta, hp_all=hours, start_hour=hero_start_hour)
+        if hint:
+            final_context_line = hint
+            
     return {
         "city":                payload["location"]["name"],
         "weekday":             weekday,
         "date":                date_display,
         "report_type":         report_type,
-        "main_icon":           hero_icon,              
+        "main_icon":           hero_icon,
         "temp_range":          _fmt_temp(bmin, bmax),
-        "summary":             hero_summary_line,      
+        "summary":             hero_summary_line,
         "context_line":        final_context_line,
         "worth_knowing":       wk,
         "pressure":            None,
@@ -1311,11 +1355,11 @@ def prepare_layout_data(payload, now=None):
         "air_quality_color":   None,
         "section_title":       section_title,
         "today_blocks":        today_blocks,
-        "weekend_detail_days": wdd,              
-        "future_order":        future_order,     
+        "weekend_detail_days": wdd,
+        "future_order":        future_order,
         "next_days":           nd,
         "next_days_title":     next_days_title,
-        "alerts":              alerts,          
-        "weekend_teaser":      weekend_teaser,
+        "alerts":              alerts,
+        "weekend_teaser":      weekend_teaser, 
         "forecast_source":     payload.get("forecast_source", "Yr.no")
     }
