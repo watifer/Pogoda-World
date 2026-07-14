@@ -515,11 +515,11 @@ def run_send_cycle():
             # --- DODANY "ODDECH" DLA OPEN-METEO ---
             # Po wygenerowaniu karty dla usera (nawet jeśli wysyłka się nie powiodła, ale odpytaliśmy API)
             # czekamy 2.5 sekundy, żeby nie zasypać darmowego API żądaniami z crona.
-            time.sleep(2.5) 
+            time.sleep(2.0 + random.random() * 1.0) 
             
         except Exception as e:
             print(f"[main_card] Błąd dla {chat_id}: {e}")
-            time.sleep(2.5) # Odczekajmy nawet w przypadku błędu
+            time.sleep(2.0 + random.random() * 1.0) # Odczekajmy nawet w przypadku błędu
 
 
 def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False, is_future: bool = False) -> bool:

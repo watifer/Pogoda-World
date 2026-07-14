@@ -12,6 +12,11 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import urllib3  # <--- TEGO BRAKOWAŁO
+# --- ZMIENNE DLA CACHE I BEZPIECZNIKA OPEN-METEO ---
+_OPENMETEO_DOWN_UNTIL = 0.0
+_OPENMETEO_CACHE = {}  
+_OPENMETEO_TTL = 600   # Cache żyje 10 minut
+# ---------------------------------------------------
 from datetime import datetime, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -121,24 +126,52 @@ def _fetch_yrno(lat: float, lon: float, tz: ZoneInfo) -> tuple[list, str]:
 # ═══════════════════════════════════════
 
 def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
+    global _OPENMETEO_DOWN_UNTIL, _OPENMETEO_CACHE
+    
+    now_ts = time.time()
+    key = (round(float(lat), 3), round(float(lon), 3), str(tz))
+    
+    # 1. CACHE (Zwraca z pamięci, jeśli mamy świeże dane dla tej lokalizacji)
+    if key in _OPENMETEO_CACHE:
+        ts, cached_hours = _OPENMETEO_CACHE[key]
+        if now_ts - ts < _OPENMETEO_TTL:
+            return cached_hours
+            
+    # 2. CIRCUIT BREAKER (Odcięcie na określony czas przy awarii)
+    if now_ts < _OPENMETEO_DOWN_UNTIL:
+        return []  # Zwracamy pustą listę -> bot przejdzie na Yr.no
+        
     tz_str = str(tz).replace("/", "%2F")
     url = (
         "https://api.open-meteo.com/v1/forecast"
         f"?latitude={lat}&longitude={lon}"
-        "&past_days=1"  # <--- To zostawiamy, żeby dbało o ciągłość historii!
+        "&past_days=1"
         "&hourly=temperature_2m,dewpoint_2m,relative_humidity_2m,"
         "wind_speed_10m,wind_gusts_10m,wind_direction_10m,"
         "precipitation,precipitation_probability,"
         "cloud_cover,cloud_cover_low,cloud_cover_mid,cloud_cover_high,"
-        "weather_code,pressure_msl,uv_index"    
+        "weather_code,pressure_msl,uv_index"
         f"&timezone={tz_str}"
-        "&forecast_days=15"  # <--- NOWOŚĆ: Twarde żądanie 14 dni ( bo 1 dzień jest bieżący )
+        "&forecast_days=15"
     )
+    
     session = _get_retry_session()
-    # Timeout 8 sekund - jeśli Open-Meteo dławi się dłużej, natychmiast uciekamy do Yr.no
-    r = session.get(url, timeout=8)
-    r.raise_for_status()
-    h = r.json()["hourly"]
+    try:
+        r = session.get(url, timeout=8)
+        r.raise_for_status()
+        h = r.json()["hourly"]
+    except requests.exceptions.RetryError:
+        _OPENMETEO_DOWN_UNTIL = now_ts + 180  # 3 minuty przerwy dla całego bota
+        return []
+    except requests.exceptions.HTTPError as e:
+        if getattr(e.response, "status_code", None) == 503:
+            _OPENMETEO_DOWN_UNTIL = now_ts + 180
+            return []
+        raise
+    except requests.exceptions.RequestException:
+        _OPENMETEO_DOWN_UNTIL = now_ts + 120
+        return []
+
     times = h["time"]
     prob = h.get("precipitation_probability", [None] * len(times))
 
@@ -158,13 +191,16 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
             "clouds_mid_pct":  h["cloud_cover_mid"][i],
             "clouds_high_pct": h["cloud_cover_high"][i],
             "pressure_hpa":    h["pressure_msl"][i] if "pressure_msl" in h else None,
-            "uv_index":        h["uv_index"][i] if "uv_index" in h else None,  # <--- NOWA LINIJKA: Zapisujemy UV od OM
+            "uv_index":        h["uv_index"][i] if "uv_index" in h else None,
             "precip_mm":       h["precipitation"][i],
             "precip_prob_pct": prob[i] if prob[i] is not None else 0,
             "weather_code":    h["weather_code"][i],
             "symbol_code":     None,
             "source":          "openmeteo",
         })
+        
+    # Zapisujemy do cache przed zwrotem
+    _OPENMETEO_CACHE[key] = (now_ts, hours)
     return hours
 
 
@@ -367,7 +403,8 @@ def build_payload_for_location(
     om_hours = []
     try:
         om_hours = _fetch_openmeteo(lat, lon, tz)
-        forecast_source = "OpenMeteo"
+        if om_hours:  # <--- To gwarantuje, że przy [] nie nadpisze źródła błędnie!
+            forecast_source = "OpenMeteo"
     except Exception as e:
         print(f"[weather_payload] Open-Meteo niedostępne: {type(e).__name__}: {e}")
 
