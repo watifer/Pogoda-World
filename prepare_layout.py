@@ -1234,6 +1234,13 @@ def prepare_layout_data(payload, now=None):
     if show_age_note:
         final_context_line = "Nocne dane — odśwież prognozę z menu później"
 
+    # --- NOWY KOD: Wstrzyknięcie alertu awaryjnego (Brak 2 źródła) ---
+    forecast_source = payload.get("forecast_source", "")
+    if " + " not in forecast_source:
+        # Używamy znaku ' — ' aby system poprawnie oddzielił czerwony tytuł od białego opisu
+        alerts.insert(0, "Awaria źródeł — Brak weryfikacji prognozy z drugiego modelu. Możliwe błędy w prognozie. Wywołaj raport za chwilę ( z menu - opcja /day ).")
+    # ------------------------------------------------------------------
+
     alerts = list(dict.fromkeys(alerts))
 
     wk = build_worth_knowing(

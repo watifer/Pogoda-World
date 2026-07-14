@@ -127,7 +127,9 @@ def _fetch_yrno(lat: float, lon: float, tz: ZoneInfo) -> tuple[list, str]:
 
 def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
     global _OPENMETEO_DOWN_UNTIL, _OPENMETEO_CACHE
-    
+    # --- DODAJ TĘ JEDNĄ LINIJKĘ DO TESTÓW ---
+    #raise Exception("Symulowana awaria Open-Meteo do testów")
+    # ----------------------------------------
     now_ts = time.time()
     key = (round(float(lat), 3), round(float(lon), 3), str(tz))
     

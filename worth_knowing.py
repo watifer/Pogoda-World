@@ -1163,11 +1163,13 @@ def build_worth_knowing(
                 trust_block = True
     # --------------------------
     # [POPRAWKA 1b]: Awaryjny zwrot, gdy mamy tylko 1 model
+    #if not has_two_models:
+    #    return {
+    #        "title": "Dziś warto wiedzieć",
+    #        "text": "Brak weryfikacji z drugiego modelu. Prognoza może ulec zmianie. Wygeneruj ponownie za kilka minut.",
+    #    }
     if not has_two_models:
-        return {
-            "title": "Dziś warto wiedzieć",
-            "text": "Brak weryfikacji z drugiego modelu. Prognoza może ulec zmianie. Wygeneruj ponownie za kilka minut.",
-        }
+        return None  # <--- Zwraca nic, sekcja WK się nie wyrenderuje
 
     candidates = _candidates_level1(
         blocks, temp_min, temp_max, total_precip_mm,
