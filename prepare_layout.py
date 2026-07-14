@@ -1238,7 +1238,7 @@ def prepare_layout_data(payload, now=None):
     forecast_source = payload.get("forecast_source", "")
     if " + " not in forecast_source:
         # Używamy znaku ' — ' aby system poprawnie oddzielił czerwony tytuł od białego opisu
-        alerts.insert(0, "Awaria źródeł — Brak weryfikacji prognozy z drugiego modelu. Możliwe błędy w prognozie. Wywołaj raport za chwilę ( z menu - opcja /day ).")
+        alerts.insert(0, "Awaria źródeł — Brak weryfikacji prognozy z drugiego modelu. Możliwe błędy w dzisiejszej prognozie. Wywołaj raport za chwilę ( z menu - opcja /day ).")
     # ------------------------------------------------------------------
 
     alerts = list(dict.fromkeys(alerts))
