@@ -1237,7 +1237,7 @@ def prepare_layout_data(payload, now=None):
     alerts = list(dict.fromkeys(alerts))
 
     wk = build_worth_knowing(
-        blocks=hero_blocks, alerts=alerts, temp_min=bmin, temp_max=bmax,
+        payload=payload, blocks=hero_blocks, alerts=alerts, temp_min=bmin, temp_max=bmax,
         max_wind=max_wind, gust_kmh=max_gust, total_precip_mm=tp,
         is_afternoon_report=(now.hour >= 12),
         summary_line=hero_summary_line, 

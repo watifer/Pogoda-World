@@ -463,11 +463,19 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
         uv_at_best = next((uvv for hh, uvv in uv_peaks if hh == best_sun_h), 0)
         uv = round(uv_at_best)
 
-        if uv >= 5.0:
+        # [POPRAWKA 2]: Obliczamy opad i grube chmury w środku dnia (10-16)
+        daytime_precip = 0
+        for h in ta:
+            try:
+                if 10 <= int(h["time_local"][11:13]) <= 16:
+                    daytime_precip += _f(h.get("precip_mm"))
+            except Exception: pass
+
+        # Wymagamy UV >= 5, ORAZ braku silnego deszczu w środku dnia (mniej niż 2.0 mm)
+        if uv >= 5.0 and daytime_precip < 2.0:
             uv_text = ""
             
             is_cloudy_day = avg_day_clouds >= 65
-            # Nowy warunek: chmury spadają do <= 70% I JEST PRZYNAJMNIEJ 15% RÓŻNICY względem średniej!
             has_sun_window = (best_sun_c <= 70) and ((avg_day_clouds - best_sun_c) >= 15)
             
             if not is_cloudy_day:
@@ -1099,6 +1107,7 @@ def enforce_priority_policy(c: dict) -> dict:
 # ═══════════════════════════════════════
 
 def build_worth_knowing(
+    payload: dict,  # <--- To jest kluczowe!
     blocks: List[Dict],
     alerts: List[str] = None,
     temp_min: float = None,
@@ -1130,6 +1139,12 @@ def build_worth_knowing(
     # --- NOWY TRUST GATING ---
     trust_block = False
     
+    # [POPRAWKA 1]: Odcinamy lifestylowe pierdoły, jeśli padł jeden model
+    forecast_source = payload.get("forecast_source", "")
+    has_two_models = " + " in forecast_source
+    if not has_two_models:
+        trust_block = True
+    
     # Jeśli karta główna już ostrzega o niepewności, WK milknie (spójność systemu)
     ctx_low = (context_line_text or "").lower()
     if "modele są rozbieżne" in ctx_low or "wczesny raport" in ctx_low:
@@ -1146,7 +1161,13 @@ def build_worth_knowing(
             precip_peak = max((_f(h.get("precip_mm"), 0) for h in ta), default=0)
             if pop_peak >= 60 and precip_peak < 0.2:
                 trust_block = True
-# --------------------------
+    # --------------------------
+    # [POPRAWKA 1b]: Awaryjny zwrot, gdy mamy tylko 1 model
+    if not has_two_models:
+        return {
+            "title": "Dziś warto wiedzieć",
+            "text": "Brak weryfikacji z drugiego modelu. Prognoza może ulec zmianie. Wygeneruj ponownie za kilka minut.",
+        }
 
     candidates = _candidates_level1(
         blocks, temp_min, temp_max, total_precip_mm,
