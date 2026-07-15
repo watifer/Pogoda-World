@@ -686,9 +686,27 @@ def generate_weather_card(data, palette_override=None):
     date_str = f"{wd}, {dt}" if wd and dt else f"{wd}{dt}"
     draw.text((MARGIN, y), date_str, font=f_date_bold, fill=TITLE_TODAY)
     date_w = draw.textlength(date_str, font=f_date_bold)
+    #if rt:
+    #    draw.text((MARGIN + date_w + 14, y + 5), f"· {rt}", font=f_report,
+    #             fill=(170, 180, 200))
     if rt:
-        draw.text((MARGIN + date_w + 14, y + 5), f"· {rt}", font=f_report,
-                  fill=(170, 180, 200))
+        if "(dane z" in rt:
+            # Rozdzielamy tekst dokładnie w miejscu nawiasu
+            parts = rt.split("(dane z")
+            rt_main = parts[0]               # np. "raport poranny "
+            rt_yellow = "(dane z" + parts[1] # np. "(dane z 11:19)"
+            
+            # 1. Szary tekst główny
+            main_text = f"· {rt_main}"
+            draw.text((MARGIN + date_w + 14, y + 5), main_text, font=f_report, fill=(170, 180, 200))
+            
+            # 2. Żółty dopisek
+            main_w = draw.textlength(main_text, font=f_report)
+            draw.text((MARGIN + date_w + 14 + main_w, y + 5), rt_yellow, font=f_report, fill=TITLE_TODAY)
+        else:
+            # Zwykły raport bez daty
+            draw.text((MARGIN + date_w + 14, y + 5), f"· {rt}", font=f_report, fill=(170, 180, 200))
+    
     y += 48 + 8
 
     # Ikona + temperatura
@@ -700,24 +718,20 @@ def generate_weather_card(data, palette_override=None):
     sm = data.get("summary", "")
     pr = data.get("pressure")
     
-    # Jeśli frontend nie skleił pr z sm, a istnieje pressure, doklejamy
     if pr and "hPa" not in sm:
         summary_line = f"{sm}\n{pr}" if sm else pr
     else:
         summary_line = sm
 
-    # Rysujemy każdą linijkę osobno, jedna pod drugą
+    # 1. Rysujemy Summary (Zawsze na ZŁOTO)
     for line in summary_line.split("\n"):
-        draw.text((MARGIN, y), line, font=f_summ, fill=(215, 222, 235))
-        y += 46  # Przeskok w dół o wysokość czcionki
-    # --- NOWE: Rysowanie wielu linii ---
-    if ctx_lines:
-        # Sprawdzamy główny tekst: jeśli to nasz alert (zaczyna się od !), używamy żółtego
-        is_alert = ctx and ctx.startswith("!")
-        text_color = (254, 240, 138) if is_alert else (170, 180, 200)
+        draw.text((MARGIN, y), line, font=f_summ, fill=(254, 240, 138)) # <- Zmieniono na żółty
+        y += 46  
         
+    # 2. Rysujemy Context/Alerts (Zawsze na ZŁOTO)
+    if ctx_lines:
         for line in ctx_lines:
-            draw.text((MARGIN, y + 4), line, font=f_ctx, fill=text_color)
+            draw.text((MARGIN, y + 4), line, font=f_ctx, fill=(254, 240, 138)) # <- Zmieniono na żółty
             y += 38
 
     y += 20

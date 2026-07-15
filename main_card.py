@@ -557,6 +557,20 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         location_name=user["name"],
     )
 
+    # ══════════════════════════════════════════════════════════
+    # TWARDA BLOKADA JAKOŚCI (Gwarancja 2 modeli dla głównego raportu)
+    # ══════════════════════════════════════════════════════════
+    # Sprawdzamy blokadę tylko dla standardowego raportu /day (żeby nie blokować /now i /future)
+    if not is_now and not is_future:
+        hours = payload.get("hours", [])
+        has_om = any(h.get("source") == "openmeteo" for h in hours)
+        has_yr = any(h.get("source") == "yrno" for h in hours)
+        
+        if not (has_om and has_yr):
+            print(f"[main_card] 🛑 Odrzucam: Brak dwóch źródeł danych dla {chat_id}. Odkładam na kolejną minutę.")
+            return False  # Zwracamy False! Bot ucieka z funkcji.
+    # ══════════════════════════════════════════════════════════
+
     # 2. Layout (ROZWIDLENIE ARCHITEKTONICZNE)
     if is_now:
         layout = prepare_now_layout_data(payload)

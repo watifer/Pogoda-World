@@ -899,6 +899,7 @@ def prepare_layout_data(payload, now=None):
     if model_time_str and len(model_time_str) >= 16:
         data_time = model_time_str[11:16]
         time_suffix = f" (dane z {data_time})"
+        
         try:
             model_dt_loc = datetime.fromisoformat(model_time_str.replace("Z", "+00:00")).astimezone(tz)
             is_night_run = (model_dt_loc.hour < 6)
