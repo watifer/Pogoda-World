@@ -476,32 +476,32 @@ def run_send_cycle():
     users = []
     
     for attempt in range(MAX_RETRIES):
-    try:
-        raw = _load_users_from_sheet()
-        sklejone = wirtualne_scalanie(raw)
-        users = _parse_users(sklejone)
-        break  # Udało się, przerywamy pętlę prób
-    except Exception as e:
-        # Sprawdzamy czy to błąd typu Rate Limit (429)
-        is_rate_limit = _is_429(e)
-        
-        # Sprawdzamy czy to tymczasowy błąd serwera Google (500, 502, 503, 504)
-        err_str = str(e)
-        is_temporary_server_error = any(code in err_str for code in ["500", "502", "503", "504"])
-
-        if (is_rate_limit or is_temporary_server_error) and attempt < MAX_RETRIES - 1:
-            if is_rate_limit:
-                sleep_time = 30 * (attempt + 1) + random.uniform(1, 5)
-                print(f"⚠️ [API 429] Rate Limit Google Sheets. Ponawiam {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
-            else:
-                sleep_time = 3 * (attempt + 1) + random.uniform(1, 3)  # Krótszy sleep dla błędu 500
-                print(f"⚠️ [API {err_str[:15]}] Chwilowy błąd Google Sheets. Ponawiam {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
+        try:  # <--- TO MUSI BYĆ WCIĘTE (Tab)
+            raw = _load_users_from_sheet()
+            sklejone = wirtualne_scalanie(raw)
+            users = _parse_users(sklejone)
+            break  # Udało się, przerywamy pętlę prób
+        except Exception as e: # <--- TO TEŻ WCIĘTE W RÓWNEJ LINII Z TRY
+            # Sprawdzamy czy to błąd typu Rate Limit (429)
+            is_rate_limit = _is_429(e)
             
-            time.sleep(sleep_time)
-        else:
-            print(f"[main_card] Krytyczny błąd ładowania użytkowników: {e}")
-            import sys
-            sys.exit(1)
+            # Sprawdzamy czy to tymczasowy błąd serwera Google (500, 502, 503, 504)
+            err_str = str(e)
+            is_temporary_server_error = any(code in err_str for code in ["500", "502", "503", "504"])
+
+            if (is_rate_limit or is_temporary_server_error) and attempt < MAX_RETRIES - 1:
+                if is_rate_limit:
+                    sleep_time = 30 * (attempt + 1) + random.uniform(1, 5)
+                    print(f"⚠️ [API 429] Rate Limit Google Sheets. Ponawiam {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
+                else:
+                    sleep_time = 3 * (attempt + 1) + random.uniform(1, 3)  
+                    print(f"⚠️ [API {err_str[:15]}] Chwilowy błąd Google Sheets. Ponawiam {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
+                
+                time.sleep(sleep_time)
+            else:
+                print(f"[main_card] Krytyczny błąd ładowania użytkowników: {e}")
+                import sys
+                sys.exit(1)
 
     cache = _load_cache()
     # Puszczamy auto-sprzątaczkę
