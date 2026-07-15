@@ -163,14 +163,17 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
         r.raise_for_status()
         h = r.json()["hourly"]
     except requests.exceptions.RetryError:
-        _OPENMETEO_DOWN_UNTIL = now_ts + 180  # 3 minuty przerwy dla całego bota
+        print("[weather_payload] Circuit Breaker: Open-Meteo odrzuciło po 2 próbach (RetryError). Odcinam na 3 minuty.")
+        _OPENMETEO_DOWN_UNTIL = now_ts + 180
         return []
     except requests.exceptions.HTTPError as e:
         if getattr(e.response, "status_code", None) == 503:
+            print("[weather_payload] Circuit Breaker: Błąd 503 z Open-Meteo. Odcinam na 3 minuty.")
             _OPENMETEO_DOWN_UNTIL = now_ts + 180
             return []
         raise
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        print(f"[weather_payload] Circuit Breaker: Inny błąd sieciowy ({type(e).__name__}). Odcinam na 2 minuty.")
         _OPENMETEO_DOWN_UNTIL = now_ts + 120
         return []
 

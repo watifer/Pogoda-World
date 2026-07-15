@@ -351,13 +351,19 @@ def _parse_users(raw_rows: list[dict]) -> list[dict]:
 # OKNO WYSYŁKI
 # ═══════════════════════════════════════
 
-def _in_send_window(tz_name: str, godz_rano_str: str, godz_wiecz_str: str) -> tuple[bool, str, str, bool]:
+def _in_send_window(tz_name: str, godz_rano_str: str, godz_wiecz_str: str, chat_id: str | int) -> tuple[bool, str, str, bool]:
     """
-    Tolerancja opóźnienia crona/backoff: jeśli raport był ustawiony na HH:MM,
-    to wysyłamy jeszcze do GRACE_MINUTES po tej godzinie (grace window).
-    Cache blokuje duplikaty.
+    Rozproszone okno wysyłki z zabezpieczeniem przed Thundering Herd i retry-gatingiem.
+    Użytkownik dostaje offset (1-10 min) i próbuje wysłać przez kolejne 15 minut.
     """
-    GRACE_MINUTES = 75  # Czas "nadrabiania" zaległości
+    # 1. Obliczamy unikalny offset dla użytkownika (od 1 do 10 minut)
+    try:
+        user_offset = (abs(int(chat_id)) % 10) + 1
+    except Exception:
+        user_offset = 1  # Bezpieczny fallback
+
+    # Maksymalny czas na próby (w minutach) od momentu staggered startu
+    RETRY_WINDOW = 15  
 
     try:
         local_now = datetime.now(ZoneInfo(tz_name))
@@ -386,7 +392,11 @@ def _in_send_window(tz_name: str, godz_rano_str: str, godz_wiecz_str: str) -> tu
         target = local_now.replace(hour=hh, minute=mm or 0, second=0, microsecond=0)
         # Obliczamy, ile minut minęło od tego idealnego celu
         delta_min = (local_now - target).total_seconds() / 60.0
-        return 0 <= delta_min <= GRACE_MINUTES
+        
+        # --- ROZPROSZONE OKNO WYSYŁKI ---
+        # Start: dopiero po upływie 'user_offset' minut od planowanej godziny
+        # Koniec: 15 minut później
+        return user_offset <= delta_min <= (user_offset + RETRY_WINDOW)
 
     h_r, m_r = _parse_hm(godz_rano_str)
     h_w, m_w = _parse_hm(godz_wiecz_str)
@@ -466,20 +476,32 @@ def run_send_cycle():
     users = []
     
     for attempt in range(MAX_RETRIES):
-        try:
-            raw = _load_users_from_sheet()
-            sklejone = wirtualne_scalanie(raw)
-            users = _parse_users(sklejone)
-            break  # Udało się, przerywamy pętlę prób
-        except Exception as e:
-            if _is_429(e) and attempt < MAX_RETRIES - 1:
-                sleep_time = 30 * (attempt + 1) + random.uniform(1, 5)  # Backoff + Jitter
-                print(f"⚠️ [API 429] Rate Limit/Przeciążenie Google Sheets. Ponawiam próbę {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
-                time.sleep(sleep_time)
+    try:
+        raw = _load_users_from_sheet()
+        sklejone = wirtualne_scalanie(raw)
+        users = _parse_users(sklejone)
+        break  # Udało się, przerywamy pętlę prób
+    except Exception as e:
+        # Sprawdzamy czy to błąd typu Rate Limit (429)
+        is_rate_limit = _is_429(e)
+        
+        # Sprawdzamy czy to tymczasowy błąd serwera Google (500, 502, 503, 504)
+        err_str = str(e)
+        is_temporary_server_error = any(code in err_str for code in ["500", "502", "503", "504"])
+
+        if (is_rate_limit or is_temporary_server_error) and attempt < MAX_RETRIES - 1:
+            if is_rate_limit:
+                sleep_time = 30 * (attempt + 1) + random.uniform(1, 5)
+                print(f"⚠️ [API 429] Rate Limit Google Sheets. Ponawiam {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
             else:
-                print(f"[main_card] Krytyczny błąd ładowania użytkowników: {e}")
-                import sys
-                sys.exit(1)
+                sleep_time = 3 * (attempt + 1) + random.uniform(1, 3)  # Krótszy sleep dla błędu 500
+                print(f"⚠️ [API {err_str[:15]}] Chwilowy błąd Google Sheets. Ponawiam {attempt+1}/{MAX_RETRIES} za {sleep_time:.1f}s...")
+            
+            time.sleep(sleep_time)
+        else:
+            print(f"[main_card] Krytyczny błąd ładowania użytkowników: {e}")
+            import sys
+            sys.exit(1)
 
     cache = _load_cache()
     # Puszczamy auto-sprzątaczkę
@@ -492,7 +514,7 @@ def run_send_cycle():
         chat_id = user["chat_id"]
         # Przekazujemy preferencje do okna wysyłki
         in_window, window_name, local_date_str, is_quiet = _in_send_window(
-            user["tz"], user.get("godzina_rano", ""), user.get("godzina_wieczor", "")
+            user["tz"], user.get("godzina_rano", ""), user.get("godzina_wieczor", ""), chat_id
         )
 
         if not in_window:
