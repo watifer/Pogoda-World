@@ -441,6 +441,10 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
 # SŁOWNIK INTERFEJSU TELEGRAMA (UI)
 # ==============================================================
 
+# ==============================================================
+# SŁOWNIK INTERFEJSU TELEGRAMA (UI)
+# ==============================================================
+
 UI_TEXTS = {
     "pl": {
         "menu_header": "⚙️ *PANEL STEROWANIA* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Obecna lokalizacja:*\n└ {city}\n\n📅 *Twój harmonogram:*\n├ Rano: {disp_rano}\n└ Popołudnie: {disp_wieczor}\n\n⏰ *Jak zmienić godziny?*\nKliknij przycisk poniżej.\n\n📍 *Jak zmienić miejscowość?*\nWyślij nową 📎 Pinezkę z mapy.",
@@ -450,9 +454,22 @@ UI_TEXTS = {
         "missing_loc": "⚠️ Brakuje współrzędnych! Wyślij najpierw pinezkę z mapy.",
         "scanning": "📡 Skanuję radary... Generuję prognozę godzinową.",
         "prep_main": "☀️ Przygotowuję główną kartę pogodową na dzisiaj...",
-        "prep_future": "🔮 Generuję prognozę na 14 dni... Daj mi sekundę.",
+        "prep_future": "🔮 Generuję prognozę hybrydową na najbliższe 14 dni... Daj mi sekundę.",
         "time_limit": "ℹ️ Główny raport dzienny jest dostępny tylko od 05:00 do 15:59.\nWybierz /now, aby sprawdzić radar taktyczny na wieczór i noc!",
-        "err_gen": "⚠️ Wystąpił błąd podczas generowania karty."
+        "err_gen": "⚠️ Wystąpił błąd podczas generowania karty.",
+        
+        # --- NOWE KLUCZE (OPISY I KOMENDY) ---
+        "no_access": "⛔ *Brak dostępu*\nPrzepraszamy, ten bot jest prywatny i działa wyłącznie na zaproszenia od obecnych użytkowników.",
+        "limit_reached": "⛔ Niestety, globalny limit miejsc w aplikacji (50) został wyczerpany.",
+        "invalid_link": "⛔ Ten link zaproszeniowy jest nieprawidłowy lub pochodzi od niezarejestrowanej osoby.",
+        "welcome_new": "✅ *Rejestracja pomyślna!*\nWitamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n⚠️ *Ostatni krok, ale konieczny:*\nAby raporty mogły działać i przychodzić do Ciebie o godz. 8:00 i 14:00, musisz ustawić swoją lokalizację:\n1️⃣ Naciśnij tę wiadomość i wybierz *Odpowiedz* (Reply).\n2️⃣ Wybierz 📎 (spinacz), a następnie 📍 *Lokalizacja*.\n3️⃣ Wyślij 📎 *Pinezkę z mapy*.",
+        "invite_intro": "💌 *Twoje zaproszenie jest gotowe!*\n\nSkopiuj poniższą wiadomość i wyślij ją znajomemu (np. przez SMS lub WhatsApp), albo bezpośrednio przez Telegram.",
+        "invite_sms": "Cześć! 🌤 Używam świetnego, prywatnego bota pogodowego na Telegramie.\n\nZostawiam Ci moje zaproszenie. Kliknij w link poniżej, aby z niego skorzystać:\n{link}",
+        "invite_group_btn": "➕ Dodaj bota do Twojej grupy",
+        "invite_group_desc": "💡 *A może chcesz dodać bota do swojej grupy?*\nUżyj przycisku poniżej. Telegram automatycznie otworzy listę Twoich grup.",
+        "info_msg": "ℹ️ *JAK DZIAŁA POGODA DLA CIEBIE?*\nJestem Twoim asystentem pogodowym. Oto krótka ściąga:\n\n📍 *1. Dokładna Lokalizacja*\nAby zmienić miejsce, kliknij na dowolną z moich wiadomości, wybierz *Odpowiedz*, potem 📎, *lokalizację* 📍 i wyślij *Pinezkę z lokalizacją*.\n\n⏰ *2. Codzienne Raporty (/menu)*\nUstawisz własne godziny, o których mam wysyłać Ci poranne podsumowanie dnia i popołudniową prognozę.\n\n⏰ *3. Dzienny raport na żądanie (/day)*\nOdświeżysz dzienny raport wzbogacony o najnowsze dane pogodowe.\n\n📡 *4. Radar Taktyczny (/now)*\nWygeneruję natychmiast szczegółową, godzinową kartę na najbliższe 12 godzin.\n\n🔮 *5. Trend długoterminowy (/trend)*\nWygeneruję wykres prognozy na 14 dni.\n\n💌 *6. Zaproszenie (/zapros)*\nJeśli ci się podoba, przekaż link do aplikacji twoim znajomym.",
+        "welcome_back": "👋 Witaj ponownie w Pogoda dla Ciebie! Twój profil jest już autoryzowany.\n\nZawsze możesz wpisać *`/menu`*, aby sprawdzić ustawienia, lub użyć komendy *`/zapros`*, by udostępnić aplikację znajomemu!",
+        "porady_msg": "💡 *PORADY I TRIKI – POGODA WORLD*\nWykorzystaj pełen potencjał swojego asystenta:\n\n🔕 *1. Ciche poranki*\nGłośne powiadomienia są automatycznie wyłączone wcześnie rano (przed 7:00), aby Cię nie budzić. Możesz też ręcznie wyciszyć czat w opcjach Telegrama.\n\n⏰ *2. Dodatkowy raport*\nDostałeś już rano raport, ale pogoda jest dynamiczna i chcesz otrzymać ponownie raport z najnowższymi danymi. Po prostu z menu wybierz */day* i od razu dostaniesz zaktualizowaną, pełną prognozę! Z kolei do szybkiego podglądu bez zmieniania ustawień użyj komendy */now*.\n\n🌍 *3. Pogoda na drugim końcu świata*\nChcesz śledzić pogodę w Amazonii? Utwórz pustą grupę w Telegramie, dodaj tam bota przez */zapros* i wyślij tam pinezkę z mapy świata! *Uwaga:* Raporty przyjdą według czasu lokalnego dla tamtego miejsca.\n\n🛑 *4. Urlop od powiadomień*\nNie chcesz raportów z automatu? W */menu* wybierz opcję *\"Nie chcę\"*. Nadal będziesz mógł ręcznie sprawdzać pogodę komendami.\n\n🎛 *5. Szybkie sterowanie*\nNa prywatnym czacie używaj przycisku *Menu* po lewej stronie. W grupie wystarczy nacisnąć znak ukośnika * / *, by rozwinąć listę komend.\n\n📍 *6. Prywatność i bezpieczeństwo*\nNie musisz podawać adresu co do metra – rozbieżność 3 km nie zmienia prognozy. Ponadto, wszystkie linki z bota są w pełni bezpieczne.\n\n⚙️ *7. Domyślne ustawienia*\nJeśli nic nie zrobisz i nie ustawisz swoich godzin w menu, nic nie stracisz! Twoje raporty pogodowe będą domyślnie wysyłane o godz. *{default_rano}* i *{default_wieczor}*.\n\n🌴 *8. Pogoda na wakacjach*\nWyjeżdżasz na urlop? Po prostu wejdź w czat z botem i wyślij nową 📎 Pinezkę z miejsca, w którym jesteś. Bot natychmiast przestawi się na nową lokalizację i wyśle Ci raporty zgodnie z tamtejszą strefą czasową!"
     },
     "en": {
         "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n\n📍 *How to change location?*\nSend a new 📎 Location pin.",
@@ -464,7 +481,20 @@ UI_TEXTS = {
         "prep_main": "☀️ Preparing main weather card for today...",
         "prep_future": "🔮 Generating 14-day forecast... Give me a second.",
         "time_limit": "ℹ️ The main daily report is only available from 05:00 to 15:59.\nUse /now to check the tactical radar for the evening and night!",
-        "err_gen": "⚠️ An error occurred while generating the card."
+        "err_gen": "⚠️ An error occurred while generating the card.",
+        
+        # --- NOWE KLUCZE (OPISY I KOMENDY) ---
+        "no_access": "⛔ *Access Denied*\nSorry, this bot is private and works exclusively via invitations from current users.",
+        "limit_reached": "⛔ Unfortunately, the global application limit (50 users) has been reached.",
+        "invalid_link": "⛔ This invitation link is invalid or comes from an unregistered person.",
+        "welcome_new": "✅ *Registration successful!*\nWelcome to Weather for You. You got here by invitation!\n\n⚠️ *One last, necessary step:*\nFor reports to work and arrive at 8:00 and 14:00, you must set your location:\n1️⃣ Tap this message and select *Reply*.\n2️⃣ Choose 📎 (paperclip), then 📍 *Location*.\n3️⃣ Send 📎 *Map pin*.",
+        "invite_intro": "💌 *Your invitation is ready!*\n\nCopy the message below and send it to a friend (e.g., via SMS or WhatsApp), or directly through Telegram.",
+        "invite_sms": "Hi! 🌤 I use a great, private weather bot on Telegram.\n\nHere is my invitation. Click the link below to use it:\n{link}",
+        "invite_group_btn": "➕ Add bot to your group",
+        "invite_group_desc": "💡 *Want to add the bot to your group?*\nUse the button below. Telegram will automatically open your group list.",
+        "info_msg": "ℹ️ *HOW DOES WEATHER FOR YOU WORK?*\nI am your weather assistant. Here is a quick cheat sheet:\n\n📍 *1. Exact Location*\nTo change your location, tap any of my messages, select *Reply*, then 📎, *Location* 📍 and send a *Map pin*.\n\n⏰ *2. Daily Reports (/menu)*\nSet your own hours for the morning daily summary and the afternoon forecast.\n\n⏰ *3. Daily report on demand (/day)*\nRefresh the daily report enriched with the latest weather data.\n\n📡 *4. Tactical Radar (/now)*\nGenerate an immediate detailed, hourly card for the next 12 hours.\n\n🔮 *5. Long-term trend (/trend)*\nGenerate a 14-day forecast chart.\n\n💌 *6. Invitation (/zapros)*\nIf you like it, share the app link with your friends.",
+        "welcome_back": "👋 Welcome back to Weather for You! Your profile is already authorized.\n\nYou can always type *`/menu`* to check your settings, or use the *`/zapros`* command to share the app with a friend!",
+        "porady_msg": "💡 *TIPS AND TRICKS – WEATHER WORLD*\nUnlock the full potential of your assistant:\n\n🔕 *1. Quiet mornings*\nLoud notifications are automatically disabled early in the morning (before 7:00) so as not to wake you up. You can also manually mute the chat in Telegram options.\n\n⏰ *2. Extra report*\nYou already received a morning report, but the weather is dynamic and you want to get an updated forecast. Just choose */day* from the menu! For a quick glance without changing settings, use the */now* command.\n\n🌍 *3. Weather across the globe*\nWant to track the weather in the Amazon? Create an empty group in Telegram, add the bot via */zapros* and send a map pin from there! *Note:* Reports will arrive according to the local time for that location.\n\n🛑 *4. Notification vacation*\nDon't want automated reports? In */menu*, select the *\"Disabled\"* option. You can still check the weather manually using commands.\n\n🎛 *5. Quick controls*\nIn a private chat, use the *Menu* button on the left. In a group, just type a slash * / * to unfold the command list.\n\n📍 *6. Privacy and security*\nYou don't need to provide a down-to-the-meter address – a 3 km discrepancy doesn't change the forecast. Moreover, all bot links are fully secure.\n\n⚙️ *7. Default settings*\nIf you do nothing and don't set your hours in the menu, you lose nothing! Your weather reports will default to *{default_rano}* and *{default_wieczor}*.\n\n🌴 *8. Weather on vacation*\nGoing on holiday? Just enter the chat with the bot and send a new 📎 Map pin from where you are. The bot will instantly switch to the new location and send you reports according to the local time zone!"
     }
 }
 

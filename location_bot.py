@@ -190,7 +190,7 @@ def main_bot():
                 
                 # Odrzucamy wszystkie przypadkowe wiadomości od obcych ludzi bez linku
                 if not (text.startswith("/start") and len(parts) >= 2):
-                    send_reply(chat_id, "⛔ *Brak dostępu*\nPrzepraszamy, ten bot jest prywatny i działa wyłącznie na zaproszenia od obecnych użytkowników.")
+                    send_reply(chat_id, t_ui("pl", "no_access"))
                     continue 
                     
                 # ROZSZYFROWANIE TOKENA
@@ -207,7 +207,7 @@ def main_bot():
 
                 # 1. Weryfikacja limitu miejsc (50 osób) - Dev może wejść nawet gdy brakuje miejsc
                 if len(clean_users) >= 50 and not is_dev_mode:
-                    send_reply(chat_id, "⛔ Niestety, globalny limit miejsc w aplikacji (50) został wyczerpany.")
+                    send_reply(chat_id, t_ui("pl", "limit_reached"))
                     continue
                     
                 # 2. Weryfikacja zaproszenia
@@ -217,7 +217,7 @@ def main_bot():
                     referrer_exists = any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
                     
                 if not referrer_exists:
-                    send_reply(chat_id, "⛔ Ten link zaproszeniowy jest nieprawidłowy lub pochodzi od niezarejestrowanej osoby.")
+                    send_reply(chat_id, t_ui("pl", "invalid_link"))
                     continue
                     
                 # 3. Mamy autoryzację! Przystępujemy do rejestracji:
@@ -255,16 +255,8 @@ def main_bot():
                     }
                     clean_users.append(user_data)
                     
-                    success_msg = (
-                        "✅ *Rejestracja pomyślna!*\n"
-                        "Witamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n"
-                        "⚠️ *Ostatni krok, ale konieczny:*\n"
-                        "Aby raporty mogły działać i przychodzić do Ciebie o godz. 8:00 i 14:00, musisz ustawić swoją lokalizację:\n"
-                        "1️⃣ Naciśnij tę wiadomość i wybierz *Odpowiedz* (Reply).\n"
-                        "2️⃣ Wybierz 📎 (spinacz), a następnie 📍 *Lokalizacja*.\n"
-                        "3️⃣ Wyślij 📎 *Pinezkę z mapy*."
-                    )
-                    send_reply(chat_id, success_msg)
+                        
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "welcome_new"))
                     continue # Rejestracja zrobiona, pomijamy resztę pętli dla tej wiadomości
                     
                 except Exception as e:
@@ -335,23 +327,19 @@ def main_bot():
                 safe_link_priv = invite_link_priv.replace("_", "\\_")
                 
                 # Wiadomość 1 (Wstęp dla użytkownika)
-                send_reply(chat_id, "💌 *Twoje zaproszenie jest gotowe!*\n\nSkopiuj poniższą wiadomość i wyślij ją znajomemu (np. przez SMS lub WhatsApp), albo bezpośrednio przez Telegram.")
+                send_reply(chat_id, t_ui(user_lang, "invite_intro"))
                 
                 # Wiadomość 2 (Gotowa, czysta paczka do skopiowania - JEDEN LINK)
-                msg_sms = (
-                    "Cześć! 🌤 Używam świetnego, prywatnego bota pogodowego na Telegramie.\n\n"
-                    "Zostawiam Ci moje zaproszenie. Kliknij w link poniżej, aby z niego skorzystać:\n"
-                    f"{safe_link_priv}"
-                )
+                msg_sms = t_ui(user_lang, "invite_sms", link=safe_link_priv)
                 send_reply(chat_id, msg_sms)
 
                 # Wiadomość 3 (Opcja dodania do własnej grupy ukryta pod przyciskiem z czystym linkiem)
                 klawiatura = {
                     "inline_keyboard": [
-                        [{"text": "➕ Dodaj bota do Twojej grupy", "url": invite_link_group}]
+                        [{"text": t_ui(user_lang, "invite_group_btn"), "url": invite_link_group}]
                     ]
                 }
-                send_reply(chat_id, "💡 *A może chcesz dodać bota do swojej grupy?*\nUżyj przycisku poniżej. Telegram automatycznie otworzy listę Twoich grup.", reply_markup=klawiatura)
+                send_reply(chat_id, t_ui(user_lang, "invite_group_desc"), reply_markup=klawiatura)
 
 # 3. /menu
             elif message.get("text", "").startswith("/menu"):
@@ -489,56 +477,18 @@ def main_bot():
             # 6. /info
             elif message.get("text", "").startswith("/info"):
                 print(f"  ℹ️ Wysłano instrukcję obsługi do {chat_id}")
-                info_msg = (
-                    f"ℹ️ *JAK DZIAŁA POGODA DLA CIEBIE?*\n"
-                    f"Jestem Twoim asystentem pogodowym. Oto krótka ściąga:\n\n"
-                    f"📍 *1. Dokładna Lokalizacja*\n"
-                    f"Aby zmienić miejsce, kliknij na dowolną z moich wiadomości, wybierz *Odpowiedz*, potem 📎, *lokalizację* 📍 i wyślij *Pinezkę z lokalizacją*.\n\n"
-                    f"⏰ *2. Codzienne Raporty (/menu)*\n"
-                    f"Ustawisz własne godziny, o których mam wysyłać Ci poranne podsumowanie dnia i popołudniową prognozę.\n\n"
-                    f"⏰ *3. Dzienny raport na żądanie (/day)*\n"
-                    f"Odświeżysz dzienny raport wzbogacony o najnowsze dane pogodowe.\n\n"
-                    f"📡 *4. Radar Taktyczny (/now)*\n"
-                    f"Wygeneruję natychmiast szczegółową, godzinową kartę na najbliższe 12 godzin.\n\n"
-                    f"🔮 *5. Trend długoterminowy (/trend)*\n"
-                    f"Wygeneruję wykres prognozy na 14 dni.\n\n"
-                    f"💌 *6. Zaproszenie (/zapros)*\n"
-                    f"Jeśli ci się podoba, przekaż link do aplikacji twoim znajomym."
-                )
-                send_reply(chat_id, info_msg)
+                send_reply(chat_id, t_ui(user_lang, "info_msg"))
             
             # 7. /start (Ktoś klika to po raz kolejny)
             elif message.get("text", "").startswith("/start"):
                 print(f"  👋 Wysłano powitanie powrotne do {chat_id}")
-                welcome_msg = (
-                    f"👋 Witaj ponownie w Pogoda dla Ciebie! Twój profil jest już autoryzowany.\n\n"
-                    f"Zawsze możesz wpisać *`/menu`*, aby sprawdzić ustawienia, lub użyć komendy *`/zapros`*, by udostępnić aplikację znajomemu!"
-                )
-                send_reply(chat_id, welcome_msg)
+                
+                send_reply(chat_id, t_ui(user_lang, "welcome_back"))
                 
             elif message.get("text", "").startswith("/porady"):
                 print(f"  💡 Wysłano porady do {chat_id}")
-                porady_msg = (
-                    "💡 *PORADY I TRIKI – POGODA WORLD*\n"
-                    "Wykorzystaj pełen potencjał swojego asystenta:\n\n"
-                    "🔕 *1. Ciche poranki*\n"
-                    "Głośne powiadomienia są automatycznie wyłączone wcześnie rano (przed 7:00), aby Cię nie budzić. Możesz też ręcznie wyciszyć czat w opcjach Telegrama.\n\n"
-                    "⏰ *2. Dodatkowy raport*\n"
-                    "Dostałeś już rano raport, ale pogoda jest dynamiczna i chcesz otrzymać ponownie raport z najnowższymi danymi. Po prostu z menu wybierz */day* i od razu dostaniesz zaktualizowaną, pełną prognozę! Z kolei do szybkiego podglądu bez zmieniania ustawień użyj komendy */now*.\n\n"
-                    "🌍 *3. Pogoda na drugim końcu świata*\n"
-                    "Chcesz śledzić pogodę w Amazonii? Utwórz pustą grupę w Telegramie, dodaj tam bota przez */zapros* i wyślij tam pinezkę z mapy świata! *Uwaga:* Raporty przyjdą według czasu lokalnego dla tamtego miejsca.\n\n"
-                    "🛑 *4. Urlop od powiadomień*\n"
-                    "Nie chcesz raportów z automatu? W */menu* wybierz opcję *\"Nie chcę\"*. Nadal będziesz mógł ręcznie sprawdzać pogodę komendami.\n\n"
-                    "🎛 *5. Szybkie sterowanie*\n"
-                    "Na prywatnym czacie używaj przycisku *Menu* po lewej stronie. W grupie wystarczy nacisnąć znak ukośnika * / *, by rozwinąć listę komend.\n\n"
-                    "📍 *6. Prywatność i bezpieczeństwo*\n"
-                    "Nie musisz podawać adresu co do metra – rozbieżność 3 km nie zmienia prognozy. Ponadto, wszystkie linki z bota są w pełni bezpieczne.\n\n"
-                    "⚙️ *7. Domyślne ustawienia*\n"
-                    f"Jeśli nic nie zrobisz i nie ustawisz swoich godzin w menu, nic nie stracisz! Twoje raporty pogodowe będą domyślnie wysyłane o godz. *{DEFAULT_RANO}* i *{DEFAULT_WIECZOR}*.\n\n"
-                    "🌴 *8. Pogoda na wakacjach*\n"
-                    "Wyjeżdżasz na urlop? Po prostu wejdź w czat z botem i wyślij nową 📎 Pinezkę z miejsca, w którym jesteś. Bot natychmiast przestawi się na nową lokalizację i wyśle Ci raporty zgodnie z tamtejszą strefą czasową!"
-                )
-                send_reply(chat_id, porady_msg)
+                
+                send_reply(chat_id, t_ui(user_lang, "porady_msg", default_rano=DEFAULT_RANO, default_wieczor=DEFAULT_WIECZOR))
                 
             else:
                 print(f"  [DEBUG] Wiadomość od {user_data.get('Imię')} ignorowana.")
