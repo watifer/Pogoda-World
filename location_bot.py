@@ -181,17 +181,24 @@ def main_bot():
                 if raw_l in ("pl", "en"):
                     user_lang = raw_l
                     
+            
             # ==============================================================
             # BRAMKA WEJŚCIOWA (Tylko Zaproszenia)
             # ==============================================================
             if not user_row_index:
                 text = message.get("text", "").strip()
+                
+                # --- NOWE: Ciche ignorowanie zdarzeń bez tekstu ---
+                # Jeśli to powiadomienie o dodaniu do grupy, zdjęcie lub naklejka - ignoruj.
+                if not text:
+                    continue
+                
                 parts = text.split()
                 
                 # Odrzucamy wszystkie przypadkowe wiadomości od obcych ludzi bez linku
                 if not (text.startswith("/start") and len(parts) >= 2):
                     send_reply(chat_id, t_ui("pl", "no_access"))
-                    continue 
+                    continue
                     
                 # ROZSZYFROWANIE TOKENA
                 token = parts[1]
