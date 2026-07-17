@@ -397,6 +397,7 @@ def build_payload_for_location(
     tz_name: str,
     location_name: str = None,
     days_ahead: int = 14,
+    lang: str = "pl",
 ) -> dict:
     tz = ZoneInfo(tz_name)
     name = location_name or "Twoja okolica"
@@ -508,4 +509,5 @@ def build_payload_for_location(
         "bias_temp_c":        bias_temp,
         "hours":              forecast_hours,
         "alerts":             active_alerts,
+        "lang":               lang,  # <--- DODANA LINIJKA (Nasz kurier z językiem!)
     }

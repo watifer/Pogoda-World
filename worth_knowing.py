@@ -1244,6 +1244,7 @@ def build_worth_knowing(
         BORING_CATEGORIES = {"sun", "temperature", "generic"}
 
         if (winner.get("priority", 999) >= BORING_PRIORITY_THRESHOLD) or (winner.get("category") in BORING_CATEGORIES):
+        #if True:
             try:
                 from ai_client import wk_candidate_from_facts
                 
@@ -1293,7 +1294,11 @@ def build_worth_knowing(
                 if os.environ.get("AI_DEBUG") == "1":
                     print(f"[AI] Dzień spokojny. Znalazłem kotwicę '{mode}'. Wołam LLM...")
                     
-                ai_obj = wk_candidate_from_facts(facts, MAX_WK_LEN, mode=mode)
+                # 1. Wyciągamy język bezpośrednio z payloadu (domyślnie "pl")
+                lang = payload.get("lang", "pl")
+                
+                # 2. Przekazujemy zmienną 'lang' do klienta AI!
+                ai_obj = wk_candidate_from_facts(facts, MAX_WK_LEN, mode=mode, lang=lang)
 
                 if ai_obj:
                     ai_text = (ai_obj.get("text") or "").strip()

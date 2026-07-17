@@ -75,7 +75,8 @@ def wirtualne_scalanie(raw_records: list) -> list:
         if cid not in merged:
             merged[cid] = {
                 "Chat ID": cid, "Imię": "", "Lat": "", "Lon": "", 
-                "Raport poranny": "", "Aktualizacja": "", "Sygnatura czasowa": ""
+                "Raport poranny": "", "Aktualizacja": "", "Sygnatura czasowa": "",
+                "Lang": ""  # <--- NOWE
             }
         
         # 3. Nadpisywanie (teraz klucze zawsze będą idealnie pasować do nagłówków)
@@ -86,6 +87,10 @@ def wirtualne_scalanie(raw_records: list) -> list:
         if str(row.get("Raport poranny", "")).strip(): merged[cid]["Raport poranny"] = str(row.get("Raport poranny")).strip()
         if str(row.get("Aktualizacja", "")).strip(): merged[cid]["Aktualizacja"] = str(row.get("Aktualizacja")).strip()
         if str(row.get("Sygnatura czasowa", "")).strip(): merged[cid]["Sygnatura czasowa"] = str(row.get("Sygnatura czasowa")).strip()
+        
+        # --- NOWE: Pobieranie języka (akceptuje kolumnę "Lang" lub "Język") ---
+        lang_val = str(row.get("Lang", row.get("Język", ""))).strip()
+        if lang_val: merged[cid]["Lang"] = lang_val
         
     return list(merged.values())
 
@@ -220,7 +225,7 @@ def _load_users_from_sheet() -> list[dict]:
         raise RuntimeError(f"Krytyczny błąd: Brak zakładek. Odrzucone: {', '.join(errors)}")
         
     # --- P0: Odporne ładowanie Sheets na stałym zakresie (Eliminacja błędu duplicate headers) ---
-    values = worksheet.get_values("A1:H")
+    values = worksheet.get_values("A1:Z")
     if not values:
         return []
         
@@ -313,6 +318,9 @@ def _parse_users(raw_rows: list[dict]) -> list[dict]:
         current_wieczor = str(row.get("Aktualizacja", "")).strip()
         current_imie = str(row.get("Imię", "")).strip()
         current_miasto = str(row.get("Miasto", "")).strip()  
+        
+        # --- BEZPIECZNE POBIERANIE JĘZYKA Z FALLBACKAMI ---
+        current_lang = str(row.get("Lang", row.get("Język", row.get("Language", "")))).strip().lower()
 
         if chat_id not in users_dict:
             users_dict[chat_id] = {
@@ -321,8 +329,9 @@ def _parse_users(raw_rows: list[dict]) -> list[dict]:
                 "lon": None,
                 "imie": "",
                 "miasto": "",  
-                "godzina_rano": DEFAULT_RANO,      # <--- ZMIANA
-                "godzina_wieczor": DEFAULT_WIECZOR, # <--- ZMIANA
+                "godzina_rano": DEFAULT_RANO,      
+                "godzina_wieczor": DEFAULT_WIECZOR, 
+                "lang": "pl",  # <--- Twardy fallback na start
             }
 
         if current_lat is not None: users_dict[chat_id]["lat"] = current_lat
@@ -331,6 +340,10 @@ def _parse_users(raw_rows: list[dict]) -> list[dict]:
         if current_miasto: users_dict[chat_id]["miasto"] = current_miasto  
         if current_rano: users_dict[chat_id]["godzina_rano"] = current_rano
         if current_wieczor: users_dict[chat_id]["godzina_wieczor"] = current_wieczor
+        
+        # --- WHITELISTA (Ochrona przed błędnymi wpisami) ---
+        if current_lang in ("pl", "en"): 
+            users_dict[chat_id]["lang"] = current_lang
 
     final_users = []
     for u in users_dict.values():
@@ -555,6 +568,7 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         lon=user["lon"],
         tz_name=user["tz"],
         location_name=user["name"],
+        lang=user.get("lang", "pl"),  # <--- NOWE: Wysyłamy język w podróż!
     )
 
     # ══════════════════════════════════════════════════════════

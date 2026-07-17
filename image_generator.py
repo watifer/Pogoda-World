@@ -143,6 +143,8 @@ def draw_spans(draw, x, y, spans, font, fallback_color=(230, 235, 245)):
     cx = x
     for span in spans:
         color = STYLE_COLORS.get(span.get("style"), fallback_color)
+        # TARCZA NA NONE:
+        text_val = span.get("text") or ""
         draw.text((cx, y), span["text"], font=font, fill=color)
         cx += draw.textlength(span["text"], font=font)
     return cx
@@ -165,7 +167,8 @@ def wrap_text(draw, text, font, max_width):
 
 def measure_spans(draw, spans, font):
     """Mierzy łączną szerokość listy spanów w pikselach."""
-    return sum(draw.textlength(s["text"], font=font) for s in spans)
+    # Zmieniamy z s["text"] na s.get("text") or ""
+    return sum(draw.textlength(s.get("text") or "", font=font) for s in spans)
 
 def ellipsize(draw, text, font, max_px):
     """Przycina tekst i dodaje '...', jeśli przekracza dozwoloną szerokość."""
@@ -252,7 +255,10 @@ def pack_all_inline(draw, primary, primary_style, extra_lines, font, avail_px):
         if "spans" in el:
             el_spans = el["spans"]
         else:
-            el_spans = [{"text": el.get("text", ""), "style": "meta"}]
+            # TARCZA NA NONE: Jeśli el.get("text") to None, operator 'or' zamieni to na ""
+            text_val = el.get("text") or ""
+            el_spans = [{"text": text_val, "style": "meta"}]
+            #el_spans = [{"text": el.get("text", ""), "style": "meta"}]
 
         if not el_spans:
             packed_rest.append(el)
@@ -665,7 +671,8 @@ def generate_weather_card(data, palette_override=None):
 
     # Rysowanie górnego paska (kopia stopki)
     forecast_source = data.get("forecast_source", "OpenMeteo + Yr.no")
-    draw.text((MARGIN, TOP_FOOTER_Y), f"Źródło: {forecast_source}", font=f_foot, fill=(255, 255, 255, 130))
+    source_label = data.get("source_label", "Źródło:") # Pobieramy z tłumacza
+    draw.text((MARGIN, TOP_FOOTER_Y), f"{source_label} {forecast_source}", font=f_foot, fill=(255, 255, 255, 130))
     app_name = "Pogoda World"
     app_bbox = draw.textbbox((0, 0), app_name, font=f_foot)
     draw.text((WIDTH - MARGIN - (app_bbox[2] - app_bbox[0]), TOP_FOOTER_Y), app_name, font=f_foot, fill=(255, 255, 255, 130))
@@ -690,21 +697,31 @@ def generate_weather_card(data, palette_override=None):
     #    draw.text((MARGIN + date_w + 14, y + 5), f"· {rt}", font=f_report,
     #             fill=(170, 180, 200))
     if rt:
-        if "(dane z" in rt:
-            # Rozdzielamy tekst dokładnie w miejscu nawiasu
-            parts = rt.split("(dane z")
-            rt_main = parts[0]               # np. "raport poranny "
-            rt_yellow = "(dane z" + parts[1] # np. "(dane z 11:19)"
-            
-            # 1. Szary tekst główny
+        rt_main = None
+        rt_yellow = None
+        
+        # Szukamy słów-kluczy dla obu języków (najpierw wersje z nawiasem)
+        trigger = None
+        for t in ["(dane z", "(data from", "dane z", "data from"]:
+            if t in rt:
+                trigger = t
+                break
+                
+        if trigger:
+            parts = rt.split(trigger)
+            rt_main = parts[0]               
+            rt_yellow = trigger + parts[1]  
+
+        # --- Rysowanie ---
+        if rt_yellow is not None:
+            # Szara część
             main_text = f"· {rt_main}"
             draw.text((MARGIN + date_w + 14, y + 5), main_text, font=f_report, fill=(170, 180, 200))
-            
-            # 2. Żółty dopisek
+            # Żółta część
             main_w = draw.textlength(main_text, font=f_report)
             draw.text((MARGIN + date_w + 14 + main_w, y + 5), rt_yellow, font=f_report, fill=TITLE_TODAY)
         else:
-            # Zwykły raport bez daty
+            # Zwykły raport
             draw.text((MARGIN + date_w + 14, y + 5), f"· {rt}", font=f_report, fill=(170, 180, 200))
     
     y += 48 + 8
@@ -724,7 +741,7 @@ def generate_weather_card(data, palette_override=None):
         summary_line = sm
 
     # 1. Rysujemy Summary (Zawsze na ZŁOTO)
-    for line in summary_line.split("\n"):
+    for line in (summary_line or "").split("\n"):
         draw.text((MARGIN, y), line, font=f_summ, fill=(254, 240, 138)) # <- Zmieniono na żółty
         y += 46  
         
@@ -757,7 +774,8 @@ def generate_weather_card(data, palette_override=None):
         desc_avail = cx2 - DESC_X - 10
         
         draw_rounded_rect(ov, (cx1, y, cx2, y + ha), CR, pal["card"])
-        draw.text((cx1 + ALERT_CP, y + ALERT_CP), "Uważaj", font=f_atit, fill=(254, 240, 138))
+        #draw.text((cx1 + ALERT_CP, y + ALERT_CP), data.get("alert_title", "Uważaj"), font=f_atit, fill=(254, 240, 138))
+        draw.text((cx1 + ALERT_CP, y + ALERT_CP), data.get("alert_title", "Uważaj"), font=f_atit, fill=(254, 240, 138))
         ay = y + ALERT_CP + 58
         
         for a in alerts:
@@ -828,7 +846,7 @@ def generate_weather_card(data, palette_override=None):
         desc_avail = cx2 - DESC_X - 10
 
         # Inteligentne łamanie tekstu dla białego opisu
-        words = wk_text.split()
+        words = (wk_text or "").split()
         wk_lines = []
         current_line = ""
         for w in words:
@@ -854,7 +872,7 @@ def generate_weather_card(data, palette_override=None):
         # Rysowanie białego opisu: W NOWEJ LINII (+62) i w ZŁOTEJ KOLUMNIE (DESC_X)
         wk_dy = y + WK_CP + 62 
         for w_line in wk_lines:
-            draw.text((DESC_X, wk_dy), w_line, font=f_wk_text, fill=(230, 235, 245))
+            draw.text((DESC_X, wk_dy), w_line or "", font=f_wk_text, fill=(230, 235, 245))
             wk_dy += 38
             
         y += wk_h + gap
@@ -923,7 +941,8 @@ def generate_weather_card(data, palette_override=None):
     fy = y
     
     forecast_source = data.get("forecast_source", "OpenMeteo + Yr.no")
-    draw.text((MARGIN, fy), f"Źródło: {forecast_source}", font=f_foot, fill=(140, 150, 170))
+    source_label = data.get("source_label", "Źródło:") # Pobieramy z tłumacza
+    draw.text((MARGIN, fy), f"{source_label} {forecast_source}", font=f_foot, fill=(140, 150, 170))
     draw.text((WIDTH - MARGIN - 230, fy), "Pogoda World", font=f_foot, fill=(140, 150, 170))
 
     # ═══ ZAPIS I GILOTYNA ═══

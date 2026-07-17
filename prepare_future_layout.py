@@ -9,12 +9,17 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo
 
-from prepare_layout import _build_day_summary, DNI_PL, DNI_SHORT, _fmt_temp
+from prepare_layout import _build_day_summary, _fmt_temp
 from ui_softening import strip_mm_pct_parens
+from i18n import t, DAYS_SHORT, DAYS_FULL
+from i18n import translate_weather_text
 
 def prepare_future_layout_data(payload, now=None):
     tz = ZoneInfo(payload["location"]["tz"])
     now = now or datetime.now(tz)
+
+    # Wyciągamy język (z twardym fallbackiem na polski)
+    lang = payload.get("lang", "pl")
 
     # 1. NAJPIERW definiujemy listy (skąd bierzemy dane)
     hours = payload.get("hours", [])
@@ -22,7 +27,6 @@ def prepare_future_layout_data(payload, now=None):
     ho = [h for h in hours if h.get("source") == "openmeteo"]
 
     # 2. DOPIERO TERAZ nasza Magia (Przeszczep procentów z OM do Yr.no)
-    # OPTYMALIZACJA O(1): Tworzymy słownik godzin z Open-Meteo dla natychmiastowego dostępu
     om_dict = {h.get("time_local"): h for h in ho if "time_local" in h}
     
     for y_hour in hy:
@@ -33,7 +37,6 @@ def prepare_future_layout_data(payload, now=None):
             if pop is not None:
                 y_hour["precip_prob_pct"] = pop
 
-    
     future_days = []
     all_temps = []
 
@@ -49,9 +52,10 @@ def prepare_future_layout_data(payload, now=None):
             source_marker = " *"
 
         if summary:
+            short_day_name = DAYS_SHORT.get(lang, DAYS_SHORT["pl"])[tgt.weekday()]
             future_days.append({
-                "name": DNI_SHORT[tgt.weekday()] + source_marker,
-                "label": f"{DNI_SHORT[tgt.weekday()]} {tgt.strftime('%d.%m')}",
+                "name": short_day_name + source_marker,
+                "label": f"{short_day_name} {tgt.strftime('%d.%m')}",
                 "icon": summary["icon"],
                 "temp_min": summary["temp_min"],
                 "temp_max": summary["temp_max"],
@@ -76,67 +80,82 @@ def prepare_future_layout_data(payload, now=None):
     storm_count = sum(1 for i in icons_used if i and "storm" in i)
     snow_count = sum(1 for i in icons_used if i and ("snow" in i or "sleet" in i))
     rain_count = sum(1 for i in icons_used if i and ("rain" in i or "showers" in i or "drizzle" in i))
-    
-    # DODANE: Licznik porywistego wiatru!
     wind_count = sum(1 for i in icons_used if i and "wind" in i)
-    
-    # AKTUALIZACJA: Zliczanie nowych ikon słonecznych!
     sun_count = sum(1 for i in icons_used if i and ("clear" in i or "sun_one_cloud" in i))
-    
-    # AKTUALIZACJA: Dodajemy "mostly_cloudy" do dni z chmurami
     partly_count = sum(1 for i in icons_used if i and ("partlycloudy" in i or "mostly_cloudy" in i))
     
-    # Nowe, życiowe proporcje dla 14 dni z dodanym wiatrem!
-    if storm_count >= 2: # Burze są groźne, więc 2 dni wystarczą do ostrzeżenia
+    # Nowe, życiowe proporcje dla 14 dni z przetłumaczonym nagłówkiem Hero!
+    if storm_count >= 2:
         hero_icon = "wk_storm"
-        hero_summary = "Uwaga na burze w nadchodzących dniach"
-    elif wind_count >= 3: # DODANE: 3 dni wichury psują każdy tydzień
+        hero_summary = t(lang, "hero_storm_trend")
+    elif wind_count >= 3:
         hero_icon = "wk_wind"
-        hero_summary = "Uwaga: Niezwykle wietrzne i niebezpieczne dni"
+        hero_summary = t(lang, "hero_wind_trend")
     elif snow_count >= 4:
         hero_icon = "wk_snow"
-        hero_summary = "Kierunek na chłodne, śnieżne dni"
-    elif rain_count >= 7: # Musi padać przez POŁOWĘ dni, by nazwać trend deszczowym
+        hero_summary = t(lang, "hero_snow_trend")
+    elif rain_count >= 7:
         hero_icon = "wk_rain"
-        hero_summary = "Przewaga deszczowej, mokrej pogody"
+        hero_summary = t(lang, "hero_rain_trend")
     elif sun_count >= 7:
         hero_icon = "wk_clear"
-        hero_summary = "Przewaga słonecznej, wyżowej pogody"
+        hero_summary = t(lang, "hero_sun_trend")
     elif rain_count >= 4:
         hero_icon = "wk_showers"
-        hero_summary = "Zmienna pogoda z okresowymi opadami"
+        hero_summary = t(lang, "hero_showers_trend")
     elif (sun_count + partly_count) >= 8:
         hero_icon = "wk_partlycloudy"
-        hero_summary = "Większość dni pogodnych i przejściowych"
+        hero_summary = t(lang, "hero_partly_trend")
     else:
         hero_icon = "wk_overcast"
-        hero_summary = "Przewaga pochmurnej aury"
+        hero_summary = t(lang, "hero_overcast_trend")
 
     # === DATOWANIE ŹRÓDŁA DANYCH ===
     model_time_str = payload.get("model_updated_at_local")
     if model_time_str and len(model_time_str) >= 16:
         data_time = model_time_str[11:16]
-        time_suffix = f"dane z {data_time}"  # Bez nawiasu, dla lepszego wyglądu
+        time_suffix = f"{t(lang, 'data_from')} {data_time}"  # Wykorzystuje "data from" / "dane z"
     else:
         time_suffix = ""
     
     # === DYNAMICZNA LICZBA DNI ===
     actual_days = len(future_days)
     if actual_days == 0:
-        actual_days = 14 # Zabezpieczenie na wypadek całkowitego braku danych
+        actual_days = 14
         
-    dynamic_weekday = f"Prognoza {actual_days}-dniowa"
-    dynamic_title = f"Trend na kolejne {actual_days} dni"
+    # Bezpieczne sprawdzanie i tłumaczenie nagłówków
+    if actual_days == 14:
+        dynamic_weekday = t(lang, "outlook_14d")
+        dynamic_title = t(lang, "next_14d_trend")
+    else:
+        # Płaski fallback, jeśli liczba dni z API nagle się zmieni
+        if lang == "en":
+            dynamic_weekday = f"{actual_days}-day outlook"
+            dynamic_title = f"{actual_days}-day trend"
+        else:
+            dynamic_weekday = f"Prognoza {actual_days}-dniowa"
+            dynamic_title = f"Trend na kolejne {actual_days} dni"
+            
+    # ══════════════════════════════════════════════════════════
+    # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /future
+    # ══════════════════════════════════════════════════════════
+    if lang == "en":
+        hero_summary = translate_weather_text(hero_summary, lang)
+        
+        for d in future_days:
+            if d.get("precip_badge"): d["precip_badge"] = translate_weather_text(d["precip_badge"], lang)
+            if d.get("descriptor"): d["descriptor"] = translate_weather_text(d["descriptor"], lang)
+    # ══════════════════════════════════════════════════════════
         
     return {
         "city": payload["location"]["name"],
         "weekday": dynamic_weekday,  
         "date": "",                       
-        "report_type": time_suffix,  # Wstawi się jako np: Prognoza 14-dniowa · dane z 13:17             
+        "report_type": time_suffix,             
         "main_icon": hero_icon,           
         "temp_range": _fmt_temp(overall_min, overall_max),
         "summary": hero_summary,              
-        "context_line": "",               # <--- Brak technicznych tekstów
+        "context_line": "",               
         
         "today_blocks": [], 
         "alerts": [],
@@ -145,5 +164,6 @@ def prepare_future_layout_data(payload, now=None):
         
         "section_title": "",  
         "next_days_title": dynamic_title,
-        "next_days": future_days
+        "next_days": future_days,
+        "source_label": t(lang, "source_label")
     }

@@ -16,6 +16,7 @@ from forecast_text import WxEvent, BlockForecast, build_block_copy, classify_pre
 from worth_knowing import build_worth_knowing
 from confidence_gate import compute_trust_report
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
+from i18n import t, DAYS_FULL, DAYS_SHORT, translate_weather_text
 
 
 # ═══════════════════════════════════════
@@ -359,7 +360,7 @@ def _build_wx_events(block_hours: list, hp_all: list = None) -> list:
     return events
 
 
-def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: list, hp_all: list = None) -> list:
+def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: list, hp_all: list = None, lang: str = "pl") -> list:
     blocks = []
     for bd in block_defs:
         label = bd["label"]
@@ -405,7 +406,8 @@ def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: 
         f_min = round(min(fv)) if fv else None
         f_max = round(max(fv)) if fv else None
 
-        display_label = "Noc" if label == "Noc" else f"{s:02d}–{e:02d}"
+        # Wyświetla przetłumaczoną etykietę (Noc/Night) tylko dla bloku 22-06, reszta to godziny
+        display_label = label if (s == 22 and e == 6) else f"{s:02d}–{e:02d}"
         sky = _sky_human(avg_c, hour_hint=s) if max_p < 0.1 else None
 
         # --- 3. TWORZENIE BLOKU Z WIATREM ---
@@ -418,7 +420,7 @@ def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: 
             max_wind=max_w,  # <--- WSTRZYKUJEMY WIATR DO FORECAST_TEXT
             events=evs,
         )
-        copy = build_block_copy(bf, inline_max_chars=48, meta_max_chars=32)
+        copy = build_block_copy(bf, lang=lang, inline_max_chars=48, meta_max_chars=32)
 
         # NOWOŚĆ: Twarde wymuszenie wiatru w bloku (zgodność z /now)
         max_eff_w = max([max(float(h.get("wind_kmh") or 0), float(h.get("gust_kmh") or h.get("wind_gust_kmh") or 0)) for h in bh], default=0)
@@ -875,6 +877,8 @@ def prepare_layout_data(payload, now=None):
             
     tz  = ZoneInfo(payload["location"]["tz"])
     now = now or datetime.now(tz)
+    # Wyciągamy język (z twardym fallbackiem na polski)
+    lang = payload.get("lang", "pl")
 
     today_str    = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -898,7 +902,7 @@ def prepare_layout_data(payload, now=None):
     
     if model_time_str and len(model_time_str) >= 16:
         data_time = model_time_str[11:16]
-        time_suffix = f" (dane z {data_time})"
+        time_suffix = f" ({t(lang, 'data_from')} {data_time})"
         
         try:
             model_dt_loc = datetime.fromisoformat(model_time_str.replace("Z", "+00:00")).astimezone(tz)
@@ -910,15 +914,20 @@ def prepare_layout_data(payload, now=None):
 
     # === NAZWA RAPORTU ===
     if payload.get("is_now"):
-        base_title = "Radar taktyczny"
+        base_title = t(lang, "tactical_radar")
     elif payload.get("is_future"):
-        base_title = "Prognoza długoterminowa"
+        base_title = t(lang, "long_range")
     else:
-        base_title = _determine_report_type(now.hour)
+        rt_pl = _determine_report_type(now.hour)
+        base_title = t(lang, {
+            "raport poranny": "report_morning",
+            "raport popołudniowy": "report_afternoon",
+            "aktualizacja wieczorna": "report_evening"
+        }.get(rt_pl, rt_pl))
 
     report_type = f"{base_title}{time_suffix}"
     
-    weekday      = DNI_PL[now.weekday()]
+    weekday      = DAYS_FULL.get(lang, DAYS_FULL["pl"])[now.weekday()]
     date_display = now.strftime("%d.%m")
 
     ta = [h for h in hp if h.get("time_local", "").startswith(today_str)]
@@ -937,7 +946,29 @@ def prepare_layout_data(payload, now=None):
             alerts.append("Zła jakość powietrza — normy zanieczyszczeń są przekroczone")
 
     section_title, block_defs = _get_time_blocks(now.hour)
-    today_blocks = _build_time_blocks(hp, today_str, tomorrow_str, block_defs, hp_all=hours)
+    # ══════════════════════════════════════════════════════════
+    # TŁUMACZENIE W LOCIE (Bez dotykania logiki _get_time_blocks)
+    # ══════════════════════════════════════════════════════════
+    # 1. Tłumaczymy główny tytuł (podmieniamy polski string na klucz i tłumaczymy)
+    section_title = t(lang, {
+        "Prognoza na dziś": "section_today",
+        "Reszta dnia": "section_rest_day",
+        "Najbliższe godziny": "section_next_hours"
+    }.get(section_title, section_title))
+
+    # 2. Tłumaczymy etykiety bloków (Rano, Noc itp.)
+    for bd in block_defs:
+        lbl = bd.get("label", "")
+        bd["label"] = t(lang, {
+            "Rano": "blk_morning",
+            "Popołudnie": "blk_afternoon",
+            "Późne popoł.": "blk_afternoon",  # Upraszczamy na start w EN
+            "Wieczór": "blk_evening",
+            "Noc": "blk_night",
+            "Jutro rano": "blk_tomorrow_morning",
+        }.get(lbl, lbl))
+    # ══════════════════════════════════════════════════════════
+    today_blocks = _build_time_blocks(hp, today_str, tomorrow_str, block_defs, hp_all=hours, lang=lang)
     
     if trust_report.hide_block_details and today_blocks:
         for b in today_blocks:
@@ -1043,8 +1074,8 @@ def prepare_layout_data(payload, now=None):
 
             future_sections.append({
                 "type": "summary", "date": tgt,
-                "name":      DNI_SHORT[tgt.weekday()],
-                "name_full": f"{DNI_PL[tgt.weekday()]}, {tgt.strftime('%d.%m')}",
+                "name":      DAYS_SHORT.get(lang, DAYS_SHORT["pl"])[tgt.weekday()],
+                "name_full": f"{DAYS_FULL.get(lang, DAYS_FULL['pl'])[tgt.weekday()]}, {tgt.strftime('%d.%m')}",
                 **base,
             })
             
@@ -1057,10 +1088,10 @@ def prepare_layout_data(payload, now=None):
 
     # 2. Pełne bloki weekendowe (wdd)
     FULL_DAY_BLOCKS = [
-        {"label": "Rano",       "start": 6,  "end": 10},
-        {"label": "Popołudnie", "start": 11, "end": 16},
-        {"label": "Wieczór",    "start": 17, "end": 22},
-        {"label": "Noc",        "start": 22, "end": 6}
+        {"label": t(lang, "blk_morning"),   "start": 6,  "end": 10},
+        {"label": t(lang, "blk_afternoon"), "start": 11, "end": 16},
+        {"label": t(lang, "blk_evening"),   "start": 17, "end": 22},
+        {"label": t(lang, "blk_night"),     "start": 22, "end": 6}
     ]
     wdd = []
     for off in wdd_offsets:
@@ -1070,7 +1101,7 @@ def prepare_layout_data(payload, now=None):
         blocks = _build_time_blocks(hp, ts, ts_next, FULL_DAY_BLOCKS, hp_all=hours)
         if blocks:
             wdd.append({
-                "name": f"{DNI_PL[tgt.weekday()]}, {tgt.strftime('%d.%m')}",
+                "name": f"{DAYS_FULL.get(lang, DAYS_FULL['pl'])[tgt.weekday()]}, {tgt.strftime('%d.%m')}",
                 "blocks": blocks
             })
 
@@ -1080,13 +1111,13 @@ def prepare_layout_data(payload, now=None):
         the_date = nd[0]["_date"]
         the_date = the_date.date() if hasattr(the_date, "date") else the_date
         if the_date == tomorrow_date:
-            next_days_title = "Jutro"
+            next_days_title = t(lang, "tomorrow")
         else:
             next_days_title = nd[0].get("name_full", nd[0].get("name", ""))
         nd[0]["label"] = "00–24"
         nd[0]["name"]  = ""
     else:
-        next_days_title = "Najbliższe dni"
+        next_days_title = t(lang, "next_days")
 
     for d in nd:
         d.pop("_date", None); d.pop("name_full", None)
@@ -1252,7 +1283,9 @@ def prepare_layout_data(payload, now=None):
         context_line_text=final_context_line or "",
         built_blocks=today_blocks, ta=ta, current_hour=now.hour 
     )
-
+    # --- NOWE: Tłumaczenie tytułu "Dziś warto wiedzieć" ---
+    if isinstance(wk, dict) and "title" in wk:
+        wk["title"] = t(lang, "good_to_know")
     hero_text = hero_summary_line.replace("\n", " ").lower()
     wk_text = wk.get("text", "").lower() if isinstance(wk, dict) else (str(wk).lower() if wk else "")
 
@@ -1275,7 +1308,7 @@ def prepare_layout_data(payload, now=None):
         sat_t   = _build_weekend_day_teaser(sat_h, "Sob")
         sun_t   = _build_weekend_day_teaser(sun_h, "Ndz")
         if sat_t and sun_t:
-            weekend_teaser = {"sat": sat_t, "sun": sun_t, "title": "Przyszły weekend"}
+            weekend_teaser = {"sat": sat_t, "sun": sun_t, "title": t(lang, "next_weekend")}
     hint = _drizzle_hint(ta=ta, hp_all=hours, start_hour=hero_start_hour)
 
     if hint:
@@ -1348,6 +1381,56 @@ def prepare_layout_data(payload, now=None):
         if hint:
             final_context_line = hint
             
+    # ------------------------------------------------------------------
+    # KOREKTA PL/EN: Wymuszamy małą literę dla płaskich dni (Jutro / Przyszłe dni)
+    # Robimy to przed tłumaczem, więc zadziała dla polskiej karty, 
+    # a angielska naturalnie skopiuje tę wielkość!
+    # ------------------------------------------------------------------
+    for d in nd:
+        if d.get("precip_badge") and len(d["precip_badge"]) > 0:
+            d["precip_badge"] = d["precip_badge"][0].lower() + d["precip_badge"][1:]
+        if d.get("descriptor") and len(d["descriptor"]) > 0:
+            d["descriptor"] = d["descriptor"][0].lower() + d["descriptor"][1:]
+            
+    # ══════════════════════════════════════════════════════════
+    # OSTATNIA MILA: TŁUMACZENIE CAŁEGO LAYOUTU NA EN
+    # ══════════════════════════════════════════════════════════
+    if lang == "en":
+        hero_summary_line = translate_weather_text(hero_summary_line, lang)
+        final_context_line = translate_weather_text(final_context_line, lang)
+        
+        # Alerty i ostrzeżenia
+        alerts = [translate_weather_text(a, lang) for a in alerts if a]
+        
+        # Sekcja Warto Wiedzieć (WK)
+        if wk and isinstance(wk, dict) and wk.get("text"):
+            wk["text"] = translate_weather_text(wk["text"], lang)
+            
+        # Płaskie dni na dole (future outlook)
+        for d in nd:
+            if d.get("precip_badge"): d["precip_badge"] = translate_weather_text(d["precip_badge"], lang)
+            if d.get("descriptor"): d["descriptor"] = translate_weather_text(d["descriptor"], lang)
+            
+        # Szczegółowe bloki weekendowe
+        for day in wdd:
+            for block in day.get("blocks", []):
+                if block.get("primary_desc"): block["primary_desc"] = translate_weather_text(block["primary_desc"], lang)
+                for el in block.get("extra_lines", []):
+                    if isinstance(el, dict) and el.get("text"):
+                        el["text"] = translate_weather_text(el["text"], lang)
+                        for sp in el.get("spans", []):
+                            if sp.get("text"): sp["text"] = translate_weather_text(sp["text"], lang)
+
+        # Dzisiejsze 3 główne bloki godzinowe
+        for block in today_blocks:
+            if block.get("primary_desc"): block["primary_desc"] = translate_weather_text(block["primary_desc"], lang)
+            for el in block.get("extra_lines", []):
+                if isinstance(el, dict) and el.get("text"):
+                    el["text"] = translate_weather_text(el["text"], lang)
+                    for sp in el.get("spans", []):
+                        if sp.get("text"): sp["text"] = translate_weather_text(sp["text"], lang)
+    # ══════════════════════════════════════════════════════════
+
     return {
         "city":                payload["location"]["name"],
         "weekday":             weekday,
@@ -1367,7 +1450,9 @@ def prepare_layout_data(payload, now=None):
         "future_order":        future_order,
         "next_days":           nd,
         "next_days_title":     next_days_title,
-        "alerts":              alerts,
+        "alerts":              [a for a in alerts if a],  # <--- ŻELAZNY FILTR PUSTYCH ALERTÓW
+        "alert_title":         t(lang, "watch_out"),
         "weekend_teaser":      weekend_teaser, 
-        "forecast_source":     payload.get("forecast_source", "Yr.no")
+        "forecast_source":     payload.get("forecast_source", "Yr.no"),
+        "source_label":        t(lang, "source_label")
     }

@@ -208,6 +208,9 @@ def main_bot():
                 chat_title = message.get("chat", {}).get("title")
                 first_name = message.get("from", {}).get("first_name", "Nieznany")
                 nowa_nazwa = chat_title if chat_title else first_name
+                #   Wykrycie języka w Telegramie przy rejestracji
+                raw_lang = message.get("from", {}).get("language_code", "pl")[:2].lower()
+                wykryty_jezyk = "en" if raw_lang == "en" else "pl"
 
                 print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Dodaję [{nowa_nazwa}] (ID: {chat_id})")
                 
@@ -226,6 +229,7 @@ def main_bot():
                     put_val("Miasto", "")
                     put_val("Raport poranny", "")
                     put_val("Aktualizacja", "")
+                    put_val("Lang", wykryty_jezyk)
                     
                     main_sheet.insert_row(new_row, index=2, value_input_option='USER_ENTERED')
                     

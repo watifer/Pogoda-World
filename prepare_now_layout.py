@@ -10,7 +10,9 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 # Importujemy sprawdzoną logikę z głównego skryptu (w tym efektywne chmury)
-from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _precip_consensus
+from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _drizzle_hint, _precip_consensus
+from i18n import t, DAYS_FULL
+from i18n import translate_weather_text
 from forecast_text import classify_precip, KINDS
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
 from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _drizzle_hint
@@ -61,7 +63,12 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         now = now.astimezone(tz)
         
     now_floored = now.replace(minute=0, second=0, microsecond=0)
-    weekday = DNI_PL[now.weekday()]
+    
+    # Wyciągamy język (z fallbackiem na pl)
+    lang = payload.get("lang", "pl")
+    
+    # Przetłumaczony dzień tygodnia
+    weekday = DAYS_FULL.get(lang, DAYS_FULL["pl"])[now.weekday()]
     
     # 2. FILTROWANIE GODZIN (Odrzucamy przeszłość)
     hours = payload.get("hours", [])
@@ -267,7 +274,8 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             elif icon == "wk_sleet": base_desc = "Deszcz ze śniegiem"
             elif icon in ["wk_storm", "wk_sun_storm"]: base_desc = "Burza"
             else:
-                base_desc = KINDS[kind]["full"].capitalize() if kind and kind in KINDS else "Opad"
+                # Zabezpieczamy tłumaczenie - bierzemy polski string, żeby Ostatnia Mila mogła go przerobić
+                base_desc = t("pl", KINDS[kind]["full_key"]).capitalize() if kind and kind in KINDS else "Opad"
                 
             desc = f"{base_desc} ({prc} mm)"
         else:
@@ -283,7 +291,9 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
 
         extra_spans = []
         if abs(feels - temp) >= 2.0:
-            extra_spans.append({"text": f"odcz. {round(feels)}°", "style": "meta"})
+            # Pobieramy prefiks prosto ze słownika (odcz. dla PL, feels dla EN)
+            feels_prefix = t(lang, "feels_like_prefix")
+            extra_spans.append({"text": f"{feels_prefix}{round(feels)}°", "style": "meta"})
             
         if eff_wind >= 40:
             if eff_wind >= 100: wind_desc = "potężna wichura"
@@ -336,7 +346,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     
     if model_time_str and len(model_time_str) >= 16:
         data_time = model_time_str[11:16]
-        time_suffix = f" (dane z {data_time})"
+        time_suffix = f" ({t(lang, 'data_from')} {data_time})"
         try:
             model_dt_loc = datetime.fromisoformat(model_time_str.replace("Z", "+00:00")).astimezone(tz)
             is_night_run = (model_dt_loc.hour < 6)
@@ -392,11 +402,33 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # 3. Kaskada priorytetów pozostaje taka sama
     context_line = now_context_line or owm_note or hint
     
+    
+    # ══════════════════════════════════════════════════════════
+    # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /now
+    # ══════════════════════════════════════════════════════════
+    if lang == "en":
+        hero_summary = translate_weather_text(hero_summary, lang)
+        context_line = translate_weather_text(context_line, lang)
+        
+        for block in today_blocks:
+            if block.get("primary_desc"): 
+                block["primary_desc"] = translate_weather_text(block["primary_desc"], lang)
+            for el in block.get("extra_lines", []):
+                if isinstance(el, dict):
+                    # 1. Tłumaczymy główny tekst (jeśli istnieje)
+                    if el.get("text"):
+                        el["text"] = translate_weather_text(el["text"], lang)
+                    # 2. NIEZALEŻNIE tłumaczymy spany (nawet jak nie ma głównego tekstu!)
+                    for sp in el.get("spans", []):
+                        if sp.get("text"): 
+                            sp["text"] = translate_weather_text(sp["text"], lang)
+    # ══════════════════════════════════════════════════════════
+    
     return {
         "city":                payload["location"]["name"],
         "weekday":             weekday,
         "date":                now.strftime("%d.%m"),
-        "report_type":         f"Radar taktyczny{time_suffix}",
+        "report_type":         f"{t(lang, 'tactical_radar')}{time_suffix}",
         "main_icon":           hero_icon,
         "temp_range":          _fmt_temp(round(bmin), round(bmax)),
         "summary":             hero_summary,
@@ -404,9 +436,10 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         "pressure":            None,  
         "air_quality_text":    None,
         "air_quality_color":   None,
-        "section_title":       f"Prognoza godzinowa od {start_dt.hour:02d}:00",
+        "section_title":       t(lang, "section_hourly_from", h=start_dt.hour),
         "today_blocks":        today_blocks,
         "next_days":           [],
         "worth_knowing":       [],
-        "forecast_source":     forecast_source 
+        "forecast_source":     forecast_source,
+        "source_label":        t(lang, "source_label")
     }

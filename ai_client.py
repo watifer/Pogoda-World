@@ -60,8 +60,9 @@ def _parse_json_object(s: str) -> Optional[dict]:
 def paraphrase_short_pl(text: str, max_len: int) -> Optional[str]:
     return None
 
-# DODANY PARAMETR 'mode'
-def wk_candidate_from_facts(facts: dict, max_len: int, mode: str = "comfort") -> Optional[dict]:
+
+# DODANY PARAMETR 'lang' (Domyślnie "pl")
+def wk_candidate_from_facts(facts: dict, max_len: int, mode: str = "comfort", lang: str = "pl") -> Optional[dict]:
     if not facts or not isinstance(facts, dict):
         return None
 
@@ -69,6 +70,23 @@ def wk_candidate_from_facts(facts: dict, max_len: int, mode: str = "comfort") ->
     sun_h = facts.get("sunniest_hour")
     ws = facts.get("window_start")
     we = facts.get("window_end")
+
+    # Dynamiczne dopasowanie języka instrukcji (Możesz tu łatwo dodać "de", "es" itd.)
+    if lang.lower() == "en":
+        lang_instruction = (
+            "- Write the response in ENGLISH.\n"
+            "- Use natural English phrasing and a 24-hour time system (e.g., 14:00, 20:00).\n"
+            "- Avoid phrase 'tomorrow'."
+        )
+        lang_name = "angielsku"
+    else:
+        # Fallback na polski
+        lang_instruction = (
+            "- Napisz jedno krótkie, naturalne zdanie po polsku.\n"
+            "- Używaj naturalnego polskiego nazewnictwa i systemu 24-godzinnego.\n"
+            "- BEZWZGLĘDNY ZAKAZ używania słowa 'jutro' lub 'jutra'!"
+        )
+        lang_name = "polsku"
 
     # WYMUSZANIE KOTWICY W PROMPCIE
     if mode == "comfort" and isinstance(comfort_h, int):
@@ -81,7 +99,7 @@ def wk_candidate_from_facts(facts: dict, max_len: int, mode: str = "comfort") ->
         constraint = (
             f"- MUSISZ użyć w tekście dokładnie godziny {ws:02d}:00.\n"
             "- NIE podawaj godziny końca.\n"
-            "- Sens ma być taki: po tej godzinie wieczorem/w nocy warunki pogodowe będą stabilniejsze.\n"
+            f"- Sens ma być taki: po tej godzinie wieczorem/w nocy warunki pogodowe będą stabilniejsze.\n"
         )
     else:
         return None  # Brak kotwicy -> awaryjne przerwanie
@@ -93,16 +111,15 @@ def wk_candidate_from_facts(facts: dict, max_len: int, mode: str = "comfort") ->
     )
 
     user = (
-        "Na podstawie FAKTÓW napisz jedno krótkie, naturalne zdanie po polsku (max 65 znaków). "
+        f"Na podstawie FAKTÓW napisz jedno krótkie, naturalne zdanie po {lang_name} (max 65 znaków). "
         "Jesteśmy w trakcie spokojnego, stabilnego dnia.\n\n"
         "Reguły:\n"
         "- Dopasuj ton do 'current_hour' (jeśli jest po 18:00, pisz o spokojnym wieczorze; rano o dobrym dniu).\n"
-        "- CZAS: Pamiętaj, że 12:00 to południe (środek dnia). Unikaj absurdów typu '12:00 wieczorem' czy '15:00 w nocy'. Używaj naturalnego polskiego nazewnictwa i systemu 24-godzinnego.\n"
+        f"{lang_instruction}\n"
         "- Tekst MUSI być akcjonowalny (wskazywać konkretną godzinę lub zakres).\n"
         f"{constraint}"
-        "- Unikaj w kółko słowa 'spacer'. Używaj synonimów: relaks, wietrzenie, rower, czas na zewnątrz.\n"
+        "- Unikaj w kółko słowa 'spacer' / 'walk'. Używaj synonimów: relaks, wietrzenie, rower, czas na zewnątrz.\n"
         "- NIE zmyślaj opadów, wiatru, liczb ani godzin, których nie ma w faktach!\n"
-        "- BEZWZGLĘDNY ZAKAZ używania słowa 'jutro' lub 'jutra'!\n"
         "- WAŻNE: Poniższe zdania to TYLKO inspiracja stylu. NIE KOPIUJ ich słowo w słowo. Wymyśl zawsze swoje własne, unikalne zdanie!\n\n"
         "PRZYKŁADY STYLU (Nie kopiuj ich):\n"
         "1. \"Przyjemny i stabilny wieczór. Najlepsze warunki będą po 20:00.\"\n"
