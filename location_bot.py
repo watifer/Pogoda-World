@@ -3,6 +3,7 @@ import json
 import requests
 import gspread
 import main_card
+from i18n import t_ui
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR
@@ -173,6 +174,12 @@ def main_bot():
                     user_row_index = i + 2
                     user_data = u
                     break 
+                    # --- BEZPIECZNE POBIERANIE JĘZYKA Z BAZY ---
+                    user_lang = "pl" # Domyślnie polski
+                    if user_data:
+                        raw_l = str(user_data.get("Lang", user_data.get("Język", ""))).strip().lower()
+                        if raw_l in ("pl", "en"):
+                            user_lang = raw_l
                     
             # ==============================================================
             # BRAMKA WEJŚCIOWA (Tylko Zaproszenia)
@@ -306,7 +313,8 @@ def main_bot():
                         except Exception as e:
                             print(f"  [DEBUG] Nie udało się zapisać miasta do arkusza: {e}")
                             
-                    send_reply(chat_id, f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca. ")
+                    #send_reply(chat_id, f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca. ")
+                    send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city))
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
@@ -358,8 +366,12 @@ def main_bot():
                 if not godz_wieczor: godz_wieczor = DEFAULT_WIECZOR
                 
                 # Formatowanie widoku (wykrywanie opcji "Nie chcę")
-                disp_rano = "Wyłączony ❌" if "nie" in godz_rano.lower() else f"{godz_rano} ⏰"
-                disp_wieczor = "Wyłączony ❌" if "nie" in godz_wieczor.lower() else f"{godz_wieczor} ⏰"
+                #disp_rano = "Wyłączony ❌" if "nie" in godz_rano.lower() else f"{godz_rano} ⏰"
+                #disp_wieczor = "Wyłączony ❌" if "nie" in godz_wieczor.lower() else f"{godz_wieczor} ⏰"
+                disp_rano = t_ui(user_lang, "disp_off") if "nie" in godz_rano.lower() else f"{godz_rano} ⏰"
+                disp_wieczor = t_ui(user_lang, "disp_off") if "nie" in godz_wieczor.lower() else f"{godz_wieczor} ⏰"
+
+                msg = t_ui(user_lang, "menu_header", name=wyswietlana_nazwa, city=city, disp_rano=disp_rano, disp_wieczor=disp_wieczor)
                 # -----------------------------------
                 
                 # Zabezpieczamy współrzędne przed przecinkami z Google Sheets
@@ -383,7 +395,7 @@ def main_bot():
                     link = f"{FORM_BASE}?usp=pp_url&{ENTRY_ID}={chat_id}"
                     klawiatura = {
                         "inline_keyboard": [
-                            [{"text": "⏰ Zmień godziny raportów", "url": link}]
+                            [{"text": t_ui(user_lang, "btn_change_hours"), "url": link}]
                         ]
                     }
 
@@ -412,19 +424,19 @@ def main_bot():
                 try:
                     parsed_list = _parse_users([user_data])
                     if not parsed_list:
-                        send_reply(chat_id, "⚠️ Brakuje współrzędnych! Wyślij najpierw pinezkę z mapy.")
+                        send_reply(chat_id, t_ui(user_lang, "missing_loc"))
                         continue
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
                     continue
                     
-                send_reply(chat_id, "📡 Skanuję radary... Generuję prognozę godzinową.")
+                send_reply(chat_id, t_ui(user_lang, "scanning"))
                 user_parsed = parsed_list[0]
                 
                 try:
                     _send_card_to_user(user_parsed, is_quiet=False, is_now=True)
                 except Exception as e:
-                    send_reply(chat_id, "⚠️ Wystąpił błąd podczas generowania karty.")
+                    send_reply(chat_id, t_ui(user_lang, "err_gen"))
             
             # 4.5. /day (karta dzienna)
             elif message.get("text", "").startswith(("/day", "/dzis", "/dzien")):
@@ -432,7 +444,7 @@ def main_bot():
                 try:
                     parsed_list = _parse_users([user_data])
                     if not parsed_list:
-                        send_reply(chat_id, "⚠️ Brakuje współrzędnych! Wyślij najpierw pinezkę z mapy.")
+                        send_reply(chat_id, t_ui(user_lang, "missing_loc"))
                         continue
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
@@ -454,24 +466,20 @@ def main_bot():
                     
                     # Jeśli jest przed 5:00 rano lub po 15:59
                     if local_now.hour < 5 or local_now.hour >= 16:
-                        send_reply(
-                            chat_id, 
-                            "ℹ️ Główny raport dzienny jest dostępny tylko od 05:00 do 15:59.\n\n"
-                            "Wybierz /now, aby sprawdzić radar taktyczny na wieczór i noc!"
-                        )
+                        send_reply(chat_id, t_ui(user_lang, "time_limit"))
                         continue
                 except Exception as e:
                     print(f"Błąd sprawdzania czasu: {e}")
                 # --------------------------------------------------------------------------------
                     
-                send_reply(chat_id, "☀️ Przygotowuję główną kartę pogodową na dzisiaj...")
+                send_reply(chat_id, t_ui(user_lang, "prep_main"))
                 user_parsed = parsed_list[0]
                 
                 try:
                     # Brak flag is_now=True i is_future=True sprawia, że system wygeneruje standardową kartę dzienną
                     _send_card_to_user(user_parsed, is_quiet=False)
                 except Exception as e:
-                    send_reply(chat_id, "⚠️ Wystąpił błąd podczas generowania karty.")
+                    send_reply(chat_id, t_ui(user_lang, "err_gen"))
                     import traceback
                     traceback.print_exc()
             
@@ -480,7 +488,7 @@ def main_bot():
             # 5. /future
             elif message.get("text", "").startswith(("/future", "/trend", "/14dni")):
                 print(f"  🔮 [DEBUG] Otrzymano komendę /future od {chat_id}")
-                send_reply(chat_id, "🔮 Generuję prognozę hybrydową na najbliższe 14 dni... Daj mi sekundę.")
+                send_reply(chat_id, t_ui(user_lang, "prep_future"))
                 try:
                     raw = _load_users_from_sheet()
                     sklejone = wirtualne_scalanie(raw)

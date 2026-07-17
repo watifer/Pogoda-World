@@ -435,3 +435,41 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
         return " · ".join(translate_snippet(p) for p in text.split(" · "))
         
     return translate_snippet(text)
+    
+    
+# ==============================================================
+# SŁOWNIK INTERFEJSU TELEGRAMA (UI)
+# ==============================================================
+
+UI_TEXTS = {
+    "pl": {
+        "menu_header": "⚙️ *PANEL STEROWANIA* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Obecna lokalizacja:*\n└ {city}\n\n📅 *Twój harmonogram:*\n├ Rano: {disp_rano}\n└ Popołudnie: {disp_wieczor}\n\n⏰ *Jak zmienić godziny?*\nKliknij przycisk poniżej.\n\n📍 *Jak zmienić miejscowość?*\nWyślij nową 📎 Pinezkę z mapy.",
+        "btn_change_hours": "⏰ Zmień godziny raportów",
+        "disp_off": "Wyłączony ❌",
+        "loc_updated": "✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca.",
+        "missing_loc": "⚠️ Brakuje współrzędnych! Wyślij najpierw pinezkę z mapy.",
+        "scanning": "📡 Skanuję radary... Generuję prognozę godzinową.",
+        "prep_main": "☀️ Przygotowuję główną kartę pogodową na dzisiaj...",
+        "prep_future": "🔮 Generuję prognozę na 14 dni... Daj mi sekundę.",
+        "time_limit": "ℹ️ Główny raport dzienny jest dostępny tylko od 05:00 do 15:59.\nWybierz /now, aby sprawdzić radar taktyczny na wieczór i noc!",
+        "err_gen": "⚠️ Wystąpił błąd podczas generowania karty."
+    },
+    "en": {
+        "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n\n📍 *How to change location?*\nSend a new 📎 Location pin.",
+        "btn_change_hours": "⏰ Change report hours",
+        "disp_off": "Disabled ❌",
+        "loc_updated": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌤️ Weather reports will use this location from now on.",
+        "missing_loc": "⚠️ Missing location! Please send a map pin first.",
+        "scanning": "📡 Scanning radars... Generating hourly forecast.",
+        "prep_main": "☀️ Preparing main weather card for today...",
+        "prep_future": "🔮 Generating 14-day forecast... Give me a second.",
+        "time_limit": "ℹ️ The main daily report is only available from 05:00 to 15:59.\nUse /now to check the tactical radar for the evening and night!",
+        "err_gen": "⚠️ An error occurred while generating the card."
+    }
+}
+
+def t_ui(lang: str, key: str, **kwargs) -> str:
+    """Pobiera tekst interfejsu w odpowiednim języku i podstawia zmienne."""
+    lang = lang if lang in UI_TEXTS else "pl"
+    text = UI_TEXTS[lang].get(key, UI_TEXTS["pl"].get(key, key))
+    return text.format(**kwargs)
