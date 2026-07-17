@@ -366,13 +366,8 @@ def main_bot():
                 if not godz_wieczor: godz_wieczor = DEFAULT_WIECZOR
                 
                 # Formatowanie widoku (wykrywanie opcji "Nie chcę")
-                #disp_rano = "Wyłączony ❌" if "nie" in godz_rano.lower() else f"{godz_rano} ⏰"
-                #disp_wieczor = "Wyłączony ❌" if "nie" in godz_wieczor.lower() else f"{godz_wieczor} ⏰"
                 disp_rano = t_ui(user_lang, "disp_off") if "nie" in godz_rano.lower() else f"{godz_rano} ⏰"
                 disp_wieczor = t_ui(user_lang, "disp_off") if "nie" in godz_wieczor.lower() else f"{godz_wieczor} ⏰"
-
-                msg = t_ui(user_lang, "menu_header", name=wyswietlana_nazwa, city=city, disp_rano=disp_rano, disp_wieczor=disp_wieczor)
-                # -----------------------------------
                 
                 # Zabezpieczamy współrzędne przed przecinkami z Google Sheets
                 bezpieczny_lat = str(user_data.get("Lat", 0)).replace(',', '.')
@@ -399,22 +394,8 @@ def main_bot():
                         ]
                     }
 
-                # TUTAJ DODAŁEM WYŚWIETLANIE HARMONOGRAMU W TEKŚCIE:
-                msg = (
-                    f"⚙️ *PANEL STEROWANIA* | {wyswietlana_nazwa}\n"
-                    f"〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n"
-                    f"🌍 *Obecna lokalizacja:*\n"
-                    f"└ {city}\n\n"
-                    f"📅 *Twój harmonogram:*\n"
-                    f"├ Rano: {disp_rano}\n"
-                    f"└ Popołudnie: {disp_wieczor}\n\n"
-                    f"⏰ *Jak zmienić godziny?*\n"
-                    f"Kliknij przycisk *„Zmień godziny raportów”* znajdujący się na samym dole, pod tą wiadomością.\n\n"
-                    f"📍 *Jak zmienić miejscowość?*\n"
-                    f"1️⃣ Naciśnij tę wiadomość i kliknij *Odpowiedz* (Reply).\n"
-                    f"2️⃣ Wybierz 📎 (spinacz) potem 📍 Lokalizacja.\n"
-                    f"3️⃣ Wyślij pinezkę z mapy."
-                )
+                # --- BUDOWANIE WIADOMOŚCI Z I18N (Teraz jest w dobrym miejscu!) ---
+                msg = t_ui(user_lang, "menu_header", name=wyswietlana_nazwa, city=city, disp_rano=disp_rano, disp_wieczor=disp_wieczor)
 
                 send_reply(chat_id, msg, reply_markup=klawiatura)
 
