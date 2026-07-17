@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR
 from geopy.geocoders import Nominatim
 load_dotenv()
+#Furtka do testowanie bota bez zaproszenia
+MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 
 
 # ==============================================================
@@ -193,13 +195,20 @@ def main_bot():
                 except Exception:
                     referrer_id = token  # Fallback, gdyby ktoś użył starego linku z jawnym ID
                 
-                # 1. Weryfikacja limitu miejsc (50 osób)
-                if len(clean_users) >= 50:
+                # --- FURTKA DEWELOPERSKA (GOD MODE) ---
+                is_dev_mode = (token == MASTER_TOKEN)
+
+                # 1. Weryfikacja limitu miejsc (50 osób) - Dev może wejść nawet gdy brakuje miejsc
+                if len(clean_users) >= 50 and not is_dev_mode:
                     send_reply(chat_id, "⛔ Niestety, globalny limit miejsc w aplikacji (50) został wyczerpany.")
                     continue
                     
-                # 2. Weryfikacja czy polecający (ID z linku) faktycznie istnieje w naszej bazie!
-                referrer_exists = any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
+                # 2. Weryfikacja zaproszenia
+                if is_dev_mode:
+                    referrer_exists = True  # Omijamy sprawdzanie bazy!
+                else:
+                    referrer_exists = any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
+                    
                 if not referrer_exists:
                     send_reply(chat_id, "⛔ Ten link zaproszeniowy jest nieprawidłowy lub pochodzi od niezarejestrowanej osoby.")
                     continue

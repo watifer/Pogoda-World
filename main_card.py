@@ -38,6 +38,7 @@ from prepare_now_layout import prepare_now_layout_data
 from prepare_future_layout import prepare_future_layout_data
 from sanity_checker import run_sanity_check
 
+
 def wirtualne_scalanie(raw_records: list) -> list:
     """Kompresuje rozbite wiersze z Google Sheets w jeden perfekcyjny rekord na użytkownika, sortując je po dacie."""
     
