@@ -174,12 +174,12 @@ def main_bot():
                     user_row_index = i + 2
                     user_data = u
                     break 
-                    # --- BEZPIECZNE POBIERANIE JĘZYKA Z BAZY ---
-                    user_lang = "pl" # Domyślnie polski
-                    if user_data:
-                        raw_l = str(user_data.get("Lang", user_data.get("Język", ""))).strip().lower()
-                        if raw_l in ("pl", "en"):
-                            user_lang = raw_l
+            # --- BEZPIECZNE POBIERANIE JĘZYKA Z BAZY ---
+            user_lang = "pl" # Domyślnie polski
+            if user_data:
+                raw_l = str(user_data.get("Lang", user_data.get("Język", ""))).strip().lower()
+                if raw_l in ("pl", "en"):
+                    user_lang = raw_l
                     
             # ==============================================================
             # BRAMKA WEJŚCIOWA (Tylko Zaproszenia)
