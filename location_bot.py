@@ -13,16 +13,7 @@ load_dotenv()
 MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 
 
-def get_coords_from_city(city_name):
-    try:
-        geolocator = Nominatim(user_agent="pogoda_world_bot")
-        # geocode zamienia tekst (np. "Warszawa") na współrzędne
-        location = geolocator.geocode(city_name, exactly_one=True)
-        if location:
-            return location.latitude, location.longitude, location.address
-    except Exception as e:
-        print(f"Błąd wyszukiwania miasta po nazwie: {e}")
-    return None, None, None
+
 
 
 # ==============================================================
@@ -56,6 +47,17 @@ def get_city_from_coords(lat, lon):
         print(f"Błąd geolokalizacji: {e}")
         
     return "Lokalizacja w terenie"
+    
+def get_coords_from_city(city_name):
+    try:
+        geolocator = Nominatim(user_agent="pogoda_world_bot")
+        # geocode zamienia tekst (np. "Warszawa") na współrzędne
+        location = geolocator.geocode(city_name, exactly_one=True)
+        if location:
+            return location.latitude, location.longitude, location.address
+    except Exception as e:
+        print(f"Błąd wyszukiwania miasta po nazwie: {e}")
+    return None, None, None
 
 def alert_admin(text):
     admin_id = os.environ.get("TG_CHAT_ID")
