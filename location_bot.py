@@ -525,27 +525,37 @@ def main_bot():
                 # Pobieramy pełny tekst i dzielimy na komendę i resztę
                 text_parts = message.get("text", "").split(" ", 1)
                 
-                # Sprawdzamy, czy użytkownik w ogóle wpisał coś po spacji
                 if len(text_parts) < 2 or not text_parts[1].strip():
                     instrukcja = "💡 Podaj nazwę miejscowości, np.: `/miasto Kraków, Polska`" if user_lang == "pl" else "💡 Provide a city name, e.g.: `/city London`"
                     send_reply(chat_id, instrukcja)
                     continue
                 
                 city_query = text_parts[1].strip()
-                
                 send_reply(chat_id, t_ui(user_lang, "search_loc"))
                 
-                # Zwróci: latitude, longitude oraz pełny, długi adres geograficzny
                 lat, lon, full_address = get_coords_from_city(city_query)
                 
                 if lat and lon:
                     print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
                     try:
-                        # Aktualizacja Arkusza Google
+                        # --- ZNALEZIENIE WŁAŚCIWEGO WIERSZA W FIZYCZNYM ARKUSZU ---
+                        real_row_index = None
+                        for idx, r in enumerate(users_records):
+                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
+                                if str(r.get("Imię", "")).strip() != "":
+                                    real_row_index = idx + 2  
+                                    break
+                        
+                        if not real_row_index:
+                            komorka = main_sheet.find(str(chat_id), in_column=2)
+                            real_row_index = komorka.row
+                        # --------------------------------------------------------
+
+                        # Aktualizacja Arkusza Google przy użyciu prawdziwego wiersza
                         col_lat = headers.index("Lat") + 1
                         col_lon = headers.index("Lon") + 1
-                        main_sheet.update_cell(user_row_index, col_lat, lat)
-                        main_sheet.update_cell(user_row_index, col_lon, lon)
+                        main_sheet.update_cell(real_row_index, col_lat, lat)
+                        main_sheet.update_cell(real_row_index, col_lon, lon)
                         
                         krotka_nazwa = get_city_from_coords(lat, lon)
                         if krotka_nazwa in ("Lokalizacja w terenie", "", None):
@@ -553,9 +563,9 @@ def main_bot():
                             
                         if "Miasto" in headers:
                             col_miasto = headers.index("Miasto") + 1
-                            main_sheet.update_cell(user_row_index, col_miasto, krotka_nazwa)
+                            main_sheet.update_cell(real_row_index, col_miasto, krotka_nazwa)
                             
-                        # --- POBRANIE I WYSŁANIE DYNAMICZNEGO TŁUMACZENIA ---
+                        # Pobranie i wysłanie dynamicznego tłumaczenia
                         sukces_msg = t_ui(user_lang, "search_success", city=krotka_nazwa, address=full_address, query=city_query)
                         send_reply(chat_id, sukces_msg)
                         
