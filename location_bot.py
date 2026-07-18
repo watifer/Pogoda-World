@@ -13,6 +13,18 @@ load_dotenv()
 MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 
 
+def get_coords_from_city(city_name):
+    try:
+        geolocator = Nominatim(user_agent="pogoda_world_bot")
+        # geocode zamienia tekst (np. "Warszawa") na współrzędne
+        location = geolocator.geocode(city_name, exactly_one=True)
+        if location:
+            return location.latitude, location.longitude, location.address
+    except Exception as e:
+        print(f"Błąd wyszukiwania miasta po nazwie: {e}")
+    return None, None, None
+
+
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
@@ -348,7 +360,7 @@ def main_bot():
                 }
                 send_reply(chat_id, t_ui(user_lang, "invite_group_desc"), reply_markup=klawiatura)
 
-# 3. /menu
+            # 3. /menu
             elif message.get("text", "").startswith("/menu"):
                 print(f"  ⚙️ Odebrano żądanie panelu ustawień od [{user_data.get('Imię', chat_id)}]")
                 
@@ -497,6 +509,45 @@ def main_bot():
                 
                 send_reply(chat_id, t_ui(user_lang, "porady_msg", default_rano=DEFAULT_RANO, default_wieczor=DEFAULT_WIECZOR))
                 
+                          
+                
+            # 8. Ręczna zmiana miasta przez tekst (/miasto lub /city)
+            elif message.get("text", "").startswith(("/miasto ", "/city ", "/loc ")):
+                # Pobieramy to, co user wpisał po spacji
+                city_query = message["text"].split(" ", 1)[1].strip()
+                
+                send_reply(chat_id, t_ui(user_lang, "search_loc"))
+                
+                # Zwróci: latitude, longitude oraz pełny, długi adres geograficzny
+                lat, lon, full_address = get_coords_from_city(city_query)
+                
+                if lat and lon:
+                    print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
+                    try:
+                        # Aktualizacja Arkusza Google
+                        col_lat = headers.index("Lat") + 1
+                        col_lon = headers.index("Lon") + 1
+                        main_sheet.update_cell(user_row_index, col_lat, lat)
+                        main_sheet.update_cell(user_row_index, col_lon, lon)
+                        
+                        krotka_nazwa = get_city_from_coords(lat, lon)
+                        if krotka_nazwa in ("Lokalizacja w terenie", "", None):
+                            krotka_nazwa = city_query.capitalize()
+                            
+                        if "Miasto" in headers:
+                            col_miasto = headers.index("Miasto") + 1
+                            main_sheet.update_cell(user_row_index, col_miasto, krotka_nazwa)
+                            
+                        # --- POBRANIE I WYSŁANIE DYNAMICZNEGO TŁUMACZENIA ---
+                        sukces_msg = t_ui(user_lang, "search_success", city=krotka_nazwa, address=full_address, query=city_query)
+                        send_reply(chat_id, sukces_msg)
+                        
+                    except Exception as e:
+                        send_reply(chat_id, t_ui(user_lang, "search_err"))
+                        alert_admin(f"❌ Błąd aktualizacji miasta z tekstu: {e}")
+                else:
+                    send_reply(chat_id, t_ui(user_lang, "search_fail"))
+                    
             else:
                 print(f"  [DEBUG] Wiadomość od {user_data.get('Imię')} ignorowana.")
 

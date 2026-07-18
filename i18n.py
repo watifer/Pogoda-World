@@ -54,7 +54,11 @@ STRINGS = {
     "overcast": "Overcast",
     "section_hourly_from": "Prognoza godzinowa od {h:02d}:00",
     "data_from": "dane z",
-    "source_label": "Źródło:"
+    "source_label": "Źródło:",
+    "search_loc": "🔍 Szukam lokalizacji na mapie...",
+    "search_fail": "❌ Nie mogłem znaleźć takiego miejsca na mapie. Spróbuj dopisać kraj, np. `/miasto nazwa, Polska`.",
+    "search_success": "✅ *Zaktualizowano lokalizację!*\n\n📍 Rozpoznano: {city}\n🌍 Pełny adres z mapy: _{address}_\n\n💡 *To złe miejsce?* Wpisz komendę dokładniej, np. `/miasto {query}, Polska`.",
+    "search_err": "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę."
   },
   "en": {
     "report_morning": "morning report",
@@ -109,7 +113,11 @@ STRINGS = {
     "overcast": "Overcast",
     "section_hourly_from": "Hourly forecast from {h:02d}:00",
     "data_from": "data from",
-    "source_label": "Source:"
+    "source_label": "Source:",
+    "search_loc": "🔍 Searching map...",
+    "search_fail": "❌ Could not find this place. Try adding the country, e.g., `/city name, Poland`.",
+    "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: _{address}_\n\n💡 *Wrong place?* Be more specific, e.g., `/city {query}, Poland`.",
+    "search_err": "⚠️ Google Server error. Try again later."
   }
 }
 
