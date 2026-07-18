@@ -128,6 +128,12 @@ def send_reply(chat_id, text, reply_markup=None):
         # Timeout 10 sekund zabezpiecza bota przed zawieszeniem
         resp = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=10)
         
+        # --- WYKRYWACZ BŁĘDÓW TELEGRAMA (NOWE) ---
+        response_data = resp.json()
+        if not response_data.get("ok"):
+            print(f"⚠️ TELEGRAM ODRZUCIŁ WIADOMOŚĆ: {response_data.get('description')}")
+        # -----------------------------------------
+        
         # --- SMART AUTO-SPRZĄTACZKA ---
         from db_cleanup import is_bot_blocked, mark_user_as_blocked
         if is_bot_blocked(resp):
@@ -513,10 +519,19 @@ def main_bot():
                 
                           
                 
-            # 8. Ręczna zmiana miasta przez tekst (/miasto lub /city)
-            elif message.get("text", "").startswith(("/miasto ", "/city ", "/loc ")):
-                # Pobieramy to, co user wpisał po spacji
-                city_query = message["text"].split(" ", 1)[1].strip()
+            # 8. Ręczna zmiana miasta przez tekst (/miasto, /city, /loc)
+            elif message.get("text", "").lower().startswith(("/miasto", "/city", "/loc")):
+                
+                # Pobieramy pełny tekst i dzielimy na komendę i resztę
+                text_parts = message.get("text", "").split(" ", 1)
+                
+                # Sprawdzamy, czy użytkownik w ogóle wpisał coś po spacji
+                if len(text_parts) < 2 or not text_parts[1].strip():
+                    instrukcja = "💡 Podaj nazwę miejscowości, np.: `/miasto Kraków, Polska`" if user_lang == "pl" else "💡 Provide a city name, e.g.: `/city London`"
+                    send_reply(chat_id, instrukcja)
+                    continue
+                
+                city_query = text_parts[1].strip()
                 
                 send_reply(chat_id, t_ui(user_lang, "search_loc"))
                 
