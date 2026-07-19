@@ -19,10 +19,11 @@ MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
-def get_city_from_coords(lat, lon):
+def get_city_from_coords(lat, lon, lang="pl"):
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
-        location = geolocator.reverse(f"{lat}, {lon}", language="pl")
+        # ZMIANA: Wstrzykujemy język użytkownika (lang) zamiast twardego "pl"
+        location = geolocator.reverse(f"{lat}, {lon}", language=lang)
         
         if location and location.raw.get('address'):
             addr = location.raw['address']
@@ -48,11 +49,11 @@ def get_city_from_coords(lat, lon):
         
     return "Lokalizacja w terenie"
     
-def get_coords_from_city(city_name):
+def get_coords_from_city(city_name, lang="pl"):
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
-        # geocode zamienia tekst (np. "Warszawa") na współrzędne
-        location = geolocator.geocode(city_name, exactly_one=True)
+        # ZMIANA: Wstrzykujemy język użytkownika przy szukaniu miasta!
+        location = geolocator.geocode(city_name, exactly_one=True, language=lang)
         if location:
             return location.latitude, location.longitude, location.address
     except Exception as e:
@@ -321,7 +322,7 @@ def main_bot():
                     main_sheet.update_cell(user_row_index, col_lat, lat)
                     main_sheet.update_cell(user_row_index, col_lon, lon)
                     
-                    city = get_city_from_coords(lat, lon)
+                    city = get_city_from_coords(lat, lon, user_lang)
                     if city == "Lokalizacja w terenie" or not city:
                         city = "Twoja okolica"
                         
@@ -387,7 +388,7 @@ def main_bot():
                 # Zabezpieczamy współrzędne przed przecinkami z Google Sheets
                 bezpieczny_lat = str(user_data.get("Lat", 0)).replace(',', '.')
                 bezpieczny_lon = str(user_data.get("Lon", 0)).replace(',', '.')
-                city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon)
+                city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon, user_lang)
                 
                 if any(char.isdigit() for char in city):
                     city = "Nieznana miejscowość (wyślij pinezkę ponownie)"
@@ -534,7 +535,7 @@ def main_bot():
                 city_query = text_parts[1].strip()
                 send_reply(chat_id, t_ui(user_lang, "search_loc"))
                 
-                lat, lon, full_address = get_coords_from_city(city_query)
+                lat, lon, full_address = get_coords_from_city(city_query, user_lang)
                 
                 if lat and lon:
                     print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
@@ -558,7 +559,7 @@ def main_bot():
                         main_sheet.update_cell(real_row_index, col_lat, lat)
                         main_sheet.update_cell(real_row_index, col_lon, lon)
                         
-                        krotka_nazwa = get_city_from_coords(lat, lon)
+                        krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
                         if krotka_nazwa in ("Lokalizacja w terenie", "", None):
                             krotka_nazwa = city_query.capitalize()
                             
