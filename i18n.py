@@ -113,7 +113,7 @@ STRINGS = {
     "source_label": "Source:",
     "search_loc": "🔍 Searching map...",
     "search_fail": "❌ Could not find this place. Try adding the country, e.g., `/city name, Poland`.",
-    "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, e.g., `/city {query}, Poland`.",
+    "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, click, paste it and correct e.g.:\n👉 `/city {query}, <postal code>, ,country>`.",
     "search_err": "⚠️ Google Server error. Try again later."
   }
 }
