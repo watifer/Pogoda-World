@@ -124,7 +124,7 @@ DAYS_FULL = {
 }
 
 DAYS_SHORT = {
-  "pl": ["Pn", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"],
+  "pl": ["Pn", "Wt", "Śr", "Czw", "Pt", "Sob", "Ndz"],
   "en": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
 }
 
@@ -478,7 +478,8 @@ UI_TEXTS = {
         "search_loc": "🔍 Szukam lokalizacji na mapie...",
         "search_fail": "❌ Nie mogłem znaleźć takiego miejsca na mapie. Spróbuj dopisać kraj, np. `/miasto nazwa, Polska`.",
         "search_success": "✅ *Zaktualizowano lokalizację!*\n\n📍 Rozpoznano: {city}\n🌍 Pełny adres z mapy: {address}\n\n💡 *To złe miejsce?* Wpisz komendę dokładniej, np. `/miasto {query}, Polska`.",
-        "search_err": "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę."
+        "search_err": "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.",
+        "city_prompt": "💡 *Podaj nazwę miejscowości*, np.:\n👉 `/miasto Kraków, Polska`"
     },
     "en": {
         "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n\n📍 *How to change location?*\nSend a new 📎 Location pin.",
@@ -507,7 +508,17 @@ UI_TEXTS = {
         "search_loc": "🔍 Searching map...",
         "search_fail": "❌ Could not find this place. Try adding the country, e.g., `/city name, Poland`.",
         "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, e.g., `/city {query}, Poland`.",
-        "search_err": "⚠️ Google Server error. Try again later."
+        "search_err": "⚠️ Google Server error. Try again later.",
+        "city_prompt": "💡 *Provide a city name*, e.g.:\n👉 `/city London`"
+    },
+    "de": {
+        "city_prompt": "💡 *Geben Sie einen Städtenamen ein*, z.B.:\n👉 `/city Berlin`"
+    },
+    "es": {
+        "city_prompt": "💡 *Proporcione el nombre de una ciudad*, ej.:\n👉 `/city Madrid`"
+    },
+    "fr": {
+        "city_prompt": "💡 *Indiquez le nom d'une ville*, ex.:\n👉 `/city Paris`"
     }
 }
 

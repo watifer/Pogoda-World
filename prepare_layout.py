@@ -878,7 +878,8 @@ def prepare_layout_data(payload, now=None):
     tz  = ZoneInfo(payload["location"]["tz"])
     now = now or datetime.now(tz)
     # Wyciągamy język (z twardym fallbackiem na polski)
-    lang = payload.get("lang", "pl")
+    #lang = payload.get("lang", "pl")
+    lang = (payload.get("lang") or "pl").strip().lower()
 
     today_str    = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1296,7 +1297,7 @@ def prepare_layout_data(payload, now=None):
         elif ("deszcz" in wk_text or "ulew" in wk_text) and ("deszcz" in hero_text or "ulew" in hero_text):
             wk = None
 
-    # ── Weekend teaser ──
+# ── Weekend teaser ──
     weekend_teaser = None
     if show_teaser:
         days_to_sat = 5 - dow
@@ -1305,8 +1306,15 @@ def prepare_layout_data(payload, now=None):
         sun     = sat + timedelta(days=1)
         sat_h   = [h for h in hp if h.get("time_local", "").startswith(sat.strftime("%Y-%m-%d"))]
         sun_h   = [h for h in hp if h.get("time_local", "").startswith(sun.strftime("%Y-%m-%d"))]
-        sat_t   = _build_weekend_day_teaser(sat_h, "Sob")
-        sun_t   = _build_weekend_day_teaser(sun_h, "Ndz")
+        
+        # --- ZMIANA AUDYTORA: Dni prosto z jedynego źródła prawdy ---
+        
+        #lang_days = DAYS_SHORT.get(lang, DAYS_SHORT["pl"])
+        lang_days = DAYS_SHORT.get(lang, DAYS_SHORT["en"])
+        
+        sat_t   = _build_weekend_day_teaser(sat_h, lang_days[5])  # Indeks 5 to Sob/Sat
+        sun_t   = _build_weekend_day_teaser(sun_h, lang_days[6])  # Indeks 6 to Ndz/Sun
+        
         if sat_t and sun_t:
             weekend_teaser = {"sat": sat_t, "sun": sun_t, "title": t(lang, "next_weekend")}
     hint = _drizzle_hint(ta=ta, hp_all=hours, start_hour=hero_start_hour)
@@ -1393,9 +1401,9 @@ def prepare_layout_data(payload, now=None):
             d["descriptor"] = d["descriptor"][0].lower() + d["descriptor"][1:]
             
     # ══════════════════════════════════════════════════════════
-    # OSTATNIA MILA: TŁUMACZENIE CAŁEGO LAYOUTU NA EN
+    # OSTATNIA MILA: TŁUMACZENIE CAŁEGO LAYOUTU NA INNE JĘZYKI
     # ══════════════════════════════════════════════════════════
-    if lang == "en":
+    if lang != "pl":
         hero_summary_line = translate_weather_text(hero_summary_line, lang)
         final_context_line = translate_weather_text(final_context_line, lang)
         
@@ -1429,8 +1437,35 @@ def prepare_layout_data(payload, now=None):
                     el["text"] = translate_weather_text(el["text"], lang)
                     for sp in el.get("spans", []):
                         if sp.get("text"): sp["text"] = translate_weather_text(sp["text"], lang)
-    # ══════════════════════════════════════════════════════════
 
+        # ----------------------------------------------------------
+        # Tłumaczenie opisów weekend teaser'a
+        # ----------------------------------------------------------
+        if weekend_teaser:
+            for k in ("sat", "sun"):
+                d = weekend_teaser.get(k)
+                if isinstance(d, dict) and d.get("desc"):
+                    # 1. Tłumaczenie zjawiska (tylko dla języków obcych)
+                    if lang != "pl":
+                        d["desc"] = translate_weather_text(d["desc"], lang)
+                    
+                    # 2. Małe litery bezwzględnie dla wszystkich języków (PL i inne)
+                    d["desc"] = d["desc"].lower()
+
+    # ----------------------------------------------------------
+    # UJEDNOLICENIE WIELKOŚCI LITER DLA WEEKENDU (WSZYSTKIE JĘZYKI)
+    # ----------------------------------------------------------
+    # Ten kod wykonuje się dla KAŻDEGO języka (również pl),
+    # dzięki czemu polska "Mżawka" też zmieni się w "mżawka".
+    if weekend_teaser:
+        for k in ("sat", "sun"):
+            d = weekend_teaser.get(k)
+            if isinstance(d, dict) and d.get("desc"):
+                d["desc"] = d["desc"].lower()
+    # ══════════════════════════════════════════════════════════
+    
+    
+    
     return {
         "city":                payload["location"]["name"],
         "weekday":             weekday,

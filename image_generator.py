@@ -439,8 +439,11 @@ def draw_days_card(draw, ov, img, days, title, y, cx1, cx2, pal,
         # Kolumna 1: label (np. "06–22") lub name (np. "Wt.")
         label = d.get("label") or d.get("name", "")
         
-        # --- WYKRYWANIE WEEKENDU (Wersja pancerna) ---
-        if any(w in label for w in ["Sob", "Nd", "Ndz", "Nie"]):
+        # --- WYKRYWANIE WEEKENDU (Wersja wielojęzyczna) ---
+        # Dodane klucze dla angielskiego, niemieckiego, hiszpańskiego i francuskiego
+        weekend_labels = ["Sob", "Nd", "Ndz", "Nie", "Sat", "Sun", "Sa", "So", "Sáb", "Dom", "Sam", "Dim"]
+        
+        if any(w in label for w in weekend_labels):
             day_color = TITLE_FUTURE  
         else:
             day_color = "white"
@@ -917,14 +920,16 @@ def generate_weather_card(data, palette_override=None):
 
         weekend_days = [
             {
-                "label": "Sob",
+                # ZMIANA: Pobieramy wygenerowaną etykietę z sat/sun, fallback na "Sob" w razie awarii
+                "label": sat.get("label", "Sob"), 
                 "icon": sat.get("icon", "cloud"),
                 "temp_min": sat.get("temp_min", "?"),
                 "temp_max": sat.get("temp_max", "?"),
                 "descriptor": sat.get("desc", sat.get("text", ""))
             },
             {
-                "label": "Ndz",
+                # ZMIANA: Podobnie dla niedzieli
+                "label": sun.get("label", "Ndz"), 
                 "icon": sun.get("icon", "cloud"),
                 "temp_min": sun.get("temp_min", "?"),
                 "temp_max": sun.get("temp_max", "?"),
