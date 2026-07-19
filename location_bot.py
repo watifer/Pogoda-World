@@ -526,7 +526,8 @@ def main_bot():
                 text_parts = message.get("text", "").split(" ", 1)
                 
                 if len(text_parts) < 2 or not text_parts[1].strip():
-                    instrukcja = "💡 *Podaj nazwę miejscowości*, np.:\n👉 `/miasto Kraków, Polska`" if user_lang == "pl" else "💡 *Provide a city name*, e.g.:\n👉 `/city London`"
+                    # Teraz bot sam pobierze odpowiedni język ze słownika UI_TEXTS
+                    instrukcja = t_ui(user_lang, "city_prompt")
                     send_reply(chat_id, instrukcja)
                     continue
                 
