@@ -478,7 +478,7 @@ UI_TEXTS = {
         "search_loc": "🔍 Szukam lokalizacji na mapie...",
         "search_fail": "❌ Nie mogłem znaleźć takiego miejsca na mapie. Spróbuj dopisać kraj, np. `/miasto nazwa, Polska`.",
         "search_success": "✅ *Zaktualizowano lokalizację!*\n\n📍 Rozpoznano: {city}\n🌍 Pełny adres z mapy: {address}\n\n💡 *To złe miejsce?* Wpisz komendę dokładniej, kliknij ją, wgraj i popraw np.\n👉 `/miasto {query}, <kod pocztowy>,<kraj>`.",
-        "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, click, paste it and correct e.g.:\n👉 `/city {query}, <postal code>, ,country>`.",
+        "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, click, paste it and correct e.g.:\n👉 `/city {query}, <postal code>, <country>`.",
         "search_err": "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.",
         "city_prompt": "💡 *Podaj nazwę miejscowości*, np.:\n👉 `/miasto Kraków, Polska`"
     },
@@ -507,10 +507,10 @@ UI_TEXTS = {
         "welcome_back": "👋 Welcome back to Weather for You! Your profile is already authorized.\n\nYou can always type *`/menu`* to check your settings, or use the *`/zapros`* command to share the app with a friend!",
         "porady_msg": "💡 *TIPS AND TRICKS – WEATHER WORLD*\nUnlock the full potential of your assistant:\n\n🔕 *1. Quiet mornings*\nLoud notifications are automatically disabled early in the morning (before 7:00) so as not to wake you up. You can also manually mute the chat in Telegram options.\n\n⏰ *2. Extra report*\nYou already received a morning report, but the weather is dynamic and you want to get an updated forecast. Just choose */day* from the menu! For a quick glance without changing settings, use the */now* command.\n\n🌍 *3. Weather across the globe*\nWant to track the weather in the Amazon? Create an empty group in Telegram, add the bot via */zapros* and send a map pin from there! *Note:* Reports will arrive according to the local time for that location.\n\n🛑 *4. Notification vacation*\nDon't want automated reports? In */menu*, select the *\"Disabled\"* option. You can still check the weather manually using commands.\n\n🎛 *5. Quick controls*\nIn a private chat, use the *Menu* button on the left. In a group, just type a slash * / * to unfold the command list.\n\n📍 *6. Privacy and security*\nYou don't need to provide a down-to-the-meter address – a 3 km discrepancy doesn't change the forecast. Moreover, all bot links are fully secure.\n\n⚙️ *7. Default settings*\nIf you do nothing and don't set your hours in the menu, you lose nothing! Your weather reports will default to *{default_rano}* and *{default_wieczor}*.\n\n🌴 *8. Weather on vacation*\nGoing on holiday? Just enter the chat with the bot and send a new 📎 Map pin from where you are. The bot will instantly switch to the new location and send you reports according to the local time zone!",
         "search_loc": "🔍 Searching map...",
-        "search_fail": "❌ Could not find this place. Try adding the country, e.g., `/city name, Poland`.",
-        "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, click, paste it and correct e.g.:\n👉 `/city {query}, <postal code>, ,country>`.",
+        "search_fail": "❌ *Could not find this place. Try adding more data, click, paste it and correct*, e.g.:\n👉 `/city name, <postal code>, <country>`.",
+        "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, click, paste it and correct e.g.:\n👉 `/city {query}, <postal code>, <country>`.",
         "search_err": "⚠️ Google Server error. Try again later.",
-        "city_prompt": "💡 *Provide a city name*, e.g.:\n👉 `/city London`"
+        "city_prompt": "💡 *Provide a city name, click, paste it and correct*, e.g.:\n👉 `/city London, <postal code>, <country>`"
     },
     "de": {
         "city_prompt": "💡 *Geben Sie einen Städtenamen ein*, z.B.:\n👉 `/city Berlin`"
