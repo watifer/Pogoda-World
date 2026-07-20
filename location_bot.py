@@ -523,9 +523,6 @@ def main_bot():
                     link = f"{FORM_BASE}?usp=pp_url&{ENTRY_ID}={chat_id}"
                     klawiatura = {
                         "inline_keyboard": [
-                            # NOWY PRZYCISK WEBAPP (Wstaw poniżej swój prawdziwy link z GitHuba):
-                            [{"text": "📍 Aktualizuj lokalizację (GPS)", "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}],
-                            # STARY PRZYCISK DO ZMIANY GODZIN:
                             [{"text": t_ui(user_lang, "btn_change_hours"), "url": link}]
                         ]
                     }
@@ -647,9 +644,16 @@ def main_bot():
                 text_parts = message.get("text", "").split(" ", 1)
                 
                 if len(text_parts) < 2 or not text_parts[1].strip():
-                    # Teraz bot sam pobierze odpowiedni język ze słownika UI_TEXTS
                     instrukcja = t_ui(user_lang, "city_prompt")
-                    send_reply(chat_id, instrukcja)
+                    
+                    # TWORZYMY DOLNĄ KLAWIATURĘ (Reply Keyboard) Z WEBAPP
+                    klawiatura_gps = {
+                        "keyboard": [
+                            [{"text": "📍 Aktualizuj z GPS", "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}]
+                        ],
+                        "resize_keyboard": True
+                    }
+                    send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
                     continue
                 
                 city_query = text_parts[1].strip()
