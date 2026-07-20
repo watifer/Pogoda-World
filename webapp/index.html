@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Ustaw lokalizację - Pogoda World</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -72,68 +71,59 @@
     <button id="btn">Udostępnij lokalizację</button>
     <div id="err" class="err"></div>
 
-   <script>
-    // 1. Inicjalizacja stałej tg (tylko raz!)
-    const tg = window.Telegram?.WebApp;
-    
-    // 2. Jeśli tg istnieje, przygotuj aplikację
-    if (tg) {
-        tg.ready();
-        tg.expand();
-    }
-
-    // 3. DEBUG - dodajemy napis na dole ekranu
-    document.body.insertAdjacentHTML(
-        "beforeend",
-        `<pre id="dbg" style="font-size:10px; color:gray; position:fixed; bottom:0; width:100%; text-align:center; pointer-events:none;">
-        TelegramWebApp: ${!!tg} | platform: ${tg?.platform || 'unknown'} | version: ${tg?.version || 'N/A'}
-        </pre>`
-    );
-
-    const errEl = document.getElementById("err");
-    const btn = document.getElementById("btn");
-
-    function fail(msg) {
-        errEl.textContent = msg;
-        if (tg && tg.HapticFeedback) {
-            tg.HapticFeedback.notificationOccurred("error");
-        }
-    }
-
-    btn.addEventListener("click", () => {
-        errEl.textContent = "";
-        
-        if (!navigator.geolocation) {
-            return fail("Twoje urządzenie nie obsługuje geolokalizacji.");
+    <script>
+        // Inicjalizacja Telegram Web App
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand(); // Rozwija okienko na maksymalną wysokość
         }
 
-        btn.disabled = true;
-        btn.textContent = "Pobieranie danych z satelity...";
+        const errEl = document.getElementById("err");
+        const btn = document.getElementById("btn");
 
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const lat = pos.coords.latitude;
-                const lon = pos.coords.longitude;
-                const payload = JSON.stringify({ type: "set_location", lat, lon });
-                
-                if (tg) {
-                    if (tg.HapticFeedback) {
-                        tg.HapticFeedback.notificationOccurred("success");
+        function fail(msg) {
+            errEl.textContent = msg;
+            if (tg && tg.HapticFeedback) {
+                tg.HapticFeedback.notificationOccurred("error");
+            }
+        }
+
+        btn.addEventListener("click", () => {
+            errEl.textContent = "";
+            
+            if (!navigator.geolocation) {
+                return fail("Twoje urządzenie nie obsługuje geolokalizacji.");
+            }
+
+            btn.disabled = true;
+            btn.textContent = "Pobieranie danych z satelity...";
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lon = pos.coords.longitude;
+                    const payload = JSON.stringify({ type: "set_location", lat, lon });
+                    
+                    if (tg) {
+                        if (tg.HapticFeedback) {
+                            tg.HapticFeedback.notificationOccurred("success");
+                        }
+                        tg.sendData(payload);
+                        // Zamykamy okienko po wysłaniu danych
+                        setTimeout(() => tg.close(), 100); 
+                    } else {
+                        btn.textContent = `Wysłano: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                     }
-                    tg.sendData(payload);
-                    setTimeout(() => tg.close(), 100); 
-                } else {
-                    btn.textContent = `Brak tg (test): ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-                }
-            },
-            (e) => {
-                btn.disabled = false;
-                btn.textContent = "Udostępnij lokalizację";
-                fail("Odmowa dostępu do GPS lub brak sygnału.");
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-        );
-    });
-</script>
+                },
+                (e) => {
+                    btn.disabled = false;
+                    btn.textContent = "Udostępnij lokalizację";
+                    fail("Odmowa dostępu do GPS lub brak sygnału.");
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
+        });
+    </script>
 </body>
 </html>

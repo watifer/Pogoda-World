@@ -187,6 +187,58 @@ def main_bot():
                 
             print(f"  [DEBUG] 🔎 Telegram zgłasza wiadomość od Chat ID: {chat_id}")
             
+            # ==============================================================
+            # 0. ABSOLUTNY PRIORYTET: LOKALIZACJA Z WEB APP (GPS)
+            # ==============================================================
+            wad = message.get("web_app_data")
+            if wad and wad.get("data"):
+                raw_data = wad.get("data", "")
+                try:
+                    data = json.loads(raw_data)
+                    if data.get("type") == "set_location":
+                        lat = float(data.get("lat"))
+                        lon = float(data.get("lon"))
+                        
+                        print(f"  📍 Odebrano współrzędne GPS (WebApp) od {chat_id}: {lat}, {lon}")
+                        
+                        # --- PANCERNA AKTUALIZACJA: Znajdujemy WSZYSTKIE wiersze usera ---
+                        rows_to_update = []
+                        for idx, r in enumerate(users_records):
+                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
+                                rows_to_update.append(idx + 2)
+                        
+                        if not rows_to_update:
+                            komorka = main_sheet.find(str(chat_id), in_column=2)
+                            rows_to_update.append(komorka.row)
+                        
+                        # Odwrócona geolokalizacja
+                        # Zakładamy domyślny polski, bo rejestracja może być w toku
+                        city = get_city_from_coords(lat, lon, "pl") 
+                        if city == "Lokalizacja w terenie" or not city:
+                            city = "Twoja okolica"
+                            
+                        # Zapisujemy we WSZYSTKICH wierszach
+                        col_lat = headers.index("Lat") + 1
+                        col_lon = headers.index("Lon") + 1
+                        col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
+                        
+                        for r_idx in rows_to_update:
+                            main_sheet.update_cell(r_idx, col_lat, lat)
+                            main_sheet.update_cell(r_idx, col_lon, lon)
+                            if col_miasto:
+                                main_sheet.update_cell(r_idx, col_miasto, city)
+                                
+                        # Wysyłamy potwierdzenie i zwijamy klawiaturę!
+                        ukryj_klawiature = {"remove_keyboard": True}
+                        sukces_msg = f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca."
+                        send_reply(chat_id, sukces_msg, reply_markup=ukryj_klawiature)
+                        
+                except Exception as e:
+                    send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
+                    alert_admin(f"❌ Błąd aktualizacji GPS (WebApp) dla {chat_id}: {e}")
+                    
+                continue  # <--- BARDZO WAŻNE: Przerywamy i nie idziemy do obsługi rejestracji/tekstu!
+            
             user_row_index = None
             user_data = None
             for i, u in enumerate(clean_users):
@@ -339,53 +391,7 @@ def main_bot():
                     send_reply(chat_id, "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
 
-            # 1.5. LOKALIZACJA Z WEB APP (GPS)
-            elif "web_app_data" in message:
-                raw_data = message["web_app_data"].get("data", "")
-                try:
-                    data = json.loads(raw_data)
-                    if data.get("type") == "set_location":
-                        lat = float(data.get("lat"))
-                        lon = float(data.get("lon"))
-                        
-                        print(f"  📍 Odebrano współrzędne GPS (WebApp) od [{user_data.get('Imię', chat_id)}]: {lat}, {lon}")
-                        
-                        # Znajdujemy wiersz w arkuszu
-                        user_row_index = None
-                        for idx, r in enumerate(users_records):
-                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                                if str(r.get("Imię", "")).strip() != "":
-                                    user_row_index = idx + 2  
-                                    break
-                        
-                        if not user_row_index:
-                            komorka = main_sheet.find(str(chat_id), in_column=2)
-                            user_row_index = komorka.row
-                        
-                        # Zapisujemy nowe współrzędne
-                        col_lat = headers.index("Lat") + 1
-                        col_lon = headers.index("Lon") + 1
-                        main_sheet.update_cell(user_row_index, col_lat, lat)
-                        main_sheet.update_cell(user_row_index, col_lon, lon)
-                        
-                        # Odwrócona geolokalizacja (Pobieranie miasta)
-                        city = get_city_from_coords(lat, lon, user_lang)
-                        if city == "Lokalizacja w terenie" or not city:
-                            city = "Twoja okolica"
-                            
-                        if "Miasto" in headers:
-                            try:
-                                col_miasto = headers.index("Miasto") + 1
-                                main_sheet.update_cell(user_row_index, col_miasto, city)
-                            except Exception as e:
-                                print(f"  [DEBUG] Nie udało się zapisać miasta do arkusza: {e}")
-                                
-                        # Wysyłamy potwierdzenie do użytkownika
-                        send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city))
-                        
-                except Exception as e:
-                    send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
-                    alert_admin(f"❌ Błąd aktualizacji GPS (WebApp) dla {chat_id}: {e}")
+            
 
 
             # 2. /zapros (JEDEN UNIWERSALNY LINK + GUZIK DLA GRUP)
