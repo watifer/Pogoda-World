@@ -340,7 +340,7 @@ def main_bot():
                     alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
 
             # 2. /zapros (JEDEN UNIWERSALNY LINK + GUZIK DLA GRUP)
-            elif message.get("text", "").startswith("/zapros"):
+            elif message.get("text", "").lower().startswith(("/zapros", "/invite")):
                 import base64
                 print(f"  💌 Wysłano link zaproszeniowy do {chat_id}")
                 
@@ -513,7 +513,7 @@ def main_bot():
                 
                 send_reply(chat_id, t_ui(user_lang, "welcome_back"))
                 
-            elif message.get("text", "").startswith("/porady"):
+            elif message.get("text", "").lower().startswith(("/porady", "/tips")):
                 print(f"  💡 Wysłano porady do {chat_id}")
                 
                 send_reply(chat_id, t_ui(user_lang, "porady_msg", default_rano=DEFAULT_RANO, default_wieczor=DEFAULT_WIECZOR))
