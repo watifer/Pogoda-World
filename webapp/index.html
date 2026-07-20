@@ -73,7 +73,7 @@
     <div id="err" class="err"></div>
 
    <script>
-    // 1. Inicjalizacja stałej tg
+    // 1. Inicjalizacja stałej tg (tylko raz!)
     const tg = window.Telegram?.WebApp;
     
     // 2. Jeśli tg istnieje, przygotuj aplikację
@@ -89,69 +89,51 @@
         TelegramWebApp: ${!!tg} | platform: ${tg?.platform || 'unknown'} | version: ${tg?.version || 'N/A'}
         </pre>`
     );
-    // -------------
 
-    if (tg) {
-        tg.ready();
-        tg.expand();
+    const errEl = document.getElementById("err");
+    const btn = document.getElementById("btn");
+
+    function fail(msg) {
+        errEl.textContent = msg;
+        if (tg && tg.HapticFeedback) {
+            tg.HapticFeedback.notificationOccurred("error");
+        }
     }
-	
-	
-	
-	
-	
-        // Inicjalizacja Telegram Web App
-        const tg = window.Telegram?.WebApp;
-        if (tg) {
-            tg.ready();
-            tg.expand(); // Rozwija okienko na maksymalną wysokość
+
+    btn.addEventListener("click", () => {
+        errEl.textContent = "";
+        
+        if (!navigator.geolocation) {
+            return fail("Twoje urządzenie nie obsługuje geolokalizacji.");
         }
 
-        const errEl = document.getElementById("err");
-        const btn = document.getElementById("btn");
+        btn.disabled = true;
+        btn.textContent = "Pobieranie danych z satelity...";
 
-        function fail(msg) {
-            errEl.textContent = msg;
-            if (tg && tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred("error");
-            }
-        }
-
-        btn.addEventListener("click", () => {
-            errEl.textContent = "";
-            
-            if (!navigator.geolocation) {
-                return fail("Twoje urządzenie nie obsługuje geolokalizacji.");
-            }
-
-            btn.disabled = true;
-            btn.textContent = "Pobieranie danych z satelity...";
-
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    const payload = JSON.stringify({ type: "set_location", lat, lon });
-                    
-                    if (tg) {
-                        if (tg.HapticFeedback) {
-                            tg.HapticFeedback.notificationOccurred("success");
-                        }
-                        tg.sendData(payload);
-                        // Zamykamy okienko po wysłaniu danych
-                        setTimeout(() => tg.close(), 100); 
-                    } else {
-                        btn.textContent = `Wysłano: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                const payload = JSON.stringify({ type: "set_location", lat, lon });
+                
+                if (tg) {
+                    if (tg.HapticFeedback) {
+                        tg.HapticFeedback.notificationOccurred("success");
                     }
-                },
-                (e) => {
-                    btn.disabled = false;
-                    btn.textContent = "Udostępnij lokalizację";
-                    fail("Odmowa dostępu do GPS lub brak sygnału.");
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
-        });
-    </script>
+                    tg.sendData(payload);
+                    setTimeout(() => tg.close(), 100); 
+                } else {
+                    btn.textContent = `Brak tg (test): ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+                }
+            },
+            (e) => {
+                btn.disabled = false;
+                btn.textContent = "Udostępnij lokalizację";
+                fail("Odmowa dostępu do GPS lub brak sygnału.");
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    });
+</script>
 </body>
 </html>
