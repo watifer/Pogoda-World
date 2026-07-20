@@ -339,6 +339,55 @@ def main_bot():
                     send_reply(chat_id, "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
 
+            # 1.5. LOKALIZACJA Z WEB APP (GPS)
+            elif "web_app_data" in message:
+                raw_data = message["web_app_data"].get("data", "")
+                try:
+                    data = json.loads(raw_data)
+                    if data.get("type") == "set_location":
+                        lat = float(data.get("lat"))
+                        lon = float(data.get("lon"))
+                        
+                        print(f"  📍 Odebrano współrzędne GPS (WebApp) od [{user_data.get('Imię', chat_id)}]: {lat}, {lon}")
+                        
+                        # Znajdujemy wiersz w arkuszu
+                        user_row_index = None
+                        for idx, r in enumerate(users_records):
+                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
+                                if str(r.get("Imię", "")).strip() != "":
+                                    user_row_index = idx + 2  
+                                    break
+                        
+                        if not user_row_index:
+                            komorka = main_sheet.find(str(chat_id), in_column=2)
+                            user_row_index = komorka.row
+                        
+                        # Zapisujemy nowe współrzędne
+                        col_lat = headers.index("Lat") + 1
+                        col_lon = headers.index("Lon") + 1
+                        main_sheet.update_cell(user_row_index, col_lat, lat)
+                        main_sheet.update_cell(user_row_index, col_lon, lon)
+                        
+                        # Odwrócona geolokalizacja (Pobieranie miasta)
+                        city = get_city_from_coords(lat, lon, user_lang)
+                        if city == "Lokalizacja w terenie" or not city:
+                            city = "Twoja okolica"
+                            
+                        if "Miasto" in headers:
+                            try:
+                                col_miasto = headers.index("Miasto") + 1
+                                main_sheet.update_cell(user_row_index, col_miasto, city)
+                            except Exception as e:
+                                print(f"  [DEBUG] Nie udało się zapisać miasta do arkusza: {e}")
+                                
+                        # Wysyłamy potwierdzenie do użytkownika
+                        send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city))
+                        
+                except Exception as e:
+                    send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
+                    alert_admin(f"❌ Błąd aktualizacji GPS (WebApp) dla {chat_id}: {e}")
+
+
             # 2. /zapros (JEDEN UNIWERSALNY LINK + GUZIK DLA GRUP)
             elif message.get("text", "").lower().startswith(("/zapros", "/invite")):
                 import base64
@@ -406,6 +455,9 @@ def main_bot():
                     link = f"{FORM_BASE}?usp=pp_url&{ENTRY_ID}={chat_id}"
                     klawiatura = {
                         "inline_keyboard": [
+                            # NOWY PRZYCISK WEBAPP (Wstaw poniżej swój prawdziwy link z GitHuba):
+                            [{"text": "📍 Aktualizuj lokalizację (GPS)", "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}],
+                            # STARY PRZYCISK DO ZMIANY GODZIN:
                             [{"text": t_ui(user_lang, "btn_change_hours"), "url": link}]
                         ]
                     }
