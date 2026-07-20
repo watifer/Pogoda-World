@@ -893,7 +893,8 @@ def prepare_layout_data(payload, now=None):
         ho=ho,
         hy=hy,
         today_str=today_str,
-        current_hour=now.hour
+        current_hour=now.hour,
+        lang=lang
     )
 
     # === DATOWANIE ŹRÓDŁA DANYCH I AGE-GATING ===
@@ -1351,9 +1352,12 @@ def prepare_layout_data(payload, now=None):
     # 1. Fallback (brak jednego ze źródeł)
     if " + " not in forecast_source:
         should_call_owm = True
-    # 2. Rozjazd modeli (wykorzystujemy Twoje obecne ostrzeżenia w final_context_line)
-    elif final_context_line and any(x in final_context_line.lower() for x in ["rozbieżne", "niepewn", "wczesny", "nocne"]):
+        
+    # 2. Rozjazd modeli (Wielojęzyczny radar słów)
+    # Dodaliśmy angielskie odpowiedniki: "divergent", "uncertain", "early", "night"
+    elif final_context_line and any(x in final_context_line.lower() for x in ["rozbieżne", "niepewn", "wczesny", "nocne", "divergent", "uncertain", "early", "night"]):
         should_call_owm = True
+        
     # 3. Ryzyko ukrytego opadu (0 mm, ale wysoka wilgotność i chmury)
     elif hours:
         today_str = now.strftime("%Y-%m-%d")
@@ -1371,16 +1375,18 @@ def prepare_layout_data(payload, now=None):
     owm_note = None
     if should_call_owm:
         owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=3)
-        owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm)
+        # ZMIANA: Przekazujemy aktualny język do weryfikatora!
+        # (Zakładam, że w prepare_layout.py masz zmienną 'lang', jeśli nazywa się inaczej, np. 'user_lang', podmień to)
+        owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm, lang=lang)
 
     if owm_note:
         low = (final_context_line or "").lower()
-        pressure_only = any(x in low for x in ["hpa", "ciśnien", "cisnien", "spadek", "wzrost"]) and not any(
-            x in low for x in ["nocne dane", "rozbieżne", "odśwież"]
+        # Wielojęzyczny radar dla ciśnienia:
+        pressure_only = any(x in low for x in ["hpa", "ciśnien", "cisnien", "spadek", "wzrost", "pressure", "drop", "rise"]) and not any(
+            x in low for x in ["nocne dane", "rozbieżne", "odśwież", "night data", "divergent", "refresh"]
         )
         if (not final_context_line) or pressure_only:
             final_context_line = (final_context_line + " · " + owm_note) if final_context_line else owm_note
-
     # --- AWARYJNY SENSOR MŻAWKI ---
     # Jeśli OWM nie było potrzebne (should_call_owm=False) LUB API nie dało notatki, 
     # zawsze możemy jeszcze użyć hintu

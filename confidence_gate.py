@@ -2,6 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Dict
+from i18n import STRINGS
 
 @dataclass
 class TrustReport:
@@ -38,6 +39,7 @@ def compute_trust_report(
     hy: List[Dict],
     today_str: str,
     current_hour: int,
+    lang: str = "pl"  # <--- ZMIANA 1: Dodajemy obsługę języka
 ) -> TrustReport:
     """Minimalny detektor rozjazdu modeli, tylko dla UI."""
     om = {h.get("time_local"): h for h in ho if h.get("time_local")}
@@ -104,24 +106,20 @@ def compute_trust_report(
 
     is_volatile = bool(precip_hard or wind_hard or clouds_soft)
     soften = is_volatile
-    # W kafelkach ukrywamy detale (mm/%/km/h) tylko jeśli dotyczy to opadów (brak zaufania = brak liczb)
     hide = bool(precip_hard)
 
-    # --- INTELIGENTNY DOBÓR NOTATKI (Zabezpieczenie UX) ---
+    # --- INTELIGENTNY DOBÓR NOTATKI ---
     note = ""
     if precip_hard: 
-        note = "Modele są rozbieżne co do opadów w ciągu dnia."
+        note = STRINGS[lang].get("trust_precip", "")
     elif wind_hard:
-        note = "Modele są rozbieżne co do siły wiatru."
+        note = STRINGS[lang].get("trust_wind", "")
     elif clouds_soft:
-        # Sprawdzamy, czy na zewnątrz fizycznie nie dzieje się armagedon (według któregokolwiek modelu)
         max_p = max([max(_f(a.get("precip_mm")), _f(b.get("precip_mm"))) for hh, a, b in paired] + [0.0])
         max_w = max([max(_f(a.get("gust_kmh")), _f(a.get("wind_kmh")), _f(b.get("gust_kmh")), _f(b.get("wind_kmh"))) for hh, a, b in paired] + [0.0])
         
-        # O chmurach wspominamy TYLKO wtedy, gdy dzień jest w miarę spokojny
-        # Jeśli leje (>= 2 mm) albo mocno wieje (>= 50 km/h), oszczędzamy użytkownikowi gadania o chmurach
         if max_p < 2.0 and max_w < 50.0:
-            note = "Modele są rozbieżne co do zachmurzenia."
+            note = STRINGS[lang].get("trust_clouds", "")
 
     return TrustReport(
         is_volatile=is_volatile,

@@ -6,6 +6,7 @@ import json
 import requests
 from typing import Optional, Dict, Tuple
 from datetime import datetime
+from i18n import STRINGS
 
 _CACHE: Dict[Tuple[float, float], Tuple[float, dict]] = {}
 TTL_SEC = 600  # 10 min cache
@@ -83,7 +84,7 @@ def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optiona
     except Exception:
         return None
 
-def nowcast_note(payload_hours: list, now_local: datetime, owm: dict) -> Optional[str]:
+def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str = "pl") -> Optional[str]:
     """
     Niezależny arbiter: koryguje chmury i ukryte opady na bazie stanu 'teraz' z OWM 4.0.
     """
@@ -122,7 +123,7 @@ def nowcast_note(payload_hours: list, now_local: datetime, owm: dict) -> Optiona
 
     # 1. PRIORYTET: Detekcja ukrytego opadu (OWM widzi wodę, model ma 0.0)
     if model_precip < 0.1 and owm_precip >= 0.2:
-        return "Lokalnie możliwe słabe opady poza prognozą."
+        return strings[lang].get("nowcast_precip", "")
 
     # 2. DRUGI PLAN: Detekcja błędu w zachmurzeniu
     def eff(x: dict) -> float:
@@ -146,7 +147,8 @@ def nowcast_note(payload_hours: list, now_local: datetime, owm: dict) -> Optiona
         return None
 
     if owm_clouds >= 70 and model_eff <= 30:
-        return "Teraz więcej chmur niż w prognozie."
+        return strings[lang].get("nowcast_more_clouds", "")
     if owm_clouds <= 30 and model_eff >= 70:
-        return "Teraz mniej chmur niż w prognozie."
-    return "Teraz zachmurzenie może odbiegać od prognozy."
+        return strings[lang].get("nowcast_less_clouds", "")
+        
+    return strings[lang].get("nowcast_diff_clouds", "")

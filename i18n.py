@@ -55,6 +55,13 @@ STRINGS = {
     "section_hourly_from": "Prognoza godzinowa od {h:02d}:00",
     "data_from": "dane z",
     "source_label": "Źródło:",
+    "nowcast_precip": "Lokalnie możliwe słabe opady poza prognozą.",
+    "nowcast_more_clouds": "Teraz więcej chmur niż w prognozie.",
+    "nowcast_less_clouds": "Teraz mniej chmur niż w prognozie.",
+    "nowcast_diff_clouds": "Teraz zachmurzenie może odbiegać od prognozy.",
+    "trust_precip": "Modele są rozbieżne co do opadów w ciągu dnia.",
+    "trust_wind": "Modele są rozbieżne co do siły wiatru.",
+    "trust_clouds": "Modele są rozbieżne co do zachmurzenia."
     
   },
   "en": {
@@ -111,10 +118,13 @@ STRINGS = {
     "section_hourly_from": "Hourly forecast from {h:02d}:00",
     "data_from": "data from",
     "source_label": "Source:",
-    "search_loc": "🔍 Searching map...",
-    "search_fail": "❌ Could not find this place. Try adding the country, e.g., `/city name, Poland`.",
-    "search_success": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌍 Full map address: {address}\n\n💡 *Wrong place?* Be more specific, click, paste it and correct e.g.:\n👉 `/city {query}, <postal code>, ,country>`.",
-    "search_err": "⚠️ Google Server error. Try again later."
+    "nowcast_precip": "Locally possible light rain outside the forecast.",
+    "nowcast_more_clouds": "More clouds now than in the forecast.",
+    "nowcast_less_clouds": "Fewer clouds now than in the forecast.",
+    "nowcast_diff_clouds": "Current cloud cover may differ from the forecast.",
+    "trust_precip": "Forecast models disagree on daytime precipitation.",
+    "trust_wind": "Forecast models disagree on wind strength.",
+    "trust_clouds": "Forecast models disagree on cloud cover."
   }
 }
 
@@ -378,6 +388,11 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
     if not exact_map and not replacements:
         return text
 
+    # === ZŁOTA REGUŁA: SORTOWANIE OD NAJDŁUŻSZYCH ===
+    # Wymuszamy, by najdłuższe frazy (całe zdania) były sprawdzane najpierw!
+    if replacements:
+        replacements = sorted(replacements, key=lambda x: len(x[0]), reverse=True)
+
     def translate_snippet(snippet: str) -> str:
         # PANCERNA TARCZA NA WEJŚCIU
         if not isinstance(snippet, str) or not snippet.strip():
@@ -391,6 +406,7 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
             res = exact_map[low]
         else:
             res = snippet
+            # Lecimy po POSORTOWANEJ liście:
             for pl_word, target_word in replacements:
                 if not pl_word: continue
                 # Ochrona granic słów
@@ -429,7 +445,6 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
             return res[0].upper() + res[1:]
         else:
             return res[0].lower() + res[1:]
-
     # ==============================================================
     # GŁÓWNY ROZDZIELACZ: Najpierw \n (Hero), potem kropki (·)
     # ==============================================================
