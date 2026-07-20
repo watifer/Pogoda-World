@@ -72,13 +72,20 @@
     <button id="btn">Udostępnij lokalizację</button>
     <div id="err" class="err"></div>
 
-    <script>
-	
-	// --- DEBUG ---
+   <script>
+    // 1. Inicjalizacja stałej tg
     const tg = window.Telegram?.WebApp;
+    
+    // 2. Jeśli tg istnieje, przygotuj aplikację
+    if (tg) {
+        tg.ready();
+        tg.expand();
+    }
+
+    // 3. DEBUG - dodajemy napis na dole ekranu
     document.body.insertAdjacentHTML(
         "beforeend",
-        `<pre id="dbg" style="font-size:10px; color:gray; position:fixed; bottom:0; width:100%; text-align:center;">
+        `<pre id="dbg" style="font-size:10px; color:gray; position:fixed; bottom:0; width:100%; text-align:center; pointer-events:none;">
         TelegramWebApp: ${!!tg} | platform: ${tg?.platform || 'unknown'} | version: ${tg?.version || 'N/A'}
         </pre>`
     );
