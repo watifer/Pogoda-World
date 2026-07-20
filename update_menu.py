@@ -23,7 +23,7 @@ COMMANDS_BY_LANG = {
     # 1. DOMYŚLNE MENU GLOBALNE (EN - dla obcokrajowców bez własnego tłumaczenia)
     "default": [
         {"command": "day", "description": "☀️ Daily weather card"},
-        {"command": "now", "description": "📡 Tactical radar (current)"},
+        {"command": "now", "description": "📡 Tactical radar (current 12 hours)"},
         {"command": "trend", "description": "🔮 14-day weather trend"},
         {"command": "menu", "description": "⚙️ Geo & hours settings panel"},
         {"command": "city", "description": "🌍 Change location by text"},
@@ -35,7 +35,7 @@ COMMANDS_BY_LANG = {
     # 2. POLSKI (pl)
     "pl": [
         {"command": "day", "description": "☀️ Dzienna karta pogodowa"},
-        {"command": "now", "description": "📡 Radar taktyczny (na teraz)"},
+        {"command": "now", "description": "📡 Radar taktyczny (bieżące 12 godziny)"},
         {"command": "trend", "description": "🔮 Trend pogody (14 dni)"},
         {"command": "menu", "description": "⚙️ Panel ustawień Geo i godzin"},
         {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury"},
@@ -81,16 +81,16 @@ COMMANDS_BY_LANG = {
     ],
 
     # 6. NORWESKI (no) - Miejsce na przyszłość (odkomentuj, gdy będziesz gotowy)
-    # "no": [
-    #     {"command": "day", "description": "☀️ Daglig værkort"},
-    #     {"command": "now", "description": "📡 Taktisk radar (nå)"},
-    #     {"command": "trend", "description": "🔮 14-dagers værvarsel"},
-    #     {"command": "menu", "description": "⚙️ Geo- og tidsinnstillinger"},
-    #     {"command": "city", "description": "🌍 Endre posisjon med tekst"},
-    #     {"command": "invite", "description": "💌 Inviter eller legg til i gruppe"},
-    #     {"command": "info", "description": "ℹ️ Kort bot-manual"},
-    #     {"command": "tips", "description": "💡 Nyttige triks og funksjoner"}
-    # ]
+    "no": [
+        {"command": "day", "description": "☀️ Daglig værkort"},
+        {"command": "now", "description": "📡 Taktisk radar (nå)"},
+        {"command": "trend", "description": "🔮 14-dagers værvarsel"},
+        {"command": "menu", "description": "⚙️ Geo- og tidsinnstillinger"},
+        {"command": "city", "description": "🌍 Endre posisjon med tekst"},
+        {"command": "invite", "description": "💌 Inviter eller legg til i gruppe"},
+        {"command": "info", "description": "ℹ️ Kort bot-manual"},
+        {"command": "tips", "description": "💡 Nyttige triks og funksjoner"}
+    ]
 }
 # ==============================================================
 

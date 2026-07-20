@@ -123,7 +123,7 @@ def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str 
 
     # 1. PRIORYTET: Detekcja ukrytego opadu (OWM widzi wodę, model ma 0.0)
     if model_precip < 0.1 and owm_precip >= 0.2:
-        return strings[lang].get("nowcast_precip", "")
+        return STRINGS[lang].get("nowcast_precip", "")
 
     # 2. DRUGI PLAN: Detekcja błędu w zachmurzeniu
     def eff(x: dict) -> float:
@@ -147,8 +147,8 @@ def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str 
         return None
 
     if owm_clouds >= 70 and model_eff <= 30:
-        return strings[lang].get("nowcast_more_clouds", "")
+        return STRINGS[lang].get("nowcast_more_clouds", "")
     if owm_clouds <= 30 and model_eff >= 70:
-        return strings[lang].get("nowcast_less_clouds", "")
+        return STRINGS[lang].get("nowcast_less_clouds", "")
         
-    return strings[lang].get("nowcast_diff_clouds", "")
+    return STRINGS[lang].get("nowcast_diff_clouds", "")
