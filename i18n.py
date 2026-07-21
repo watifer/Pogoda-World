@@ -1503,7 +1503,8 @@ UI_TEXTS = {
         "search_fail": "❌ Nie mogłem znaleźć takiego miejsca na mapie. Spróbuj dopisać kraj, np. `/miasto nazwa, Polska`.",
         "city_prompt": "💡 *Zmień lokalizację*\n\nWpisz komendę i podaj nazwę miejscowości.\n\nPrzykłady:\n👉 `/miasto Warszawa`\n👉 `/miasto Wiązowna 05-462` (dodaj kod pocztowy lub ulicę, jeśli nazwa się powtarza)",
         "search_success": "✅ *Lokalizacja zaktualizowana!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_To nie to miejsce? Wpisz komendę jeszcze raz, dodając kod pocztowy lub dzielnicę._",
-        "search_err": "⚠️ Błąd serwera map. Spróbuj ponownie za chwilę."
+        "search_err": "⚠️ Błąd serwera map. Spróbuj ponownie za chwilę.",
+        "btn_update_gps": "📍 Aktualizuj z GPS"
     },
     "en": {
         "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n\n📍 *How to change location?*\nSend a new 📎 Location pin.",
@@ -1531,7 +1532,8 @@ UI_TEXTS = {
         "search_fail": "⚠️ *Place not found.*\n\nCheck for typos. Sometimes it helps to simplify your search to just the city name and postal code.",
         "city_prompt": "💡 *Change your location*\n\nType the command followed by your city name.\n\nExamples:\n👉 `/city London`\n👉 `/city London NW1` (add a postal code or street if the name is common)",
         "search_success": "✅ *Location updated!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Not the right place? Try searching again with a postal code or region._",
-        "search_err": "⚠️ Maps server error. Please try again later."
+        "search_err": "⚠️ Maps server error. Please try again later.",
+        "btn_update_gps": "📍 Update with GPS"
     },
     "de": {
         "menu_header": "⚙️ *KONTROLLZENTRUM* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Aktueller Standort:*\n└ {city}\n\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändert man die Zeiten?*\nKlicke auf den Button unten.\n\n📍 *Wie ändert man den Standort?*\nSende eine neue 📎 Standortnadel.",
@@ -1559,7 +1561,8 @@ UI_TEXTS = {
         "search_fail": "⚠️ *Ort nicht gefunden.*\n\nPrüfe auf Tippfehler. Manchmal hilft es, die Suche auf den Stadtnamen und die Postleitzahl zu beschränken.",
         "city_prompt": "💡 *Standort ändern*\n\nGib den Befehl gefolgt von deinem Stadtnamen ein.\n\nBeispiele:\n👉 `/city Berlin`\n👉 `/city Berlin 10115` (Postleitzahl hinzufügen, falls der Name häufig vorkommt)",
         "search_success": "✅ *Standort aktualisiert!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Nicht der richtige Ort? Versuche es erneut mit einer Postleitzahl oder Region._",
-        "search_err": "⚠️ Karten-Serverfehler. Bitte versuche es später noch einmal."
+        "search_err": "⚠️ Karten-Serverfehler. Bitte versuche es später noch einmal.",
+        "btn_update_gps": "📍 Mit GPS aktualisieren"
     },
     "es": {
         "menu_header": "⚙️ *PANEL DE CONTROL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Ubicación actual:*\n└ {city}\n\n📅 *Tu horario:*\n├ Mañana: {disp_rano}\n└ Tarde: {disp_wieczor}\n\n⏰ *¿Cómo cambiar las horas?*\nHaz clic en el botón de abajo.\n\n📍 *¿Cómo cambiar la ubicación?*\nEnvía un nuevo 📎 Pin de ubicación.",
@@ -1587,7 +1590,8 @@ UI_TEXTS = {
         "search_fail": "⚠️ *Lugar no encontrado.*\n\nComprueba si hay errores tipográficos. A veces ayuda simplificar la búsqueda a solo el nombre de la ciudad y el código postal.",
         "city_prompt": "💡 *Cambiar tu ubicación*\n\nEscribe el comando seguido del nombre de tu ciudad.\n\nEjemplos:\n👉 `/city Madrid`\n👉 `/city Madrid 28001` (añade un código postal si el nombre es común)",
         "search_success": "✅ *¡Ubicación actualizada!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_¿No es el lugar correcto? Intenta buscar de nuevo con un código postal o región._",
-        "search_err": "⚠️ Error del servidor de mapas. Por favor, inténtalo de nuevo más tarde."
+        "search_err": "⚠️ Error del servidor de mapas. Por favor, inténtalo de nuevo más tarde.",
+        "btn_update_gps": "📍 Actualizar con GPS"
     },
     "fr": {
         "menu_header": "⚙️ *PANNEAU DE CONTRÔLE* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Position actuelle :*\n└ {city}\n\n📅 *Votre programme :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment changer les heures ?*\nCliquez sur le bouton ci-dessous.\n\n📍 *Comment changer de lieu ?*\nEnvoyez une nouvelle 📎 Épingle de position.",
@@ -1610,12 +1614,13 @@ UI_TEXTS = {
         "invite_group_desc": "💡 *Vous souhaitez ajouter le bot à votre groupe ?*\nUtilisez le bouton ci-dessous. Telegram ouvrira automatiquement votre liste de groupes.",
         "info_msg": "ℹ️ *COMMENT FONCTIONNE MÉTÉO POUR VOUS ?*\nJe suis votre assistant météo personnel. Voici un petit guide rapide :\n\n📍 *1. Position exacte*\nPour changer de lieu, cliquez sur n'importe lequel de mes messages, sélectionnez *Répondre*, puis 📎, *Position* 📍 et envoyez une *Épingle de position*.\n\n🏙 *2. Recherche de ville (/city)*\nTapez la commande `/city nom de la ville` (par ex. `/city Paris`) pour consulter rapidement la météo de n'importe quel endroit, sans envoyer d'épingle.\n\n⏰ *3. Rapports quotidiens (/menu)*\nDéfinissez vos propres heures auxquelles je dois vous envoyer le résumé quotidien du matin et les prévisions de l'après-midi.\n\n⏰ *4. Rapport quotidien à la demande (/day)*\nActualisez votre rapport quotidien enrichi des dernières données météorologiques.\n\n📡 *5. Radar tactique (/now)*\nJe générerai instantanément une carte détaillée heure par heure pour les 12 prochaines heures.\n\n🔮 *6. Tendance à long terme (/trend)*\nJe générerai un graphique de prévision à 14 jours.\n\n💌 *7. Invitation (/invite)*\nSi vous aimez l'application, partagez le lien avec vos amis ou ajoutez le bot à un groupe.\n\nℹ️ *8. Manuel du bot (/info)*\nAffichez ce bref manuel du bot avec une liste de commandes.\n\n💡 *9. Trucs et astuces (/tips)*\nDécouvrez des astuces utiles et des fonctionnalités cachées.",
         "welcome_back": "👋 Bon retour sur Météo pour Vous ! Votre profil est déjà autorisé.\n\nVous pouvez toujours taper *`/menu`* pour vérifier vos paramètres, ou utiliser la commande *`/invite`* pour partager l'application avec un ami !",
-        "porady_msg": "💡 *TRUCS ET ASTUCES – POGODA WORLD*\nExploitez tout le potentiel de votre assistant météo :\n\n🔕 *1. Matinées calmes*\nLes notifications sonores sont automatiquement désactivées tôt le matin (avant 7h00) pour ne pas vous réveiller. Vous pouvez également mettre le chat en sourdine manuellement dans les paramètres de Telegram.\n\n⏰ *2. Rapport supplémentaire*\nVous avez déjà reçu votre rapport matinal, mais la météo est dynamique et vous voulez une mise à jour ? Sélectionnez simplement */day* dans le menu, et vous obtiendrez instantanément de nouvelles prévisions complètes ! Pour un coup d'œil rapide sans changer les paramètres, utilisez la commande */now*.\n\n🌍 *3. La météo à travers le monde*\nVous voulez suivre la météo en Amazonie ? Créez un groupe Telegram vide, ajoutez le bot via */invite*, et envoyez une épingle depuis la carte du monde ! *Remarque :* Les rapports arriveront selon l'heure locale de cet endroit.\n\n🛑 *4. Vacances des notifications*\nVous ne voulez pas de rapports automatiques ? Dans le */menu*, sélectionnez *\"Je n'en veux pas\"*. Vous pouvez toujours vérifier la météo manuellement à l'aide de commandes.\n\n🎛 *5. Commandes rapides*\nDans un chat privé, utilisez le bouton *Menu* sur la gauche. Dans un groupe, tapez simplement une barre oblique * / * pour dérouler la liste des commandes.\n\n📍 *6. Confidentialité et sécurité*\nVous n'avez pas besoin de fournir votre adresse exacte – une différence de 3 km ne change pas les prévisions. De plus, tous les liens du bot sont totalement sûrs.\n\n⚙️ *7. Paramètres par défaut*\nSi vous ne faites rien et ne définissez pas vos heures dans le menu, vous ne manquerez rien ! Vos rapports météo seront envoyés par défaut à *{default_rano}* et *{default_wieczor}*.\n\n🌴 *8. Météo de vacances*\nVous partez en vacances ? Ouvrez simplement le chat avec le bot et envoyez une nouvelle 📎 Épingle de position d'où vous êtes. Le bot passera instantanément au nouvel emplacement et vous enverra des rapports selon le fuseau horaire local !\n\n🏙 *9. Changement de lieu rapide*\nVous n'avez pas besoin d'envoyer une épingle sur la carte pour changer votre position principale ! Utilisez simplement la commande `/city nom` (par ex. `/city Rome`), et le bot mettra instantanément à jour vos paramètres et générera un nouveau rapport pour ce nouveau lieu.",
+        "porady_msg": "💡 *TRUCS ET ASTUCES – POGODA WORLD*\nExploitez tout le potentiel de votre assistant météo :\n\n🔕 *1. Matinées calmes*\nLes notifications sonores sont automatiquement désactivées tôt le matin (avant 7h00) pour ne pas vous réveiller. Vous pouvez également mettre le chat en sourdine manuellement dans les paramètres de Telegram.\n\n⏰ *2. Rapport supplémentaire*\nVous avez déjà reçu votre rapport matinal, mais la météo est dynamique et vous voulez une mx`ise à jour ? Sélectionnez simplement */day* dans le menu, et vous obtiendrez instantanément de nouvelles prévisions complètes ! Pour un coup d'œil rapide sans changer les paramètres, utilisez la commande */now*.\n\n🌍 *3. La météo à travers le monde*\nVous voulez suivre la météo en Amazonie ? Créez un groupe Telegram vide, ajoutez le bot via */invite*, et envoyez une épingle depuis la carte du monde ! *Remarque :* Les rapports arriveront selon l'heure locale de cet endroit.\n\n🛑 *4. Vacances des notifications*\nVous ne voulez pas de rapports automatiques ? Dans le */menu*, sélectionnez *\"Je n'en veux pas\"*. Vous pouvez toujours vérifier la météo manuellement à l'aide de commandes.\n\n🎛 *5. Commandes rapides*\nDans un chat privé, utilisez le bouton *Menu* sur la gauche. Dans un groupe, tapez simplement une barre oblique * / * pour dérouler la liste des commandes.\n\n📍 *6. Confidentialité et sécurité*\nVous n'avez pas besoin de fournir votre adresse exacte – une différence de 3 km ne change pas les prévisions. De plus, tous les liens du bot sont totalement sûrs.\n\n⚙️ *7. Paramètres par défaut*\nSi vous ne faites rien et ne définissez pas vos heures dans le menu, vous ne manquerez rien ! Vos rapports météo seront envoyés par défaut à *{default_rano}* et *{default_wieczor}*.\n\n🌴 *8. Météo de vacances*\nVous partez en vacances ? Ouvrez simplement le chat avec le bot et envoyez une nouvelle 📎 Épingle de position d'où vous êtes. Le bot passera instantanément au nouvel emplacement et vous enverra des rapports selon le fuseau horaire local !\n\n🏙 *9. Changement de lieu rapide*\nVous n'avez pas besoin d'envoyer une épingle sur la carte pour changer votre position principale ! Utilisez simplement la commande `/city nom` (par ex. `/city Rome`), et le bot mettra instantanément à jour vos paramètres et générera un nouveau rapport pour ce nouveau lieu.",
         "search_loc": "🔍 Recherche sur la carte...",
         "search_fail": "⚠️ *Lieu introuvable.*\n\nVérifiez les fautes de frappe. Il est parfois utile de simplifier votre recherche en n'indiquant que le nom de la ville et le code postal.",
         "city_prompt": "💡 *Changer de lieu*\n\nTapez la commande suivie du nom de votre ville.\n\nExemples :\n👉 `/city Paris`\n👉 `/city Paris 75001` (ajoutez un code postal si le nom est commun)",
         "search_success": "✅ *Position mise à jour !*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Pas le bon endroit ? Essayez de chercher à nouveau avec un code postal ou une région._",
-        "search_err": "⚠️ Erreur du serveur de cartes. Veuillez réessayer plus tard."
+        "search_err": "⚠️ Erreur du serveur de cartes. Veuillez réessayer plus tard.",
+        "btn_update_gps": "📍 Mettre à jour via GPS"
     },
     "no": {
         "menu_header": "⚙️ *KONTROLLPANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Nåværende posisjon:*\n└ {city}\n\n📅 *Din timeplan:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tider?*\nKlikk på knappen nedenfor.\n\n📍 *Hvordan endre posisjon?*\nSend en ny 📎 Posisjonsnål.",
@@ -1643,7 +1648,8 @@ UI_TEXTS = {
         "search_fail": "⚠️ *Sted ikke funnet.*\n\nSjekk for skrivefeil. Noen ganger hjelper det å forenkle søket til kun bynavn og postnummer.",
         "city_prompt": "💡 *Endre posisjonen din*\n\nSkriv kommandoen etterfulgt av bynavnet ditt.\n\nEksempler:\n👉 `/city Oslo`\n👉 `/city Oslo 0150` (legg til postnummer hvis navnet er vanlig)",
         "search_success": "✅ *Posisjon oppdatert!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Ikke riktig sted? Prøv å søke igjen med et postnummer eller en region._",
-        "search_err": "⚠️ Kartserver-feil. Vennligst prøv igjen senere."
+        "search_err": "⚠️ Kartserver-feil. Vennligst prøv igjen senere.",
+        "btn_update_gps": "📍 Oppdater med GPS"
     }
 }
 

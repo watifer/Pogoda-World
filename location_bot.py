@@ -292,8 +292,11 @@ def main_bot():
                                 
                         # Wysyłamy potwierdzenie i zwijamy klawiaturę!
                         ukryj_klawiature = {"remove_keyboard": True}
-                        sukces_msg = f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca."
+                        sukces_msg = t_ui(user_lang, "loc_updated", city=city)
                         send_reply(chat_id, sukces_msg, reply_markup=ukryj_klawiature)
+                        
+                        
+                        
                         
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
@@ -649,7 +652,7 @@ def main_bot():
                     # TWORZYMY DOLNĄ KLAWIATURĘ (Reply Keyboard) Z WEBAPP
                     klawiatura_gps = {
                         "keyboard": [
-                            [{"text": "📍 Aktualizuj z GPS", "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}]
+                            [{"text": nazwa_przycisku, "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}]
                         ],
                         "resize_keyboard": True
                     }

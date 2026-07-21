@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html>
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Ustaw lokalizację - Pogoda World</title>
+    <title>GPS Location</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
@@ -20,21 +20,9 @@
             text-align: center;
             box-sizing: border-box;
         }
-        .icon {
-            font-size: 64px;
-            margin-bottom: 20px;
-        }
-        h1 {
-            font-size: 22px;
-            margin-top: 0;
-            margin-bottom: 10px;
-        }
-        p {
-            font-size: 15px;
-            opacity: 0.8;
-            margin-bottom: 30px;
-            line-height: 1.4;
-        }
+        .icon { font-size: 64px; margin-bottom: 20px; }
+        h1 { font-size: 22px; margin-top: 0; margin-bottom: 10px; }
+        p { font-size: 15px; opacity: 0.8; margin-bottom: 30px; line-height: 1.4; }
         button {
             background-color: var(--tg-theme-button-color, #3390ec);
             color: var(--tg-theme-button-text-color, #ffffff);
@@ -48,78 +36,118 @@
             cursor: pointer;
             transition: opacity 0.2s;
         }
-        button:active {
-            opacity: 0.8;
-        }
-        button:disabled {
-            background-color: var(--tg-theme-hint-color, #999999);
-            cursor: not-allowed;
-        }
-        .err {
-            margin-top: 20px;
-            color: #e53935;
-            font-weight: 500;
-            font-size: 14px;
-        }
+        button:active { opacity: 0.8; }
+        button:disabled { background-color: var(--tg-theme-hint-color, #999999); cursor: not-allowed; }
+        .err { margin-top: 20px; color: #e53935; font-weight: 500; font-size: 14px; }
     </style>
 </head>
 <body>
     <div class="icon">📍</div>
-    <h1>Dokładna lokalizacja</h1>
-    <p>Udostępnij swój GPS, aby bot mógł wysyłać idealnie dopasowane prognozy pogody.</p>
+    <h1 id="ui-title">Dokładna lokalizacja</h1>
+    <p id="ui-desc">Udostępnij swój GPS, aby bot mógł wysyłać idealnie dopasowane prognozy pogody.</p>
     
     <button id="btn">Udostępnij lokalizację</button>
     <div id="err" class="err"></div>
 
     <script>
-        // Inicjalizacja Telegram Web App
         const tg = window.Telegram?.WebApp;
         if (tg) {
             tg.ready();
-            tg.expand(); // Rozwija okienko na maksymalną wysokość
+            tg.expand();
         }
 
-        const errEl = document.getElementById("err");
+        // SŁOWNIK TŁUMACZEŃ WEBAPP
+        const i18n = {
+            "pl": {
+                title: "Dokładna lokalizacja",
+                desc: "Udostępnij swój GPS, aby bot mógł wysyłać idealnie dopasowane prognozy pogody.",
+                btn: "Udostępnij lokalizację",
+                btn_loading: "Pobieranie danych z satelity...",
+                err_unsupported: "Twoje urządzenie nie obsługuje geolokalizacji.",
+                err_denied: "Odmowa dostępu do GPS lub brak sygnału."
+            },
+            "en": {
+                title: "Exact Location",
+                desc: "Share your GPS so the bot can send perfectly tailored weather forecasts.",
+                btn: "Share Location",
+                btn_loading: "Fetching satellite data...",
+                err_unsupported: "Your device does not support geolocation.",
+                err_denied: "GPS access denied or no signal."
+            },
+            "de": {
+                title: "Genauer Standort",
+                desc: "Teile dein GPS, damit der Bot perfekt zugeschnittene Wettervorhersagen senden kann.",
+                btn: "Standort teilen",
+                btn_loading: "Satellitendaten werden abgerufen...",
+                err_unsupported: "Dein Gerät unterstützt keine Geolokalisierung.",
+                err_denied: "GPS-Zugriff verweigert oder kein Signal."
+            },
+            "fr": {
+                title: "Position exacte",
+                desc: "Partagez votre GPS pour que le bot puisse envoyer des prévisions météo parfaitement adaptées.",
+                btn: "Partager la position",
+                btn_loading: "Récupération des données satellite...",
+                err_unsupported: "Votre appareil ne prend pas en charge la géolocalisation.",
+                err_denied: "Accès GPS refusé ou pas de signal."
+            },
+            "es": {
+                title: "Ubicación exacta",
+                desc: "Comparte tu GPS para que el bot pueda enviar pronósticos meteorológicos perfectamente adaptados.",
+                btn: "Compartir ubicación",
+                btn_loading: "Obteniendo datos del satélite...",
+                err_unsupported: "Tu dispositivo no soporta geolocalización.",
+                err_denied: "Acceso denegado al GPS o sin señal."
+            },
+            "no": {
+                title: "Nøyaktig posisjon",
+                desc: "Del din GPS slik at boten kan sende perfekt tilpassede værmeldinger.",
+                btn: "Del posisjon",
+                btn_loading: "Henter satellittdata...",
+                err_unsupported: "Enheten din støtter ikke geolokalisering.",
+                err_denied: "GPS-tilgang nektet eller intet signal."
+            }
+        };
+
+        // Wyciągamy język z Telegrama (np. "pl", "en", "de-DE") i bierzemy tylko 2 pierwsze litery
+        const userLangRaw = tg?.initDataUnsafe?.user?.language_code || "en";
+        const userLang = userLangRaw.substring(0, 2).toLowerCase();
+        
+        // Zabezpieczenie: jeśli języka nie ma w słowniku, używamy angielskiego
+        const t = i18n[userLang] || i18n["en"];
+
+        // Aplikujemy tłumaczenia na stronę
+        document.getElementById("ui-title").textContent = t.title;
+        document.getElementById("ui-desc").textContent = t.desc;
         const btn = document.getElementById("btn");
+        btn.textContent = t.btn;
+
+        const errEl = document.getElementById("err");
 
         function fail(msg) {
             errEl.textContent = msg;
-            if (tg && tg.HapticFeedback) {
-                tg.HapticFeedback.notificationOccurred("error");
-            }
+            if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
         }
 
         btn.addEventListener("click", () => {
             errEl.textContent = "";
-            
-            if (!navigator.geolocation) {
-                return fail("Twoje urządzenie nie obsługuje geolokalizacji.");
-            }
+            if (!navigator.geolocation) return fail(t.err_unsupported);
 
             btn.disabled = true;
-            btn.textContent = "Pobieranie danych z satelity...";
+            btn.textContent = t.btn_loading;
 
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lon = pos.coords.longitude;
-                    const payload = JSON.stringify({ type: "set_location", lat, lon });
-                    
+                    const payload = JSON.stringify({ type: "set_location", lat: pos.coords.latitude, lon: pos.coords.longitude });
                     if (tg) {
-                        if (tg.HapticFeedback) {
-                            tg.HapticFeedback.notificationOccurred("success");
-                        }
+                        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
                         tg.sendData(payload);
-                        // Zamykamy okienko po wysłaniu danych
                         setTimeout(() => tg.close(), 100); 
-                    } else {
-                        btn.textContent = `Wysłano: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                     }
                 },
                 (e) => {
                     btn.disabled = false;
-                    btn.textContent = "Udostępnij lokalizację";
-                    fail("Odmowa dostępu do GPS lub brak sygnału.");
+                    btn.textContent = t.btn;
+                    fail(t.err_denied);
                 },
                 { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
