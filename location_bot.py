@@ -189,6 +189,16 @@ def main_bot():
             
             if wad and wad.get("data"):
                 chat_id = msg.get("chat", {}).get("id")
+                
+                # --- SZYBKIE POBRANIE JĘZYKA Z BAZY DLA WEBAPP ---
+                user_lang = "pl" # Domyślnie polski
+                for u in clean_users:
+                    if str(u.get("Chat ID", "")).strip() == str(chat_id):
+                        lang_z_bazy = str(u.get("Lang", u.get("Język", ""))).strip().lower()
+                        if lang_z_bazy:
+                            user_lang = lang_z_bazy
+                        break
+                # -------------------------------------------------
                 raw_data = wad.get("data", "")
                 
                 print(f"  [DEBUG-WEBAPP] Otrzymano czyste dane z WebApp: {raw_data}")
@@ -213,7 +223,7 @@ def main_bot():
                             print("  [DEBUG-WEBAPP] Nie znalazłem usera w bazie!")
                     
                     # Zakładamy 'pl' jako domyślny język podczas zapisu GPS
-                    city = get_city_from_coords(lat, lon, "pl") 
+                    city = get_city_from_coords(lat, lon, user_lang)
                     if city == "Lokalizacja w terenie" or not city:
                         city = "Twoja okolica"
                         
