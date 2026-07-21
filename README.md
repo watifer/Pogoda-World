@@ -46,24 +46,11 @@ The code shared in this repository serves as a **public technology portfolio**. 
 
 
 <p align="center">
-  <figure>
-    <figcaption><b>📰 Daily Forecast (/day)</b> – Morning weather report</figcaption>
-    <br>
-    <img src="info/day-card.jpg" alt="Today's forecast" width="350">
-  </figure>
-  <br><br>
-  <figure>
-    <figcaption><b>⚡ Tactical Radar (/now)</b> – Forecast for the upcoming hours</figcaption>
-    <br>
-    <img src="info/now-card.jpg" alt="Hourly forecast" width="350">
-  </figure>
-  <br><br>
-  <figure>
-    <figcaption><b>⚙️ Trend Forecast (/trend)</b> – 14-day forecast</figcaption>
-    <br>
-    <img src="info/trend-card.jpg" alt="14-day trend" width="350">
-  </figure>
+  <img src="info/day-card.jpg" alt="Today's forecast" width="350"><br><br>
+  <img src="info/now-card.jpg" alt="Hourly forecast" width="350"><br><br>
+  <img src="info/trend-card.jpg" alt="14-day trend" width="350">
 </p>
+
 
 
 
