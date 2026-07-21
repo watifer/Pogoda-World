@@ -25,8 +25,8 @@ COMMANDS_BY_LANG = {
         {"command": "day", "description": "☀️ Daily weather card"},
         {"command": "now", "description": "📡 Tactical radar (current 12 hours)"},
         {"command": "trend", "description": "🔮 14-day weather trend"},
-        {"command": "menu", "description": "⚙️ Geo & hours settings panel"},
-        {"command": "city", "description": "🌍 Change location by text"},
+        {"command": "menu", "description": "⚙️ Change report hours"},
+        {"command": "city", "description": "🌍 Change city via keyboard or GPS"},
         {"command": "invite", "description": "💌 Invite or add to group"},
         {"command": "info", "description": "ℹ️ Brief bot manual"},
         {"command": "tips", "description": "💡 Useful tricks and features"}
@@ -37,8 +37,8 @@ COMMANDS_BY_LANG = {
         {"command": "day", "description": "☀️ Dzienna karta pogodowa"},
         {"command": "now", "description": "📡 Radar taktyczny (bieżące 12 godziny)"},
         {"command": "trend", "description": "🔮 Trend pogody (14 dni)"},
-        {"command": "menu", "description": "⚙️ Panel ustawień Geo i godzin"},
-        {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury"},
+        {"command": "menu", "description": "⚙️ Zmień godziny raportów"},
+        {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury lub z GPS"},
         {"command": "zapros", "description": "💌 Zaproś lub dodaj do grupy"},
         {"command": "info", "description": "ℹ️ Krótka instrukcja obsługi"},
         {"command": "porady", "description": "💡 Przydatne triki i funkcje"}
@@ -49,8 +49,8 @@ COMMANDS_BY_LANG = {
         {"command": "day", "description": "☀️ Tägliche Wetterkarte"},
         {"command": "now", "description": "📡 Taktisches Radar (aktuell)"},
         {"command": "trend", "description": "🔮 14-Tage-Wettertrend"},
-        {"command": "menu", "description": "⚙️ Einstellungen für Geo & Zeit"},
-        {"command": "city", "description": "🌍 Standort per Text ändern"},
+        {"command": "menu", "description": "⚙️ Berichtszeiten ändern"},
+        {"command": "city", "description": "🌍 Stadt per Tastatur oder GPS ändern"},
         {"command": "invite", "description": "💌 Einladen oder zur Gruppe hinzufügen"},
         {"command": "info", "description": "ℹ️ Kurzes Bot-Handbuch"},
         {"command": "tips", "description": "💡 Nützliche Tricks und Funktionen"}
@@ -62,7 +62,7 @@ COMMANDS_BY_LANG = {
         {"command": "now", "description": "📡 Radar táctico (actual)"},
         {"command": "trend", "description": "🔮 Tendencia del tiempo (14 días)"},
         {"command": "menu", "description": "⚙️ Panel de ajustes de Geo y hora"},
-        {"command": "city", "description": "🌍 Cambiar ubicación por texto"},
+        {"command": "menu", "description": "⚙️ Cambiar el horario de los informes"},
         {"command": "invite", "description": "💌 Invitar o añadir al grupo"},
         {"command": "info", "description": "ℹ️ Breve manual del bot"},
         {"command": "tips", "description": "💡 Trucos y funciones útiles"}
@@ -73,8 +73,8 @@ COMMANDS_BY_LANG = {
         {"command": "day", "description": "☀️ Carte météo du jour"},
         {"command": "now", "description": "📡 Radar tactique (actuel)"},
         {"command": "trend", "description": "🔮 Tendance météo (14 jours)"},
-        {"command": "menu", "description": "⚙️ Paramètres géo et horaires"},
-        {"command": "city", "description": "🌍 Changer de lieu par texte"},
+        {"command": "menu", "description": "⚙️ Changer les heures de rapport"},
+        {"command": "city", "description": "🌍 Changer de ville via clavier ou GPS"},
         {"command": "invite", "description": "💌 Inviter ou ajouter au groupe"},
         {"command": "info", "description": "ℹ️ Bref manuel du bot"},
         {"command": "tips", "description": "💡 Astuces et fonctions utiles"}
@@ -85,8 +85,8 @@ COMMANDS_BY_LANG = {
         {"command": "day", "description": "☀️ Daglig værkort"},
         {"command": "now", "description": "📡 Taktisk radar (nå)"},
         {"command": "trend", "description": "🔮 14-dagers værvarsel"},
-        {"command": "menu", "description": "⚙️ Geo- og tidsinnstillinger"},
-        {"command": "city", "description": "🌍 Endre posisjon med tekst"},
+        {"command": "menu", "description": "⚙️ Endre tidspunkt for rapporter"},
+        {"command": "city", "description": "🌍 Endre by med tastatur eller GPS"},
         {"command": "invite", "description": "💌 Inviter eller legg til i gruppe"},
         {"command": "info", "description": "ℹ️ Kort bot-manual"},
         {"command": "tips", "description": "💡 Nyttige triks og funksjoner"}

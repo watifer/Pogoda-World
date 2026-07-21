@@ -356,7 +356,15 @@ def main_bot():
                     clean_users.append(user_data)
                     
                         
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "welcome_new"))
+                    # Pobieramy tłumaczenie na przycisk i wyświetlamy klawiaturę!
+                    nazwa_przycisku = t_ui(wykryty_jezyk, "btn_update_gps")
+                    klawiatura_gps = {
+                        "keyboard": [
+                            [{"text": nazwa_przycisku, "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}]
+                        ],
+                        "resize_keyboard": True
+                    }
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "welcome_new"), reply_markup=klawiatura_gps)
                     continue # Rejestracja zrobiona, pomijamy resztę pętli dla tej wiadomości
                     
                 except Exception as e:

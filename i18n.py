@@ -1478,7 +1478,7 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
 # ==============================================================
 UI_TEXTS = {
     "pl": {
-        "menu_header": "⚙️ *PANEL STEROWANIA* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Obecna lokalizacja:*\n└ {city}\n\n📅 *Twój harmonogram:*\n├ Rano: {disp_rano}\n└ Popołudnie: {disp_wieczor}\n\n⏰ *Jak zmienić godziny?*\nKliknij przycisk poniżej.\n\n📍 *Jak zmienić miejscowość?*\nWyślij nową 📎 Pinezkę z mapy.",
+        "menu_header": "⚙️ *PANEL STEROWANIA* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Obecna lokalizacja:*\n└ {city}\n\n📍 *Jak zmienić miejscowość?*\nUżyj opcji /miasto lub zobacz instrukcję /info jak to zrobić z mapy.\n\n📅 *Twój harmonogram:*\n├ Rano: {disp_rano}\n└ Popołudnie: {disp_wieczor}\n\n⏰ *Jak zmienić godziny?*\nKliknij przycisk poniżej.\n",
         "btn_change_hours": "⏰ Zmień godziny raportów",
         "disp_off": "Wyłączony ❌",
         "loc_updated": "✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca.",
@@ -1491,7 +1491,7 @@ UI_TEXTS = {
         "no_access": "⛔ *Brak dostępu*\nPrzepraszamy, ten bot jest prywatny i działa wyłącznie na zaproszenia od obecnych użytkowników.",
         "limit_reached": "⛔ Niestety, globalny limit miejsc w aplikacji (50) został wyczerpany.",
         "invalid_link": "⛔ Ten link zaproszeniowy jest nieprawidłowy lub pochodzi od niezarejestrowanej osoby.",
-        "welcome_new": "✅ *Rejestracja pomyślna!*\nWitamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n⚠️ *Ostatni krok, ale konieczny:*\nAby raporty mogły działać i przychodzić do Ciebie o godz. 8:00 i 14:00, musisz ustawić swoją lokalizację:\n1️⃣ Naciśnij tę wiadomość i wybierz *Odpowiedz* (Reply).\n2️⃣ Wybierz 📎 (spinacz), a następnie 📍 *Lokalizacja*.\n3️⃣ Wyślij 📎 *Pinezkę z mapy*.",
+        "welcome_new": "✅ *Rejestracja pomyślna!*\nWitamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n⚠️ *Ostatni, ale konieczny krok:*\nAby raporty mogły do Ciebie przychodzić (domyślnie o 8:00 i 14:00), musisz ustawić swoją lokalizację.\n\n👇 **Naciśnij przycisk GPS na dole ekranu** lub wpisz komendę `/miasto`.",
         "invite_intro": "💌 *Twoje zaproszenie jest gotowe!*\n\nSkopiuj poniższą wiadomość i wyślij ją znajomemu (np. przez SMS lub WhatsApp), albo bezpośrednio przez Telegram.",
         "invite_sms": "Cześć! 🌤 Używam świetnego, prywatnego bota pogodowego na Telegramie.\n\nZostawiam Ci moje zaproszenie. Kliknij w link poniżej, aby z niego skorzystać:\n{link}",
         "invite_group_btn": "➕ Dodaj bota do Twojej grupy",
@@ -1507,7 +1507,7 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Aktualizuj z GPS"
     },
     "en": {
-        "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n\n📍 *How to change location?*\nSend a new 📎 Location pin.",
+        "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📍 *How to change your city?*\nUse the /city command or see /info for map instructions.\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n",
         "btn_change_hours": "⏰ Change report hours",
         "disp_off": "Disabled ❌",
         "loc_updated": "✅ *Location updated!*\n\n📍 Recognized: {city}\n🌤️ Weather reports will use this location from now on.",
@@ -1520,7 +1520,7 @@ UI_TEXTS = {
         "no_access": "⛔ *Access Denied*\nSorry, this bot is private and works exclusively via invitations from current users.",
         "limit_reached": "⛔ Unfortunately, the global application limit (50 users) has been reached.",
         "invalid_link": "⛔ This invitation link is invalid or comes from an unregistered person.",
-        "welcome_new": "✅ *Registration successful!*\nWelcome to Weather for You. You got here by invitation!\n\n⚠️ *One last, necessary step:*\nFor reports to work and arrive at 8:00 and 14:00, you must set your location:\n1️⃣ Tap this message and select *Reply*.\n2️⃣ Choose 📎 (paperclip), then 📍 *Location*.\n3️⃣ Send 📎 *Map pin*.",
+        "welcome_new": "✅ *Registration successful!*\nWelcome to the Weather for You community. You got here through an invite!\n\n⚠️ *Final, but necessary step:*\nFor the reports to reach you (default 8:00 and 14:00), you must set your location.\n\n👇 **Tap the GPS button at the bottom of the screen** or type the `/city` command.",
         "invite_intro": "💌 *Your invitation is ready!*\n\nCopy the message below and send it to a friend (e.g., via SMS or WhatsApp), or directly through Telegram.",
         "invite_sms": "Hi! 🌤 I use a great, private weather bot on Telegram.\n\nHere is my invitation. Click the link below to use it:\n{link}",
         "invite_group_btn": "➕ Add bot to your group",
@@ -1536,7 +1536,7 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Update with GPS"
     },
     "de": {
-        "menu_header": "⚙️ *KONTROLLZENTRUM* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Aktueller Standort:*\n└ {city}\n\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändert man die Zeiten?*\nKlicke auf den Button unten.\n\n📍 *Wie ändert man den Standort?*\nSende eine neue 📎 Standortnadel.",
+        "menu_header": "⚙️ *KONTROLLZENTRUM* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Aktueller Standort:*\n└ {city}\n\n📍 *Wie ändere ich den Ort?*\nNutze /city oder lies unter /info, wie es mit der Karte geht.\n\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändere ich die Zeiten?*\nKlicke auf die Taste unten.\n",
         "btn_change_hours": "⏰ Berichtszeiten ändern",
         "disp_off": "Deaktiviert ❌",
         "loc_updated": "✅ *Standort aktualisiert!*\n\n📍 Erkannt: {city}\n🌤️ Wetterberichte werden ab sofort für diesen Ort erstellt.",
@@ -1549,7 +1549,7 @@ UI_TEXTS = {
         "no_access": "⛔ *Zugriff verweigert*\nEntschuldigung, dieser Bot ist privat und funktioniert ausschließlich über Einladungen von aktuellen Nutzern.",
         "limit_reached": "⛔ Leider wurde das globale Anwendungslimit (50 Nutzer) erreicht.",
         "invalid_link": "⛔ Dieser Einladungslink ist ungültig oder stammt von einer nicht registrierten Person.",
-        "welcome_new": "✅ *Registrierung erfolgreich!*\nWillkommen bei Wetter für Dich. Du bist durch eine Einladung hier!\n\n⚠️ *Ein letzter, notwendiger Schritt:*\nDamit die Berichte funktionieren und um 8:00 und 14:00 Uhr ankommen, musst du deinen Standort festlegen:\n1️⃣ Tippe auf diese Nachricht und wähle *Antworten* (Reply).\n2️⃣ Wähle 📎 (Büroklammer), dann 📍 *Standort*.\n3️⃣ Sende eine 📎 *Standortnadel*.",
+        "welcome_new": "✅ *Registrierung erfolgreich!*\nWillkommen in der Community. Du bist über eine Einladung hier!\n\n⚠️ *Letzter, aber notwendiger Schritt:*\nDamit die Berichte dich erreichen (standardmäßig 8:00 und 14:00 Uhr), musst du deinen Standort festlegen.\n\n👇 **Tippe auf die GPS-Taste unten auf dem Bildschirm** oder gib den Befehl `/city` ein.",
         "invite_intro": "💌 *Deine Einladung ist bereit!*\n\nKopiere die Nachricht unten und sende sie an einen Freund (z. B. über SMS oder WhatsApp) oder direkt über Telegram.",
         "invite_sms": "Hallo! 🌤 Ich nutze einen tollen, privaten Wetter-Bot auf Telegram.\n\nHier ist meine Einladung. Klicke auf den Link unten, um sie zu nutzen:\n{link}",
         "invite_group_btn": "➕ Bot zu deiner Gruppe hinzufügen",
@@ -1565,7 +1565,7 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Mit GPS aktualisieren"
     },
     "es": {
-        "menu_header": "⚙️ *PANEL DE CONTROL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Ubicación actual:*\n└ {city}\n\n📅 *Tu horario:*\n├ Mañana: {disp_rano}\n└ Tarde: {disp_wieczor}\n\n⏰ *¿Cómo cambiar las horas?*\nHaz clic en el botón de abajo.\n\n📍 *¿Cómo cambiar la ubicación?*\nEnvía un nuevo 📎 Pin de ubicación.",
+        "menu_header": "⚙️ *PANEL DE CONTROL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Ubicación actual:*\n└ {city}\n\n📍 *¿Cómo cambiar de ciudad?*\nUsa el comando /city o mira /info para instrucciones con el mapa.\n\n📅 *Tu horario:*\n├ Mañana: {disp_rano}\n└ Tarde: {disp_wieczor}\n\n⏰ *¿Cómo cambiar el horario?*\nHaz clic en el botón de abajo.\n",
         "btn_change_hours": "⏰ Cambiar horas de informes",
         "disp_off": "Desactivado ❌",
         "loc_updated": "✅ *¡Ubicación actualizada!*\n\n📍 Reconocido: {city}\n🌤️ Los informes meteorológicos usarán esta ubicación a partir de ahora.",
@@ -1578,7 +1578,7 @@ UI_TEXTS = {
         "no_access": "⛔ *Acceso denegado*\nLo sentimos, este bot es privado y funciona exclusivamente mediante invitaciones de usuarios actuales.",
         "limit_reached": "⛔ Desafortunadamente, se ha alcanzado el límite global de la aplicación (50 usuarios).",
         "invalid_link": "⛔ Este enlace de invitación no es válido o proviene de una persona no registrada.",
-        "welcome_new": "✅ *¡Registro exitoso!*\nBienvenido a Clima para Ti. ¡Llegaste aquí por invitación!\n\n⚠️ *Un último paso necesario:*\nPara que los informes funcionen y lleguen a las 8:00 y 14:00, debes configurar tu ubicación:\n1️⃣ Toca este mensaje y selecciona *Responder*.\n2️⃣ Elige 📎 (clip), luego 📍 *Ubicación*.\n3️⃣ Envía un 📎 *Pin del mapa*.",
+        "welcome_new": "✅ *¡Registro exitoso!*\nBienvenido a la comunidad. ¡Has llegado hasta aquí por invitación!\n\n⚠️ *Último paso necesario:*\nPara que te lleguen los informes (por defecto a las 8:00 y 14:00), debes configurar tu ubicación.\n\n👇 **Toca el botón GPS en la parte inferior de la pantalla** o escribe el comando `/city`.",
         "invite_intro": "💌 *¡Tu invitación está lista!*\n\nCopia el mensaje a continuación y envíalo a un amigo (por ejemplo, por SMS o WhatsApp), o directamente a través de Telegram.",
         "invite_sms": "¡Hola! 🌤 Uso un excelente bot meteorológico privado en Telegram.\n\nAquí tienes mi invitación. Haz clic en el enlace de abajo para usarla:\n{link}",
         "invite_group_btn": "➕ Añadir el bot a tu grupo",
@@ -1594,7 +1594,7 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Actualizar con GPS"
     },
     "fr": {
-        "menu_header": "⚙️ *PANNEAU DE CONTRÔLE* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Position actuelle :*\n└ {city}\n\n📅 *Votre programme :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment changer les heures ?*\nCliquez sur le bouton ci-dessous.\n\n📍 *Comment changer de lieu ?*\nEnvoyez une nouvelle 📎 Épingle de position.",
+        "menu_header": "⚙️ *PANNEAU DE CONTRÔLE* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Position actuelle :*\n└ {city}\n\n📍 *Comment changer de ville ?*\nUtilisez la commande /city ou voir /info pour les instructions avec la carte.\n\n📅 *Votre planning :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment modifier les heures ?*\nCliquez sur le bouton ci-dessous.\n",
         "btn_change_hours": "⏰ Modifier les heures",
         "disp_off": "Désactivé ❌",
         "loc_updated": "✅ *Position mise à jour !*\n\n📍 Reconnu : {city}\n🌤️ Les rapports météo utiliseront désormais ce lieu.",
@@ -1607,7 +1607,7 @@ UI_TEXTS = {
         "no_access": "⛔ *Accès refusé*\nDésolé, ce bot est privé et fonctionne exclusivement sur invitation des utilisateurs actuels.",
         "limit_reached": "⛔ Malheureusement, la limite globale de l'application (50 utilisateurs) a été atteinte.",
         "invalid_link": "⛔ Ce lien d'invitation est invalide ou provient d'une personne non enregistrée.",
-        "welcome_new": "✅ *Inscription réussie !*\nBienvenue dans Météo pour Vous. Vous êtes arrivé ici sur invitation !\n\n⚠️ *Une dernière étape nécessaire :*\nPour que les rapports fonctionnent et arrivent à 8h00 et 14h00, vous devez définir votre position :\n1️⃣ Appuyez sur ce message et sélectionnez *Répondre*.\n2️⃣ Choisissez 📎 (trombone), puis 📍 *Position*.\n3️⃣ Envoyez une 📎 *Épingle sur la carte*.",
+        "welcome_new": "✅ *Inscription réussie !*\nBienvenue dans la communauté. Vous êtes ici grâce à une invitation !\n\n⚠️ *Dernière étape nécessaire :*\nPour que les rapports vous parviennent (par défaut à 8h00 et 14h00), vous devez définir votre position.\n\n👇 **Appuyez sur le bouton GPS en bas de l'écran** ou tapez la commande `/city`.",
         "invite_intro": "💌 *Votre invitation est prête !*\n\nCopiez le message ci-dessous et envoyez-le à un ami (par ex., par SMS ou WhatsApp), ou directement via Telegram.",
         "invite_sms": "Salut ! 🌤 J'utilise un super bot météo privé sur Telegram.\n\nVoici mon invitation. Cliquez sur le lien ci-dessous pour l'utiliser :\n{link}",
         "invite_group_btn": "➕ Ajouter le bot à votre groupe",
@@ -1623,7 +1623,7 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Mettre à jour via GPS"
     },
     "no": {
-        "menu_header": "⚙️ *KONTROLLPANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Nåværende posisjon:*\n└ {city}\n\n📅 *Din timeplan:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tider?*\nKlikk på knappen nedenfor.\n\n📍 *Hvordan endre posisjon?*\nSend en ny 📎 Posisjonsnål.",
+        "menu_header": "⚙️ *KONTROLLPANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Nåværende posisjon:*\n└ {city}\n\n📍 *Hvordan endre by?*\nBruk /city-kommandoen eller se /info for kartinstruksjoner.\n\n📅 *Din timeplan:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tidspunkt?*\nKlikk på knappen nedenfor.\n",
         "btn_change_hours": "⏰ Endre rapporttider",
         "disp_off": "Deaktivert ❌",
         "loc_updated": "✅ *Posisjon oppdatert!*\n\n📍 Gjenkjent: {city}\n🌤️ Værmeldinger vil bruke denne posisjonen fra nå av.",
@@ -1636,7 +1636,7 @@ UI_TEXTS = {
         "no_access": "⛔ *Ingen tilgang*\nBeklager, denne boten er privat og fungerer utelukkende via invitasjoner fra nåværende brukere.",
         "limit_reached": "⛔ Dessverre er den globale applikasjonsgrensen (50 brukere) nådd.",
         "invalid_link": "⛔ Denne invitasjonslenken er ugyldig eller kommer fra en uregistrert person.",
-        "welcome_new": "✅ *Registrering vellykket!*\nVelkommen til Vær for Deg. Du kom hit via en invitasjon!\n\n⚠️ *Ett siste, nødvendig trinn:*\nFor at rapportene skal fungere og ankomme kl. 08:00 og 14:00, må du angi posisjonen din:\n1️⃣ Trykk på denne meldingen og velg *Svar* (Reply).\n2️⃣ Velg 📎 binders, deretter 📍 *Posisjon*.\n3️⃣ Send 📎 *Kartnål*.",
+        "welcome_new": "✅ *Registrering vellykket!*\nVelkommen til samfunnet. Du er her via en invitasjon!\n\n⚠️ *Siste, men nødvendige steg:*\nFor at rapportene skal nå deg (standard 8:00 og 14:00), må du angi posisjonen din.\n\n👇 **Trykk på GPS-knappen nederst på skjermen** eller skriv inn kommandoen `/city`.",
         "invite_intro": "💌 *Invitasjonen din er klar!*\n\nKopier meldingen nedenfor og send den til en venn (f.eks. via SMS eller WhatsApp), eller direkte gjennom Telegram.",
         "invite_sms": "Hei! 🌤 Jeg bruker en flott, privat værbot på Telegram.\n\nHer er min invitasjon. Klikk på lenken nedenfor for å bruke den:\n{link}",
         "invite_group_btn": "➕ Legg boten til gruppen din",
