@@ -649,6 +649,9 @@ def main_bot():
                 if len(text_parts) < 2 or not text_parts[1].strip():
                     instrukcja = t_ui(user_lang, "city_prompt")
                     
+                    # BRAKUJĄCA LINIJKA - pobieramy z i18n nazwę przycisku na podstawie języka usera!
+                    nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
+                    
                     # TWORZYMY DOLNĄ KLAWIATURĘ (Reply Keyboard) Z WEBAPP
                     klawiatura_gps = {
                         "keyboard": [
