@@ -178,141 +178,86 @@ def main_bot():
     for update in updates:
         highest_update_id = update["update_id"] + 1
         
-        
-        # ==============================================================
-        # 0. ABSOLUTNY PRIORYTET: LOKALIZACJA Z WEB APP (GPS)
-        # ==============================================================
-        try:
-            # Telegram może wysłać message w update
-            msg = update.get("message", {})
-            wad = msg.get("web_app_data")
-            
-            if wad and wad.get("data"):
-                chat_id = msg.get("chat", {}).get("id")
-                
-                # --- SZYBKIE POBRANIE JĘZYKA Z BAZY DLA WEBAPP ---
-                user_lang = "pl" # Domyślnie polski
-                for u in clean_users:
-                    if str(u.get("Chat ID", "")).strip() == str(chat_id):
-                        lang_z_bazy = str(u.get("Lang", u.get("Język", ""))).strip().lower()
-                        if lang_z_bazy:
-                            user_lang = lang_z_bazy
-                        break
-                # -------------------------------------------------
-                raw_data = wad.get("data", "")
-                
-                print(f"  [DEBUG-WEBAPP] Otrzymano czyste dane z WebApp: {raw_data}")
-                
-                data = json.loads(raw_data)
-                if data.get("type") == "set_location":
-                    lat = float(data.get("lat"))
-                    lon = float(data.get("lon"))
-                    
-                    print(f"  📍 Odebrano współrzędne GPS od {chat_id}: {lat}, {lon}")
-                    
-                    rows_to_update = []
-                    for idx, r in enumerate(users_records):
-                        if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                            rows_to_update.append(idx + 2)
-                    
-                    if not rows_to_update:
-                        try:
-                            komorka = main_sheet.find(str(chat_id), in_column=2)
-                            rows_to_update.append(komorka.row)
-                        except Exception:
-                            print("  [DEBUG-WEBAPP] Nie znalazłem usera w bazie!")
-                    
-                    # Zakładamy 'pl' jako domyślny język podczas zapisu GPS
-                    city = get_city_from_coords(lat, lon, user_lang)
-                    if city == "Lokalizacja w terenie" or not city:
-                        city = "Twoja okolica"
-                        
-                    if rows_to_update:
-                        col_lat = headers.index("Lat") + 1
-                        col_lon = headers.index("Lon") + 1
-                        col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
-                        
-                        for r_idx in rows_to_update:
-                            main_sheet.update_cell(r_idx, col_lat, lat)
-                            main_sheet.update_cell(r_idx, col_lon, lon)
-                            if col_miasto:
-                                main_sheet.update_cell(r_idx, col_miasto, city)
-                                
-                    ukryj_klawiature = {"remove_keyboard": True}
-                    sukces_msg = f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca."
-                    send_reply(chat_id, sukces_msg, reply_markup=ukryj_klawiature)
-                
-                # Zawsze przerywamy pętlę, żeby stary kod nie analizował tego update'u!
-                continue
-                
-        except Exception as e:
-            print(f"❌ Błąd w bloku WebApp: {e}")
-            import traceback
-            traceback.print_exc()
-            continue
         try:
             message = update.get("message", {})
             chat_id = message.get("chat", {}).get("id")
             
             if not chat_id: 
                 continue
-                
-            print(f"  [DEBUG] 🔎 Telegram zgłasza wiadomość od Chat ID: {chat_id}")
             
             # ==============================================================
             # 0. ABSOLUTNY PRIORYTET: LOKALIZACJA Z WEB APP (GPS)
             # ==============================================================
             wad = message.get("web_app_data")
             if wad and wad.get("data"):
+                
+                # --- SZYBKIE POBRANIE JĘZYKA Z BAZY DLA WEBAPP ---
+                user_lang = "pl" # Domyślnie polski
+                for u in clean_users:
+                    if str(u.get("Chat ID", "")).strip() == str(chat_id):
+                        lang_z_bazy = str(u.get("Lang", u.get("Język", ""))).strip().lower()
+                        if lang_z_bazy in ("pl", "en", "de", "fr", "es", "no"):
+                            user_lang = lang_z_bazy
+                        break
+                # -------------------------------------------------
+                
                 raw_data = wad.get("data", "")
+                print(f"  [DEBUG-WEBAPP] Otrzymano czyste dane z WebApp: {raw_data}")
+                
                 try:
                     data = json.loads(raw_data)
                     if data.get("type") == "set_location":
                         lat = float(data.get("lat"))
                         lon = float(data.get("lon"))
                         
-                        print(f"  📍 Odebrano współrzędne GPS (WebApp) od {chat_id}: {lat}, {lon}")
+                        print(f"  📍 Odebrano współrzędne GPS od {chat_id}: {lat}, {lon}")
                         
-                        # --- PANCERNA AKTUALIZACJA: Znajdujemy WSZYSTKIE wiersze usera ---
+                        # Znajdujemy wszystkie wiersze użytkownika
                         rows_to_update = []
                         for idx, r in enumerate(users_records):
                             if str(r.get("Chat ID", "")).strip() == str(chat_id):
                                 rows_to_update.append(idx + 2)
                         
                         if not rows_to_update:
-                            komorka = main_sheet.find(str(chat_id), in_column=2)
-                            rows_to_update.append(komorka.row)
+                            try:
+                                komorka = main_sheet.find(str(chat_id), in_column=2)
+                                rows_to_update.append(komorka.row)
+                            except Exception:
+                                print("  [DEBUG-WEBAPP] Nie znalazłem usera w bazie!")
                         
-                        # Odwrócona geolokalizacja
-                        # Zakładamy domyślny polski, bo rejestracja może być w toku
-                        city = get_city_from_coords(lat, lon, "pl") 
+                        # Geolokalizacja w języku użytkownika
+                        city = get_city_from_coords(lat, lon, user_lang) 
                         if city == "Lokalizacja w terenie" or not city:
                             city = "Twoja okolica"
                             
-                        # Zapisujemy we WSZYSTKICH wierszach
-                        col_lat = headers.index("Lat") + 1
-                        col_lon = headers.index("Lon") + 1
-                        col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
-                        
-                        for r_idx in rows_to_update:
-                            main_sheet.update_cell(r_idx, col_lat, lat)
-                            main_sheet.update_cell(r_idx, col_lon, lon)
-                            if col_miasto:
-                                main_sheet.update_cell(r_idx, col_miasto, city)
-                                
-                        # Wysyłamy potwierdzenie i zwijamy klawiaturę!
+                        # Aktualizacja Google Sheets
+                        if rows_to_update:
+                            col_lat = headers.index("Lat") + 1
+                            col_lon = headers.index("Lon") + 1
+                            col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
+                            
+                            for r_idx in rows_to_update:
+                                main_sheet.update_cell(r_idx, col_lat, lat)
+                                main_sheet.update_cell(r_idx, col_lon, lon)
+                                if col_miasto:
+                                    main_sheet.update_cell(r_idx, col_miasto, city)
+                                    
+                        # Wysłanie przetłumaczonej wiadomości
                         ukryj_klawiature = {"remove_keyboard": True}
                         sukces_msg = t_ui(user_lang, "loc_updated", city=city)
                         send_reply(chat_id, sukces_msg, reply_markup=ukryj_klawiature)
                         
-                        
-                        
-                        
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji GPS (WebApp) dla {chat_id}: {e}")
-                    
-                continue  # <--- BARDZO WAŻNE: Przerywamy i nie idziemy do obsługi rejestracji/tekstu!
+                
+                # Zawsze przerywamy pętlę dla paczki GPS
+                continue
+
+            # ==============================================================
+            # STANDARDOWA OBSŁUGA BOTA
+            # ==============================================================
+            print(f"  [DEBUG] 🔎 Telegram zgłasza wiadomość (tekst/komenda) od Chat ID: {chat_id}")
             
             user_row_index = None
             user_data = None
