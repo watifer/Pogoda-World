@@ -1,3 +1,10 @@
+![Python Version](https://img.shields.io/badge/python-3.10%2B-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Telegram Bot](https://img.shields.io/badge/Telegram-Bot-2CA5E0?logo=telegram&logoColor=white)
+
+
+
+
 # 🌍 Pogoda World 🌤️
 
 **Your personal intelligent weather assistant on Telegram.**
