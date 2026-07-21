@@ -13,7 +13,7 @@ It utilizes **Artificial Intelligence (LLM / Groq API)** to generate natural-sou
 The application operates on a **closed community model** (limited slots to ensure the highest quality and speed of graphic generation).
 
 *   **Get an invite:** Click the dedicated invitation link received from a Telegram current user, or use this ready-to-go invite link:  
-    👉 `https://t.me/Twoja_pogoda_bot?start=ODM5NjgzMjgyMA`
+    👉👉👉 `https://t.me/Twoja_pogoda_bot?start=ODM5NjgzMjgyMA`
 *   **Set your location (New!):** Use the built-in, modern mini-app (**Telegram WebApp**) by pressing the **📍 Update with GPS** button, or use the traditional `/city` command.
 *   **All set!** The bot will automatically detect your timezone, fetch the localized city name, and immediately send you your first personalized forecast.
 
