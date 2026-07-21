@@ -44,6 +44,7 @@ The code shared in this repository serves as a **public technology portfolio**. 
 *   **Database (DRY Principle):** Google Sheets API (`gspread`). A Google Sheet acts as a flexible CRM system (easy database overview). The bot features a built-in **Smart Auto-Cleanup** to automatically purge inactive accounts from the database.
 *   **Deterministic Text Engine & AI:** Instead of relying on raw WMO codes, the application calculates precipitation millimeters, pressure, and cloud layers on the fly via a cross-classifier. This guarantees 100% consistency between the text description and the presented icons, with simultaneous LLM support for stable forecasts.
 
+
 ---
 
 > *Built with passion for meteorology, UX, and clean code.* ☁️☀️
