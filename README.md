@@ -12,7 +12,7 @@ It utilizes **Artificial Intelligence (LLM / Groq API)** to generate natural-sou
 
 The application operates on a **closed community model** (limited slots to ensure the highest quality and speed of graphic generation).
 
-*   **Get an invite:** Click the dedicated invitation link received from a current user, or use this ready-to-go invite link:  
+*   **Get an invite:** Click the dedicated invitation link received from a Telegram current user, or use this ready-to-go invite link:  
     👉 `https://t.me/Twoja_pogoda_bot?start=ODM5NjgzMjgyMA`
 *   **Set your location (New!):** Use the built-in, modern mini-app (**Telegram WebApp**) by pressing the **📍 Update with GPS** button, or use the traditional `/city` command.
 *   **All set!** The bot will automatically detect your timezone, fetch the localized city name, and immediately send you your first personalized forecast.
@@ -43,6 +43,14 @@ The code shared in this repository serves as a **public technology portfolio**. 
 *   **Data Aggregator:** Parallel, asynchronous API polling from **Yr.no** (Norwegian Meteorological Institute) and **Open-Meteo**. The engine selects optimal data or merges them in a hybrid way.
 *   **Database (DRY Principle):** Google Sheets API (`gspread`). A Google Sheet acts as a flexible CRM system (easy database overview). The bot features a built-in **Smart Auto-Cleanup** to automatically purge inactive accounts from the database.
 *   **Deterministic Text Engine & AI:** Instead of relying on raw WMO codes, the application calculates precipitation millimeters, pressure, and cloud layers on the fly via a cross-classifier. This guarantees 100% consistency between the text description and the presented icons, with simultaneous LLM support for stable forecasts.
+
+
+<p align="center">
+  <img src="info/day-card.jpg" alt="Today's forecast" width="350"><br><br>
+  <img src="info/now-card.jpg" alt="Hourly forecast" width="350"><br><br>
+  <img src="info/trend-card.jpg" alt="14-day trend" width="350">
+</p>
+
 
 
 ---
