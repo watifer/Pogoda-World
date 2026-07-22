@@ -1,156 +1,219 @@
 <!DOCTYPE html>
-<html>
+<html lang="pl">
 <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>GPS Location</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel sterowania Pogoda World</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             background-color: var(--tg-theme-bg-color, #ffffff);
             color: var(--tg-theme-text-color, #000000);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
             padding: 20px;
             text-align: center;
-            box-sizing: border-box;
         }
-        .icon { font-size: 64px; margin-bottom: 20px; }
-        h1 { font-size: 22px; margin-top: 0; margin-bottom: 10px; }
-        p { font-size: 15px; opacity: 0.8; margin-bottom: 30px; line-height: 1.4; }
         button {
             background-color: var(--tg-theme-button-color, #3390ec);
             color: var(--tg-theme-button-text-color, #ffffff);
             border: none;
-            border-radius: 12px;
-            padding: 16px 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
             font-size: 16px;
-            font-weight: 600;
-            width: 100%;
-            max-width: 300px;
+            font-weight: bold;
             cursor: pointer;
-            transition: opacity 0.2s;
+            width: 100%;
+            margin-top: 15px;
         }
-        button:active { opacity: 0.8; }
-        button:disabled { background-color: var(--tg-theme-hint-color, #999999); cursor: not-allowed; }
-        .err { margin-top: 20px; color: #e53935; font-weight: 500; font-size: 14px; }
+        label {
+            display: block;
+            margin: 15px 0 5px;
+            text-align: left;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            color: var(--tg-theme-text-color, #000000);
+            font-size: 16px;
+        }
+        .container {
+            max-width: 350px;
+            margin: 0 auto;
+        }
+        hr {
+            border: 0;
+            height: 1px;
+            background: var(--tg-theme-hint-color, #ccc);
+            margin: 25px 0;
+            opacity: 0.5;
+        }
+        h3 {
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
-    <div class="icon">📍</div>
-    <h1 id="ui-title">Dokładna lokalizacja</h1>
-    <p id="ui-desc">Udostępnij swój GPS, aby bot mógł wysyłać idealnie dopasowane prognozy pogody.</p>
-    
-    <button id="btn">Udostępnij lokalizację</button>
-    <div id="err" class="err"></div>
+    <div class="container">
+        <!-- SEKCJA 1: LOKALIZACJA -->
+        <h3 id="ui-title">Panel sterowania</h3>
+        <button id="gps-button">📍 Zaktualizuj przez GPS</button>
+
+        <hr>
+
+        <!-- SEKCJA 2: GODZINY RAPORTÓW -->
+        <h3 id="ui-hours-title">Wybierz godziny raportów (domyślnie o 8:00 i 14:00)</h3>
+
+        <label id="ui-morning">Raport poranny</label>
+        <select id="rano">
+            <option value="" id="opt-rano-none">(bez zmian)</option>
+            <option value="05:00">05:00</option>
+            <option value="06:00">06:00</option>
+            <option value="07:00">07:00</option>
+            <option value="08:00">08:00</option>
+            <option value="09:00">09:00</option>
+            <option value="10:00">10:00</option>
+            <option value="11:00">11:00</option>
+            <option value="brak" id="opt-rano-off">Nie chcę rano</option>
+        </select>
+
+        <label id="ui-evening">Aktualizacja popołudniowa</label>
+        <select id="wieczor">
+            <option value="" id="opt-wiecz-none">(bez zmian)</option>
+            <option value="13:00">13:00</option>
+            <option value="14:00">14:00</option>
+            <option value="15:00">15:00</option>
+            <option value="16:00">16:00</option>
+            <option value="brak" id="opt-wiecz-off">Nie chcę popołudniu</option>
+        </select>
+
+        <button id="save-settings-button">💾 Zapisz ustawienia raportów</button>
+    </div>
 
     <script>
-        const tg = window.Telegram?.WebApp;
-        if (tg) {
-            tg.ready();
-            tg.expand();
-        }
+        const tg = window.Telegram.WebApp;
+        tg.ready();
+        tg.expand();
 
-        // SŁOWNIK TŁUMACZEŃ WEBAPP
-        const i18n = {
-            "pl": {
-                title: "Dokładna lokalizacja",
-                desc: "Udostępnij swój GPS, aby bot mógł wysyłać idealnie dopasowane prognozy pogody.",
-                btn: "Udostępnij lokalizację",
-                btn_loading: "Pobieranie danych z satelity...",
-                err_unsupported: "Twoje urządzenie nie obsługuje geolokalizacji.",
-                err_denied: "Odmowa dostępu do GPS lub brak sygnału."
+        const urlParams = new URLSearchParams(window.location.search);
+        let currentLang = (urlParams.get('lang') || 'en').toLowerCase();
+        if (currentLang === "nb") currentLang = "no"; 
+
+        // Pełen rozbudowany słownik ze wszystkimi elementami wnętrza list
+        const translations = {
+            "pl": { 
+                title: "Panel sterowania", 
+                btnGps: "📍 Zaktualizuj przez GPS", 
+                hoursTitle: "Wybierz godziny raportów (domyślnie o 8:00 i 14:00)",
+                morning: "Raport poranny", 
+                evening: "Aktualizacja popołudniowa", 
+                btnSave: "💾 Zapisz ustawienia raportów",
+                optNoChange: "(bez zmian)",
+                optOffMorn: "Nie chcę rano",
+                optOffEve: "Nie chcę popołudniu"
             },
-            "en": {
-                title: "Exact Location",
-                desc: "Share your GPS so the bot can send perfectly tailored weather forecasts.",
-                btn: "Share Location",
-                btn_loading: "Fetching satellite data...",
-                err_unsupported: "Your device does not support geolocation.",
-                err_denied: "GPS access denied or no signal."
+            "en": { 
+                title: "Control Panel", 
+                btnGps: "📍 Update via GPS", 
+                hoursTitle: "Choose report hours (default at 8:00 and 14:00)",
+                morning: "Morning report", 
+                evening: "Afternoon update", 
+                btnSave: "💾 Save report settings",
+                optNoChange: "(no change)",
+                optOffMorn: "Turn off morning report",
+                optOffEve: "Turn off afternoon update"
             },
-            "de": {
-                title: "Genauer Standort",
-                desc: "Teile dein GPS, damit der Bot perfekt zugeschnittene Wettervorhersagen senden kann.",
-                btn: "Standort teilen",
-                btn_loading: "Satellitendaten werden abgerufen...",
-                err_unsupported: "Dein Gerät unterstützt keine Geolokalisierung.",
-                err_denied: "GPS-Zugriff verweigert oder kein Signal."
+            "de": { 
+                title: "Bedienfeld", 
+                btnGps: "📍 Mit GPS aktualisieren", 
+                hoursTitle: "Berichtszeiten wählen (Standard um 8:00 und 14:00)",
+                morning: "Morgenbericht", 
+                evening: "Nachmittags-Update", 
+                btnSave: "💾 Berichtseinstellungen speichern",
+                optNoChange: "(keine Änderung)",
+                optOffMorn: "Morgens deaktivieren",
+                optOffEve: "Nachmittags deaktivieren"
             },
-            "fr": {
-                title: "Position exacte",
-                desc: "Partagez votre GPS pour que le bot puisse envoyer des prévisions météo parfaitement adaptées.",
-                btn: "Partager la position",
-                btn_loading: "Récupération des données satellite...",
-                err_unsupported: "Votre appareil ne prend pas en charge la géolocalisation.",
-                err_denied: "Accès GPS refusé ou pas de signal."
+            "fr": { 
+                title: "Panneau de configuration", 
+                btnGps: "📍 Mettre à jour via GPS", 
+                hoursTitle: "Choisissez les heures (par défaut à 8:00 et 14:00)",
+                morning: "Rapport matinal", 
+                evening: "Mise à jour l'après-midi", 
+                btnSave: "💾 Enregistrer les paramètres",
+                optNoChange: "(aucun changement)",
+                optOffMorn: "Désactiver le matin",
+                optOffEve: "Désactiver l'après-midi"
             },
-            "es": {
-                title: "Ubicación exacta",
-                desc: "Comparte tu GPS para que el bot pueda enviar pronósticos meteorológicos perfectamente adaptados.",
-                btn: "Compartir ubicación",
-                btn_loading: "Obteniendo datos del satélite...",
-                err_unsupported: "Tu dispositivo no soporta geolocalización.",
-                err_denied: "Acceso denegado al GPS o sin señal."
+            "es": { 
+                title: "Panel de control", 
+                btnGps: "📍 Actualizar vía GPS", 
+                hoursTitle: "Elige las horas de reporte (por defecto a las 8:00 y 14:00)",
+                morning: "Reporte matutino", 
+                evening: "Actualización de tarde", 
+                btnSave: "💾 Guardar ajustes de reporte",
+                optNoChange: "(sin cambios)",
+                optOffMorn: "Desactivar por la mañana",
+                optOffEve: "Desactivar por la tarde"
             },
-            "no": {
-                title: "Nøyaktig posisjon",
-                desc: "Del din GPS slik at boten kan sende perfekt tilpassede værmeldinger.",
-                btn: "Del posisjon",
-                btn_loading: "Henter satellittdata...",
-                err_unsupported: "Enheten din støtter ikke geolokalisering.",
-                err_denied: "GPS-tilgang nektet eller intet signal."
+            "no": { 
+                title: "Kontrollpanel", 
+                btnGps: "📍 Oppdater via GPS", 
+                hoursTitle: "Velg rapporttider (standard kl. 8:00 og 14:00)",
+                morning: "Morgenrapport", 
+                evening: "Ettermiddagsoppdatering", 
+                btnSave: "💾 Lagre rapportinnstillinger",
+                optNoChange: "(ingen endring)",
+                optOffMorn: "Slå av morgenrapport",
+                optOffEve: "Slå av ettermiddagsoppdatering"
             }
         };
 
-        // Wyciągamy język z Telegrama (np. "pl", "en", "de-DE") i bierzemy tylko 2 pierwsze litery
-        const userLangRaw = tg?.initDataUnsafe?.user?.language_code || "en";
-        const userLang = userLangRaw.substring(0, 2).toLowerCase();
+        const t = translations[currentLang] || translations["en"];
         
-        // Zabezpieczenie: jeśli języka nie ma w słowniku, używamy angielskiego
-        const t = i18n[userLang] || i18n["en"];
+        // Aktualizacja tekstów głównych
+        document.getElementById("ui-title").innerText = t.title;
+        document.getElementById("gps-button").innerText = t.btnGps;
+        document.getElementById("ui-hours-title").innerText = t.hoursTitle;
+        document.getElementById("ui-morning").innerText = t.morning;
+        document.getElementById("ui-evening").innerText = t.evening;
+        document.getElementById("save-settings-button").innerText = t.btnSave;
 
-        // Aplikujemy tłumaczenia na stronę
-        document.getElementById("ui-title").textContent = t.title;
-        document.getElementById("ui-desc").textContent = t.desc;
-        const btn = document.getElementById("btn");
-        btn.textContent = t.btn;
+        // Aktualizacja tekstów wewnątrz list rozwijanych (option)
+        document.getElementById("opt-rano-none").innerText = t.optNoChange;
+        document.getElementById("opt-wiecz-none").innerText = t.optNoChange;
+        document.getElementById("opt-rano-off").innerText = t.optOffMorn;
+        document.getElementById("opt-wiecz-off").innerText = t.optOffEve;
 
-        const errEl = document.getElementById("err");
-
-        function fail(msg) {
-            errEl.textContent = msg;
-            if (tg && tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("error");
-        }
-
-        btn.addEventListener("click", () => {
-            errEl.textContent = "";
-            if (!navigator.geolocation) return fail(t.err_unsupported);
-
-            btn.disabled = true;
-            btn.textContent = t.btn_loading;
-
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const payload = JSON.stringify({ type: "set_location", lat: pos.coords.latitude, lon: pos.coords.longitude });
-                    if (tg) {
-                        if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred("success");
+        document.getElementById("gps-button").addEventListener("click", () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const payload = JSON.stringify({
+                            type: "set_location",
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude
+                        });
                         tg.sendData(payload);
-                        setTimeout(() => tg.close(), 100); 
-                    }
-                },
-                (e) => {
-                    btn.disabled = false;
-                    btn.textContent = t.btn;
-                    fail(t.err_denied);
-                },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
-            );
+                    },
+                    (error) => { alert("Błąd GPS / GPS Error: " + error.message); }
+                );
+            } else {
+                alert("Geolokalizacja nie jest wspierana. / Geolocation not supported.");
+            }
+        });
+
+        document.getElementById("save-settings-button").addEventListener("click", () => {
+            const payload = JSON.stringify({
+                type: "set_settings",
+                rano: document.getElementById("rano").value,
+                wieczor: document.getElementById("wieczor").value
+            });
+            tg.sendData(payload);
         });
     </script>
 </body>

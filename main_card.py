@@ -332,7 +332,7 @@ def _parse_users(raw_rows: list[dict]) -> list[dict]:
                 "miasto": "",  
                 "godzina_rano": DEFAULT_RANO,      
                 "godzina_wieczor": DEFAULT_WIECZOR, 
-                "lang": "pl",  # <--- Twardy fallback na start
+                "lang": "en",  # Domyślny globalny fallback
             }
 
         if current_lat is not None: users_dict[chat_id]["lat"] = current_lat
@@ -343,8 +343,8 @@ def _parse_users(raw_rows: list[dict]) -> list[dict]:
         if current_wieczor: users_dict[chat_id]["godzina_wieczor"] = current_wieczor
         
         # --- WHITELISTA (Ochrona przed błędnymi wpisami) ---
-        if current_lang in ("pl", "en"): 
-            users_dict[chat_id]["lang"] = current_lang
+        if current_lang in ("pl", "en", "de", "fr", "es", "no", "nb"): 
+            users_dict[chat_id]["lang"] = "no" if current_lang in ("no", "nb") else current_lang
 
     final_users = []
     for u in users_dict.values():
@@ -569,7 +569,7 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         lon=user["lon"],
         tz_name=user["tz"],
         location_name=user["name"],
-        lang=user.get("lang", "pl"),  # <--- NOWE: Wysyłamy język w podróż!
+        lang=user.get("lang", "en"),  # Fallback na angielski
     )
 
     # ══════════════════════════════════════════════════════════

@@ -1504,7 +1504,9 @@ UI_TEXTS = {
         "city_prompt": "💡 *Zmień lokalizację*\n\nWpisz komendę i podaj nazwę miejscowości albo użyj przycisku GPS dla dokładnej lokalizacji.\n\nPrzykłady:\n👉 `/miasto Warszawa`\n👉 `/miasto Wiązowna 05-462` (dodaj kod pocztowy lub ulicę, jeśli nazwa się powtarza)",
         "search_success": "✅ *Lokalizacja zaktualizowana!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_To nie to miejsce? Wpisz komendę jeszcze raz, dodając kod pocztowy lub dzielnicę._",
         "search_err": "⚠️ Błąd serwera map. Spróbuj ponownie za chwilę.",
-        "btn_update_gps": "📍 Aktualizuj z GPS"
+        "btn_update_gps": "📍 Aktualizuj z GPS",
+        "settings_saved": "✅ Ustawienia raportów zostały pomyślnie zapisane!",
+        "btn_change_hours": "⚙️ Zmień ustawienia"
     },
     "en": {
         "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📍 *How to change your city?*\nUse the /city command or see /info for map instructions.\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n",
@@ -1533,7 +1535,9 @@ UI_TEXTS = {
         "city_prompt": "💡 *Change your location*\n\nType the command followed by your city name, or use the GPS button below for an exact location.\n\nExamples:\n👉 `/city London`\n👉 `/city London NW1` (add a postal code or street if the name is common)",
         "search_success": "✅ *Location updated!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Not the right place? Try searching again with a postal code or region._",
         "search_err": "⚠️ Maps server error. Please try again later.",
-        "btn_update_gps": "📍 Update with GPS"
+        "btn_update_gps": "📍 Update with GPS",
+        "settings_saved": "✅ Report settings have been successfully saved!",
+        "btn_change_hours": "⚙️ Change settings"
     },
     "de": {
         "menu_header": "⚙️ *KONTROLLZENTRUM* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Aktueller Standort:*\n└ {city}\n\n📍 *Wie ändere ich den Ort?*\nNutze /city oder lies unter /info, wie es mit der Karte geht.\n\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändere ich die Zeiten?*\nKlicke auf die Taste unten.\n",
@@ -1562,7 +1566,9 @@ UI_TEXTS = {
         "city_prompt": "💡 *Standort ändern*\n\nGib den Befehl gefolgt vom Namen deiner Stadt ein, oder nutze die GPS-Taste unten für einen genauen Standort.\n\nBeispiele:\n👉 `/city Berlin`\n👉 `/city Frankfurt 60311` (füge eine Postleitzahl oder Straße hinzu, falls der Name häufig vorkommt)",
         "search_success": "✅ *Standort aktualisiert!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Nicht der richtige Ort? Versuche es erneut mit einer Postleitzahl oder Region._",
         "search_err": "⚠️ Karten-Serverfehler. Bitte versuche es später noch einmal.",
-        "btn_update_gps": "📍 Mit GPS aktualisieren"
+        "btn_update_gps": "📍 Mit GPS aktualisieren",
+        "settings_saved": "✅ Berichtseinstellungen wurden erfolgreich gespeichert!",
+        "btn_change_hours": "⚙️ Einstellungen ändern"
     },
     "es": {
         "menu_header": "⚙️ *PANEL DE CONTROL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Ubicación actual:*\n└ {city}\n\n📍 *¿Cómo cambiar de ciudad?*\nUsa el comando /city o mira /info para instrucciones con el mapa.\n\n📅 *Tu horario:*\n├ Mañana: {disp_rano}\n└ Tarde: {disp_wieczor}\n\n⏰ *¿Cómo cambiar el horario?*\nHaz clic en el botón de abajo.\n",
@@ -1591,7 +1597,9 @@ UI_TEXTS = {
         "city_prompt": "💡 *Cambiar ubicación*\n\nEscribe el comando seguido del nombre de tu ciudad, o usa el botón GPS abajo para una ubicación exacta.\n\nEjemplos:\n👉 `/city Madrid`\n👉 `/city Madrid 28001` (añade un código postal o calle si el nombre es común)",
         "search_success": "✅ *¡Ubicación actualizada!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_¿No es el lugar correcto? Intenta buscar de nuevo con un código postal o región._",
         "search_err": "⚠️ Error del servidor de mapas. Por favor, inténtalo de nuevo más tarde.",
-        "btn_update_gps": "📍 Actualizar con GPS"
+        "btn_update_gps": "📍 Actualizar con GPS",
+        "settings_saved": "✅ ¡Los ajustes del informe se han guardado correctamente!",
+        "btn_change_hours": "⚙️ Cambiar ajustes"
     },
     "fr": {
         "menu_header": "⚙️ *PANNEAU DE CONTRÔLE* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Position actuelle :*\n└ {city}\n\n📍 *Comment changer de ville ?*\nUtilisez la commande /city ou voir /info pour les instructions avec la carte.\n\n📅 *Votre planning :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment modifier les heures ?*\nCliquez sur le bouton ci-dessous.\n",
@@ -1620,7 +1628,9 @@ UI_TEXTS = {
         "city_prompt": "💡 *Changer de position*\n\nTapez la commande suivie du nom de votre ville, ou utilisez le bouton GPS ci-dessous pour une position exacte.\n\nExemples :\n👉 `/city Paris`\n👉 `/city Paris 75001` (ajoutez un code postal ou une rue si le nom est très courant)",
         "search_success": "✅ *Position mise à jour !*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Pas le bon endroit ? Essayez de chercher à nouveau avec un code postal ou une région._",
         "search_err": "⚠️ Erreur du serveur de cartes. Veuillez réessayer plus tard.",
-        "btn_update_gps": "📍 Mettre à jour via GPS"
+        "btn_update_gps": "📍 Mettre à jour via GPS",
+        "settings_saved": "✅ Les paramètres du rapport ont été enregistrés avec succès !",
+        "btn_change_hours": "⚙️ Modifier les paramètres"
     },
     "no": {
         "menu_header": "⚙️ *KONTROLLPANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Nåværende posisjon:*\n└ {city}\n\n📍 *Hvordan endre by?*\nBruk /city-kommandoen eller se /info for kartinstruksjoner.\n\n📅 *Din timeplan:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tidspunkt?*\nKlikk på knappen nedenfor.\n",
@@ -1649,7 +1659,9 @@ UI_TEXTS = {
         "city_prompt": "💡 *Endre posisjon*\n\nSkriv inn kommandoen etterfulgt av bynavnet ditt, eller bruk GPS-knappen nedenfor for nøyaktig posisjon.\n\nEksempler:\n👉 `/city Oslo`\n👉 `/city Oslo 0150` (legg til postnummer eller gate hvis navnet er vanlig)",
         "search_success": "✅ *Posisjon oppdatert!*\n\n📍 **{city}**\n🌍 `{address}`\n\n_Ikke riktig sted? Prøv å søke igjen med et postnummer eller en region._",
         "search_err": "⚠️ Kartserver-feil. Vennligst prøv igjen senere.",
-        "btn_update_gps": "📍 Oppdater med GPS"
+        "btn_update_gps": "📍 Oppdater med GPS",
+        "settings_saved": "✅ Rapportinnstillingene er lagret!",
+        "btn_change_hours": "⚙️ Endre innstillinger"
     }
 }
 

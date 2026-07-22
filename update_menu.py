@@ -17,10 +17,10 @@ SCOPES = [
 ]
 
 # ==============================================================
-# BAZA KOMEND DLA RÓŻNYCH JĘZYKÓW (Z NOWĄ KOLEJNOŚCIĄ)
+# BAZA KOMEND DLA RÓŻNYCH JĘZYKÓW
 # ==============================================================
 COMMANDS_BY_LANG = {
-    # 1. DOMYŚLNE MENU GLOBALNE (EN - dla obcokrajowców bez własnego tłumaczenia)
+    # 1. DOMYŚLNE MENU GLOBALNE (Angielski dla wszystkich nieobsługiwanych krajów, np. Włochy)
     "default": [
         {"command": "day", "description": "☀️ Daily weather card"},
         {"command": "now", "description": "📡 Tactical radar (current 12 hours)"},
@@ -32,10 +32,10 @@ COMMANDS_BY_LANG = {
         {"command": "tips", "description": "💡 Useful tricks and features"}
     ],
     
-    # 2. POLSKI (pl)
+    # 2. POLSKI (pl) - Wskazany wprost dla telefonów z językiem PL
     "pl": [
         {"command": "day", "description": "☀️ Dzienna karta pogodowa"},
-        {"command": "now", "description": "📡 Radar taktyczny (bieżące 12 godziny)"},
+        {"command": "now", "description": "📡 Radar taktyczny (na 12 godzin)"},
         {"command": "trend", "description": "🔮 Trend pogody (14 dni)"},
         {"command": "menu", "description": "⚙️ Zmień godziny raportów"},
         {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury lub z GPS"},
@@ -44,7 +44,19 @@ COMMANDS_BY_LANG = {
         {"command": "porady", "description": "💡 Przydatne triki i funkcje"}
     ],
 
-    # 3. NIEMIECKI (de)
+    # 3. ANGIELSKI (en)
+    "en": [
+        {"command": "day", "description": "☀️ Daily weather card"},
+        {"command": "now", "description": "📡 Tactical radar (current 12 hours)"},
+        {"command": "trend", "description": "🔮 14-day weather trend"},
+        {"command": "menu", "description": "⚙️ Change report hours"},
+        {"command": "city", "description": "🌍 Change city via keyboard or GPS"},
+        {"command": "invite", "description": "💌 Invite or add to group"},
+        {"command": "info", "description": "ℹ️ Brief bot manual"},
+        {"command": "tips", "description": "💡 Useful tricks and features"}
+    ],
+
+    # 4. NIEMIECKI (de)
     "de": [
         {"command": "day", "description": "☀️ Tägliche Wetterkarte"},
         {"command": "now", "description": "📡 Taktisches Radar (aktuell)"},
@@ -56,19 +68,19 @@ COMMANDS_BY_LANG = {
         {"command": "tips", "description": "💡 Nützliche Tricks und Funktionen"}
     ],
 
-    # 4. HISZPAŃSKI (es)
+    # 5. HISZPAŃSKI (es)
     "es": [
         {"command": "day", "description": "☀️ Tarjeta meteorológica diaria"},
         {"command": "now", "description": "📡 Radar táctico (actual)"},
         {"command": "trend", "description": "🔮 Tendencia del tiempo (14 días)"},
-        {"command": "menu", "description": "⚙️ Panel de ajustes de Geo y hora"},
         {"command": "menu", "description": "⚙️ Cambiar el horario de los informes"},
+        {"command": "city", "description": "🌍 Cambiar ciudad mediante teclado o GPS"},
         {"command": "invite", "description": "💌 Invitar o añadir al grupo"},
         {"command": "info", "description": "ℹ️ Breve manual del bot"},
         {"command": "tips", "description": "💡 Trucos y funciones útiles"}
     ],
 
-    # 5. FRANCUSKI (fr)
+    # 6. FRANCUSKI (fr)
     "fr": [
         {"command": "day", "description": "☀️ Carte météo du jour"},
         {"command": "now", "description": "📡 Radar tactique (actuel)"},
@@ -78,18 +90,6 @@ COMMANDS_BY_LANG = {
         {"command": "invite", "description": "💌 Inviter ou ajouter au groupe"},
         {"command": "info", "description": "ℹ️ Bref manuel du bot"},
         {"command": "tips", "description": "💡 Astuces et fonctions utiles"}
-    ],
-
-    # 6. NORWESKI (no) - Miejsce na przyszłość (odkomentuj, gdy będziesz gotowy)
-    "no": [
-        {"command": "day", "description": "☀️ Daglig værkort"},
-        {"command": "now", "description": "📡 Taktisk radar (nå)"},
-        {"command": "trend", "description": "🔮 14-dagers værvarsel"},
-        {"command": "menu", "description": "⚙️ Endre tidspunkt for rapporter"},
-        {"command": "city", "description": "🌍 Endre by med tastatur eller GPS"},
-        {"command": "invite", "description": "💌 Inviter eller legg til i gruppe"},
-        {"command": "info", "description": "ℹ️ Kort bot-manual"},
-        {"command": "tips", "description": "💡 Nyttige triks og funksjoner"}
     ]
 }
 # ==============================================================
@@ -117,7 +117,8 @@ for lang_key, commands in COMMANDS_BY_LANG.items():
         r = requests.post(f"{BASE}/setMyCommands", json=payload, timeout=10)
         status = "✅ OK" if r.json().get('ok') else f"❌ BŁĄD: {r.json()}"
         
-        wyswietlany_jezyk = "GLOBALNE (EN)" if lang_key == "default" else lang_key.upper()
+        # POPRAWKA: Wyświetlanie w konsoli nie myli już, że domyślny to EN!
+        wyswietlany_jezyk = "DOMYŚLNE MENU (PL)" if lang_key == "default" else lang_key.upper()
         print(f"{wyswietlany_jezyk} -> {scope['type']}: {status}")
 
 print("\n🎉 ZAKOŃCZONE! Menu jest zaktualizowane.")

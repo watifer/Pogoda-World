@@ -192,12 +192,12 @@ def main_bot():
             if wad and wad.get("data"):
                 
                 # --- SZYBKIE POBRANIE JĘZYKA Z BAZY DLA WEBAPP ---
-                user_lang = "pl" # Domyślnie polski
+                user_lang = "en"  # Domyślnie angielski (globalny fallback)
                 for u in clean_users:
                     if str(u.get("Chat ID", "")).strip() == str(chat_id):
                         lang_z_bazy = str(u.get("Lang", u.get("Język", ""))).strip().lower()
-                        if lang_z_bazy in ("pl", "en", "de", "fr", "es", "no"):
-                            user_lang = lang_z_bazy
+                        if lang_z_bazy in ("pl", "en", "de", "fr", "es", "no", "nb"):
+                            user_lang = "no" if lang_z_bazy in ("no", "nb") else lang_z_bazy
                         break
                 # -------------------------------------------------
                 
@@ -247,6 +247,49 @@ def main_bot():
                         sukces_msg = t_ui(user_lang, "loc_updated", city=city)
                         send_reply(chat_id, sukces_msg, reply_markup=ukryj_klawiature)
                         
+                    elif data.get("type") == "set_settings":
+                        rano = (data.get("rano") or "").strip()
+                        wieczor = (data.get("wieczor") or "").strip()
+                        print(f"  ⚙️ Odebrano nowe godziny od {chat_id}: Rano={rano}, Popołudnie={wieczor}")
+                        
+                        # Znajdujemy wiersz użytkownika (analogicznie do GPS)
+                        rows_to_update = []
+                        for idx, r in enumerate(users_records):
+                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
+                                rows_to_update.append(idx + 2)
+                        
+                        if not rows_to_update:
+                            try:
+                                komorka = main_sheet.find(str(chat_id), in_column=2)
+                                rows_to_update.append(komorka.row)
+                            except Exception:
+                                print("  [DEBUG] Nie znalazłem usera do zapisu godzin!")
+                                
+                        if rows_to_update:
+                            col_rano = headers.index("Raport poranny") + 1 if "Raport poranny" in headers else None
+                            col_wieczor = headers.index("Aktualizacja") + 1 if "Aktualizacja" in headers else None
+                            
+                            for r_idx in rows_to_update:
+                                # Zapisujemy TYLKO jeśli użytkownik wybrał jakąś godzinę lub "brak"
+                                if col_rano and rano:
+                                    main_sheet.update_cell(r_idx, col_rano, rano)
+                                if col_wieczor and wieczor:
+                                    main_sheet.update_cell(r_idx, col_wieczor, wieczor)
+
+                        # Zamykamy klawiaturę WebApp i wysyłamy potwierdzenie
+                        ukryj_klawiature = {"remove_keyboard": True}
+                        
+                        # Próba pobrania tłumaczenia (zabezpieczenie, gdyby brakowało klucza)
+                        try:
+                            msg_to_send = t_ui(user_lang, "settings_saved")
+                        except Exception:
+                            msg_to_send = "✅ Ustawienia raportów zostały zapisane!"
+                            
+                        send_reply(chat_id, msg_to_send, reply_markup=ukryj_klawiature)
+                        continue    
+                        
+                        
+                        
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji GPS (WebApp) dla {chat_id}: {e}")
@@ -268,11 +311,11 @@ def main_bot():
                     user_data = u
                     break 
             # --- BEZPIECZNE POBIERANIE JĘZYKA Z BAZY ---
-            user_lang = "pl" # Domyślnie polski
+            user_lang = "en" # Domyślnie angielski
             if user_data:
                 raw_l = str(user_data.get("Lang", user_data.get("Język", ""))).strip().lower()
-                if raw_l in ("pl", "en"):
-                    user_lang = raw_l
+                if raw_l in ("pl", "en", "de", "fr", "es", "no", "nb"):
+                    user_lang = "no" if raw_l in ("no", "nb") else raw_l
                     
             
             # ==============================================================
@@ -325,8 +368,16 @@ def main_bot():
                 first_name = message.get("from", {}).get("first_name", "Nieznany")
                 nowa_nazwa = chat_title if chat_title else first_name
                 #   Wykrycie języka w Telegramie przy rejestracji
-                raw_lang = message.get("from", {}).get("language_code", "pl")[:2].lower()
-                wykryty_jezyk = "en" if raw_lang == "en" else "pl"
+                # Wykrycie języka z Telegrama + bezpieczny fallback do angielskiego
+                raw_lang = message.get("from", {}).get("language_code", "en")[:2].lower()
+                OBSLUGIWANE_JEZYKI = ("pl", "en", "de", "fr", "es", "no", "nb")
+
+                # Jeśli język użytkownika jest na naszej liście, zostaw go (no/nb konwertujemy na no)
+                if raw_lang in OBSLUGIWANE_JEZYKI:
+                    wykryty_jezyk = "no" if raw_lang in ("no", "nb") else raw_lang
+                else:
+                    # Włoch, Czech, Japończyk itp. dostają angielski!
+                    wykryty_jezyk = "en"
 
                 print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Dodaję [{nowa_nazwa}] (ID: {chat_id})")
                 
@@ -483,15 +534,18 @@ def main_bot():
                 if not wyswietlana_nazwa:
                     wyswietlana_nazwa = "Użytkownik"
                 
-                # Bezpieczne budowanie linku (tylko jeśli dane są w .env)
-                klawiatura = None
-                if FORM_BASE and ENTRY_ID:
-                    link = f"{FORM_BASE}?usp=pp_url&{ENTRY_ID}={chat_id}"
-                    klawiatura = {
-                        "inline_keyboard": [
-                            [{"text": t_ui(user_lang, "btn_change_hours"), "url": link}]
-                        ]
-                    }
+                # Budowanie przycisku WebApp otwierającego nowy panel
+                try:
+                    nazwa_przycisku = t_ui(user_lang, "btn_change_hours")
+                except Exception:
+                    nazwa_przycisku = "⚙️ Zmień ustawienia"
+
+                klawiatura = {
+                    "keyboard": [
+                        [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
+                    ],
+                    "resize_keyboard": True
+                }
 
                 # --- BUDOWANIE WIADOMOŚCI Z I18N (Teraz jest w dobrym miejscu!) ---
                 msg = t_ui(user_lang, "menu_header", name=wyswietlana_nazwa, city=city, disp_rano=disp_rano, disp_wieczor=disp_wieczor)
