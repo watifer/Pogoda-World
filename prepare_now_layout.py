@@ -324,19 +324,22 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # --- UI softening dla /now: spójne z prepare_layout (gdy POP straszy, ale mm nie potwierdza) ---
     soft_now = (pop_val >= 60 and max_precip < 0.2)
     if soft_now:
+        # Wyciągamy język z danych (awaryjnie angielski)
+        obecny_jezyk = payload.get("lang", "en")
+        
         # 1) hero: jeśli było o opadach, zmiękcz
         # hero_summary ma format "opis\nlinia2" (np. "Deszcz\nwietrznie")
         parts = (hero_summary or "").split("\n", 1)
         if parts:
-            parts[0] = soften_possible_prefix(strip_mm_pct_parens(parts[0]))
+            parts[0] = soften_possible_prefix(strip_mm_pct_parens(parts[0]), lang=obecny_jezyk)
             hero_summary = "\n".join(parts)
             
-        # 2) godziny: zdejmij mm i dodaj prefiks "Możliwy..."
+        # 2) godziny: zdejmij mm i dodaj prefiks zależny od języka
         for b in today_blocks:
-            pd = b.get("primary_desc", "")
-            pd2 = strip_mm_pct_parens(pd)
-            pd2 = soften_possible_prefix(pd2)
-            b["primary_desc"] = pd2    
+            pd_desc = b.get("primary_desc", "")
+            pd2 = strip_mm_pct_parens(pd_desc)
+            pd2 = soften_possible_prefix(pd2, lang=obecny_jezyk)
+            b["primary_desc"] = pd2
     
 
     # === DATOWANIE ŹRÓDŁA DANYCH I AGE-GATING ===

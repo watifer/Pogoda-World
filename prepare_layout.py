@@ -980,7 +980,9 @@ def prepare_layout_data(payload, now=None):
             
             # Używamy naszego nowego modułu!
             pd2 = strip_mm_pct_parens(pd)
-            pd2 = soften_possible_prefix(pd2)
+            # Wyciągamy język z danych (awaryjnie angielski) i przekazujemy do wygładzacza!
+            obecny_jezyk = payload.get("lang", "en")
+            pd2 = soften_possible_prefix(pd2, lang=obecny_jezyk)
             
             b["primary_desc"] = pd2
             
