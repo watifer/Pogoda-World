@@ -415,7 +415,7 @@ def main_bot():
                     nazwa_przycisku = t_ui(wykryty_jezyk, "btn_update_gps")
                     klawiatura_gps = {
                         "keyboard": [
-                            [{"text": nazwa_przycisku, "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}]
+                            [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={wykryty_jezyk}"}}]
                         ],
                         "resize_keyboard": True
                     }
@@ -668,20 +668,29 @@ def main_bot():
                 text_parts = message.get("text", "").split(" ", 1)
                 
                 if len(text_parts) < 2 or not text_parts[1].strip():
-                    instrukcja = t_ui(user_lang, "city_prompt")
-                    
-                    # BRAKUJĄCA LINIJKA - pobieramy z i18n nazwę przycisku na podstawie języka usera!
-                    nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
-                    
-                    # TWORZYMY DOLNĄ KLAWIATURĘ (Reply Keyboard) Z WEBAPP
-                    klawiatura_gps = {
-                        "keyboard": [
-                            [{"text": nazwa_przycisku, "web_app": {"url": "https://watifer.github.io/Pogoda-World/webapp/"}}]
-                        ],
-                        "resize_keyboard": True
-                    }
-                    send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
-                    continue
+                    # --- POBIERANIE OBECNEGO MIASTA DO WYŚWIETLENIA ---
+                        bezpieczny_lat = str(user_data.get("Lat", 0)).replace(',', '.')
+                        bezpieczny_lon = str(user_data.get("Lon", 0)).replace(',', '.')
+                        city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon, user_lang)
+                        
+                        if any(char.isdigit() for char in city):
+                            city = "Nieznana miejscowość"
+                        # --------------------------------------------------
+                        
+                        instrukcja = t_ui(user_lang, "city_prompt", city=city)
+                        
+                        # Pobieramy z i18n nazwę przycisku na podstawie języka usera!
+                        nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
+                        
+                        # TWORZYMY DOLNĄ KLAWIATURĘ (Reply Keyboard) Z WEBAPP
+                        klawiatura_gps = {
+                            "keyboard": [
+                                [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
+                            ],
+                            "resize_keyboard": True
+                        }
+                        send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
+                        continue
                 
                 city_query = text_parts[1].strip()
                 send_reply(chat_id, t_ui(user_lang, "search_loc"))
