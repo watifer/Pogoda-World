@@ -272,9 +272,13 @@ def main_bot():
                             for r_idx in rows_to_update:
                                 # Zapisujemy TYLKO jeśli użytkownik wybrał jakąś godzinę lub "brak"
                                 if col_rano and rano:
-                                    main_sheet.update_cell(r_idx, col_rano, rano)
+                                    # Apostrof chroni przed zmianą na ułamek przez Google Sheets
+                                    zapis_rano = f"'{rano}" if rano != "brak" else rano
+                                    main_sheet.update_cell(r_idx, col_rano, zapis_rano)
+                                    
                                 if col_wieczor and wieczor:
-                                    main_sheet.update_cell(r_idx, col_wieczor, wieczor)
+                                    zapis_wieczor = f"'{wieczor}" if wieczor != "brak" else wieczor
+                                    main_sheet.update_cell(r_idx, col_wieczor, zapis_wieczor)
 
                         # Zamykamy klawiaturę WebApp i wysyłamy potwierdzenie
                         ukryj_klawiature = {"remove_keyboard": True}
