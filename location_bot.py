@@ -46,7 +46,7 @@ def get_user_lang(message):
 
 def get_city_from_coords(lat, lon, lang="pl"):
     try:
-        geolocator = Nominatim(user_agent="pogoda_world_bot")
+        geolocator = Nominatim(user_agent="pogoda_world_bot")  # nazwa: pogoda_world_bot tylko dla geolokalizacji od OpenStreetMap bez zwiazku z Telegramem
         # ZMIANA: Wstrzykujemy język użytkownika (lang) zamiast twardego "pl"
         location = geolocator.reverse(f"{lat}, {lon}", language=lang)
         
