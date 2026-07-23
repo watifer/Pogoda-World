@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pogoda World - Weather Radar</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #38bdf8;
+            --tg-blue: #24A1DE;
+        }
+        body {
+            margin: 0; padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+            background-image: radial-gradient(circle at top, #1e3a5f 0%, var(--bg-color) 70%);
+        }
+        .container {
+            width: 90%; max-width: 480px;
+            background: var(--card-bg);
+            padding: 40px 30px; border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            text-align: center; border: 1px solid rgba(255, 255, 255, 0.05);
+            margin: 20px;
+        }
+        .lang-switch {
+            margin-bottom: 20px;
+        }
+        .lang-btn {
+            background: none; border: none; font-size: 20px; cursor: pointer;
+            opacity: 0.5; transition: transform 0.2s, opacity 0.2s; padding: 0 4px;
+        }
+        .lang-btn:hover, .lang-btn.active {
+            opacity: 1; transform: scale(1.2);
+        }
+        .icon { font-size: 64px; margin-bottom: 16px; display: inline-block; animation: float 3s ease-in-out infinite; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+        h1 { font-size: 26px; margin: 0 0 10px 0; font-weight: 700; }
+        .badge {
+            background: rgba(56, 189, 248, 0.1); color: var(--accent);
+            padding: 6px 14px; border-radius: 20px; font-size: 13px; font-weight: 600;
+            display: inline-block; margin-bottom: 24px; border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+        p { color: var(--text-muted); font-size: 15px; line-height: 1.6; margin-bottom: 24px; }
+        .divider { height: 1px; background: rgba(255, 255, 255, 0.1); margin: 24px 0; }
+        .btn {
+            display: block; width: 100%; padding: 16px 0; background-color: var(--tg-blue);
+            color: #ffffff; text-decoration: none; border-radius: 14px; font-weight: 600; font-size: 16px;
+            transition: all 0.2s ease; box-sizing: border-box; box-shadow: 0 4px 12px rgba(36, 161, 222, 0.3);
+        }
+        .btn:hover { background-color: #1d82b4; transform: translateY(-2px); box-shadow: 0 6px 16px rgba(36, 161, 222, 0.4); }
+        .steps {
+            text-align: left; background: rgba(0, 0, 0, 0.2); padding: 16px 20px;
+            border-radius: 12px; margin-bottom: 24px; font-size: 14px;
+        }
+        .steps ul { margin: 8px 0 0 0; padding-left: 20px; color: var(--text-muted); }
+        .steps li { margin-bottom: 6px; }
+        .footer { font-size: 12px; color: #64748b; margin-top: 24px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Przełącznik języków -->
+    <div class="lang-switch">
+        <button class="lang-btn" onclick="setLang('pl')" id="btn-pl" title="Polski">🇵🇱</button>
+        <button class="lang-btn" onclick="setLang('en')" id="btn-en" title="English">🇬🇧</button>
+        <button class="lang-btn" onclick="setLang('de')" id="btn-de" title="Deutsch">🇩🇪</button>
+        <button class="lang-btn" onclick="setLang('es')" id="btn-es" title="Español">🇪🇸</button>
+        <button class="lang-btn" onclick="setLang('fr')" id="btn-fr" title="Français">🇫🇷</button>
+        <button class="lang-btn" onclick="setLang('no')" id="btn-no" title="Norsk">🇳🇴</button>
+    </div>
+
+    <div class="icon">🌍</div>
+    <h1>Weather for You</h1>
+    <div class="badge" data-i18n="badge">🔒 BETA / INVITE ONLY</div>
+    
+    <p data-i18n="desc">Taktyczny radar pogodowy i codzienne raporty w Telegramie.</p>
+
+    <div class="steps">
+        <strong data-i18n="how_title">Jak dołączyć?</strong>
+        <ul>
+            <li data-i18n="step1">Bot działa obecnie na zaproszenia od obecnych użytkowników.</li>
+            <li data-i18n="step2">Jeśli masz link zaproszeniowy lub kod, kliknij przycisk poniżej.</li>
+            <li data-i18n="step3">Brak kodu? Zapytaj znajomego, który już korzysta z radaru!</li>
+        </ul>
+    </div>
+
+    <!-- ZMIEŃ NAZWĘ BOTA W LINKU PONIŻEJ NA SWOJĄ (bez znaku @) -->
+    <a href="https://t.me/Twoja_pogoda_bot" class="btn" data-i18n="btn_open">
+        ✈️ Otwórz w Telegramie
+    </a>
+
+    <div class="divider"></div>
+    <div class="footer">© Pogoda World • Powered by Telegram API & Nominatim</div>
+</div>
+
+<script>
+    // Słownik tłumaczeń dla strony
+    const i18n = {
+        pl: {
+            badge: "🔒 BETA / TYLKO NA ZAPROSZENIA",
+            desc: "Taktyczny radar pogodowy i codzienne raporty bezpośrednio w Telegramie.",
+            how_title: "🇵🇱 Jak dołączyć?",
+            step1: "Bot działa obecnie w trybie zamkniętym (tylko na zaproszenia).",
+            step2: "Jeśli masz link zaproszeniowy lub kod, kliknij przycisk poniżej.",
+            step3: "Brak kodu? Zapytaj znajomego, który już korzysta z radaru!",
+            btn_open: "✈️ Otwórz w Telegramie"
+        },
+        en: {
+            badge: "🔒 BETA / INVITE ONLY",
+            desc: "Tactical weather radar and daily forecasts delivered directly to your Telegram.",
+            how_title: "🇬🇧 How to join?",
+            step1: "This bot currently operates in a closed invite-only beta.",
+            step2: "If you have an invite link or a valid token, click the button below.",
+            step3: "No code? Ask an existing member to generate an invite link for you!",
+            btn_open: "✈️ Open in Telegram"
+        },
+        de: {
+            badge: "🔒 BETA / NUR AUF EINLADUNG",
+            desc: "Taktisches Wetterradar und tägliche Berichte direkt in Telegram.",
+            how_title: "🇩🇪 Wie kann ich beitreten?",
+            step1: "Dieser Bot läuft derzeit in einer geschlossenen Beta-Phase.",
+            step2: "Wenn du einen Einladungslink oder Code hast, klicke unten.",
+            step3: "Kein Code? Frag einen Freund, der das Radar bereits nutzt!",
+            btn_open: "✈️ In Telegram öffnen"
+        },
+        es: {
+            badge: "🔒 BETA / SOLO CON INVITACIÓN",
+            desc: "Radar meteorológico táctico y pronósticos diarios en Telegram.",
+            how_title: "🇪🇸 ¿Cómo unirse?",
+            step1: "Este bot funciona actualmente en versión beta cerrada.",
+            step2: "Si tienes un enlace de invitación o código, haz clic abajo.",
+            step3: "¿Sin código? ¡Pídele un enlace a un amigo que ya lo use!",
+            btn_open: "✈️ Abrir en Telegram"
+        },
+        fr: {
+            badge: "🔒 BÊTA / SUR INVITATION",
+            desc: "Radar météo tactique et rapports quotidiens directement sur Telegram.",
+            how_title: "🇫🇷 Comment rejoindre ?",
+            step1: "Ce bot fonctionne actuellement en version bêta fermée.",
+            step2: "Si vous avez un lien d'invitation ou un code, cliquez ci-dessous.",
+            step3: "Pas de code ? Demandez à un ami qui utilise déjà le radar !",
+            btn_open: "✈️ Ouvrir dans Telegram"
+        },
+        no: {
+            badge: "🔒 BETA / KUN INVITASJON",
+            desc: "Taktisk værradar og daglige rapporter direkte i Telegram.",
+            how_title: "🇳🇴 Hvordan bli med?",
+            step1: "Denne boten er for øyeblikket i en lukket betafase.",
+            step2: "Hvis du har en invitasjonslenke eller kode, klikk nedenfor.",
+            step3: "Mangler du kode? Spør en venn som allerede bruker radaren!",
+            btn_open: "✈️ Åpne i Telegram"
+        }
+    };
+
+    // Funkcja zmieniająca język na stronie
+    function setLang(lang) {
+        if (!i18n[lang]) lang = 'en'; // Fallback do angielskiego
+        
+        // Podmiana tekstów w elementach z atrybutem data-i18n
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (i18n[lang][key]) {
+                el.innerText = i18n[lang][key];
+            }
+        });
+
+        // Aktualizacja wyglądu flag (zaznaczenie aktywnej)
+        document.querySelectorAll('.lang-btn').forEach(btn => btn.classList.remove('active'));
+        const activeBtn = document.getElementById('btn-' + lang);
+        if (activeBtn) activeBtn.classList.add('active');
+        
+        // Zmiana atrybutu lang w tagu html
+        document.documentElement.lang = lang;
+    }
+
+    // Automatyczne wykrywanie języka przeglądarki przy starcie
+    window.addEventListener('DOMContentLoaded', () => {
+        let userLang = (navigator.language || navigator.userLanguage || 'en').slice(0, 2).toLowerCase();
+        if (userLang === 'nb') userLang = 'no'; // Obsługa norweskiego
+        
+        // Ustawienie wykrytego (lub domyślnego) języka
+        setLang(i18n[userLang] ? userLang : 'en');
+    });
+</script>
+
+</body>
+</html>
