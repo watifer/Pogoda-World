@@ -19,6 +19,20 @@ MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
+def get_user_lang(message):
+    """
+    Bezpiecznie wyciąga język z danych Telegrama (dla osób spoza bazy).
+    """
+    user_lang = (message.get("from", {}) or {}).get("language_code", "en")[:2].lower()
+    
+    if user_lang in ("no", "nb"):
+        return "no"
+    elif user_lang in ("pl", "en", "de", "fr", "es"):
+        return user_lang
+    else:
+        return "en"  # Fallback dla całej reszty świata (np. Włochy, Japonia)
+
+
 def get_city_from_coords(lat, lon, lang="pl"):
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
@@ -82,6 +96,9 @@ BOT_USERNAME = "Twoja_pogoda_bot" # np. "PogodaWorldBot"
 # 2. Link do formularza (Zabezpieczone w .env):
 FORM_BASE = os.environ.get("FORM_BASE")
 ENTRY_ID = os.environ.get("FORM_ENTRY_ID")
+
+# --- NOWE: Link do Twojej przyszłej strony z zaproszeniem ---
+INVITE_URL = "https://watifer.github.io/Pogoda-World/invite"
 # ==============================================================
 
 TELEGRAM_TOKEN = os.environ.get("TG_TOKEN")
@@ -328,17 +345,23 @@ def main_bot():
             if not user_row_index:
                 text = message.get("text", "").strip()
                 
-                # --- NOWE: Ciche ignorowanie zdarzeń bez tekstu ---
-                # Jeśli to powiadomienie o dodaniu do grupy, zdjęcie lub naklejka - ignoruj.
+                # --- 1. Wykrywamy język obcej osoby w locie ---
+                wykryty_jezyk = get_user_lang(message)
+                
+                # --- 2. Ciche ignorowanie zdarzeń bez tekstu (naklejki, zdjęcia, dodanie do grupy) ---
                 if not text:
                     continue
                 
                 parts = text.split()
                 
-                # Odrzucamy wszystkie przypadkowe wiadomości od obcych ludzi bez linku
-                if not (text.startswith("/start") and len(parts) >= 2):
-                    send_reply(chat_id, t_ui("pl", "no_access"))
+                # --- 3. Miękkie lądowanie dla ludzi z wyszukiwarki (samo "/start" bez kodu) ---
+                if text.startswith("/start") and len(parts) < 2:
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "no_access", url=INVITE_URL))
                     continue
+                
+                # --- 4. Ciche ignorowanie spamu (ktoś obcy pisze "cześć", "help" itp.) ---
+                if not (text.startswith("/start") and len(parts) >= 2):
+                    continue  # Nic nie odpisujemy, żeby nie robić spamu w czacie!
                     
                 # ROZSZYFROWANIE TOKENA
                 token = parts[1]
@@ -352,9 +375,9 @@ def main_bot():
                 # --- FURTKA DEWELOPERSKA (GOD MODE) ---
                 is_dev_mode = (token == MASTER_TOKEN)
 
-                # 1. Weryfikacja limitu miejsc (50 osób) - Dev może wejść nawet gdy brakuje miejsc
+                # 1. Weryfikacja limitu miejsc (50 osób) - z językiem użytkownika i linkiem do strony!
                 if len(clean_users) >= 50 and not is_dev_mode:
-                    send_reply(chat_id, t_ui("pl", "limit_reached"))
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "limit_reached", url=INVITE_URL))
                     continue
                     
                 # 2. Weryfikacja zaproszenia
@@ -364,7 +387,7 @@ def main_bot():
                     referrer_exists = any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
                     
                 if not referrer_exists:
-                    send_reply(chat_id, t_ui("pl", "invalid_link"))
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "invalid_link", url=INVITE_URL))
                     continue
                     
                 # 3. Mamy autoryzację! Przystępujemy do rejestracji:

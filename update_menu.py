@@ -23,22 +23,22 @@ COMMANDS_BY_LANG = {
     # 1. DOMYŚLNE MENU GLOBALNE (Angielski dla wszystkich nieobsługiwanych krajów, np. Włochy)
     "default": [
         {"command": "day", "description": "☀️ Daily weather card"},
-        {"command": "now", "description": "📡 Tactical radar (current 12 hours)"},
+        {"command": "now", "description": "📡 Tactical radar (12 hrs)"},
         {"command": "trend", "description": "🔮 14-day weather trend"},
         {"command": "menu", "description": "⚙️ Change report hours"},
-        {"command": "city", "description": "🌍 Change city via keyboard or GPS"},
+        {"command": "city", "description": "🌍 Change your location"},
         {"command": "invite", "description": "💌 Invite or add to group"},
         {"command": "info", "description": "ℹ️ Brief bot manual"},
-        {"command": "tips", "description": "💡 Useful tricks and features"}
+        {"command": "tips", "description": "💡 Useful tricks & features"}
     ],
     
     # 2. POLSKI (pl) - Wskazany wprost dla telefonów z językiem PL
     "pl": [
         {"command": "day", "description": "☀️ Dzienna karta pogodowa"},
-        {"command": "now", "description": "📡 Radar taktyczny (na 12 godzin)"},
+        {"command": "now", "description": "📡 Radar taktyczny (12 godzin)"},
         {"command": "trend", "description": "🔮 Trend pogody (14 dni)"},
         {"command": "menu", "description": "⚙️ Zmień godziny raportów"},
-        {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury lub z GPS"},
+        {"command": "miasto", "description": "🌍 Zmień swoją lokalizację"},
         {"command": "zapros", "description": "💌 Zaproś lub dodaj do grupy"},
         {"command": "info", "description": "ℹ️ Krótka instrukcja obsługi"},
         {"command": "porady", "description": "💡 Przydatne triki i funkcje"}
@@ -47,52 +47,51 @@ COMMANDS_BY_LANG = {
     # 3. ANGIELSKI (en)
     "en": [
         {"command": "day", "description": "☀️ Daily weather card"},
-        {"command": "now", "description": "📡 Tactical radar (current 12 hours)"},
+        {"command": "now", "description": "📡 Tactical radar (12 hrs)"},
         {"command": "trend", "description": "🔮 14-day weather trend"},
         {"command": "menu", "description": "⚙️ Change report hours"},
-        {"command": "city", "description": "🌍 Change city via keyboard or GPS"},
+        {"command": "city", "description": "🌍 Change your location"},
         {"command": "invite", "description": "💌 Invite or add to group"},
         {"command": "info", "description": "ℹ️ Brief bot manual"},
-        {"command": "tips", "description": "💡 Useful tricks and features"}
+        {"command": "tips", "description": "💡 Useful tricks & features"}
     ],
 
     # 4. NIEMIECKI (de)
     "de": [
         {"command": "day", "description": "☀️ Tägliche Wetterkarte"},
-        {"command": "now", "description": "📡 Taktisches Radar (aktuell)"},
+        {"command": "now", "description": "📡 Taktisches Radar (12 Std)"},
         {"command": "trend", "description": "🔮 14-Tage-Wettertrend"},
         {"command": "menu", "description": "⚙️ Berichtszeiten ändern"},
-        {"command": "city", "description": "🌍 Stadt per Tastatur oder GPS ändern"},
-        {"command": "invite", "description": "💌 Einladen oder zur Gruppe hinzufügen"},
+        {"command": "city", "description": "🌍 Standort ändern"},
+        {"command": "invite", "description": "💌 In Gruppe einladen"},
         {"command": "info", "description": "ℹ️ Kurzes Bot-Handbuch"},
-        {"command": "tips", "description": "💡 Nützliche Tricks und Funktionen"}
+        {"command": "tips", "description": "💡 Nützliche Tipps"}
     ],
 
     # 5. HISZPAŃSKI (es)
     "es": [
-        {"command": "day", "description": "☀️ Tarjeta meteorológica diaria"},
-        {"command": "now", "description": "📡 Radar táctico (actual)"},
-        {"command": "trend", "description": "🔮 Tendencia del tiempo (14 días)"},
-        {"command": "menu", "description": "⚙️ Cambiar el horario de los informes"},
-        {"command": "city", "description": "🌍 Cambiar ciudad mediante teclado o GPS"},
-        {"command": "invite", "description": "💌 Invitar o añadir al grupo"},
+        {"command": "day", "description": "☀️ Tarjeta meteorológica"},
+        {"command": "now", "description": "📡 Radar táctico (12 hrs)"},
+        {"command": "trend", "description": "🔮 Tendencia (14 días)"},
+        {"command": "menu", "description": "⚙️ Cambiar horas de envío"},
+        {"command": "city", "description": "🌍 Cambiar ubicación"},
+        {"command": "invite", "description": "💌 Invitar al grupo"},
         {"command": "info", "description": "ℹ️ Breve manual del bot"},
-        {"command": "tips", "description": "💡 Trucos y funciones útiles"}
+        {"command": "tips", "description": "💡 Trucos y funciones"}
     ],
 
     # 6. FRANCUSKI (fr)
     "fr": [
         {"command": "day", "description": "☀️ Carte météo du jour"},
-        {"command": "now", "description": "📡 Radar tactique (actuel)"},
-        {"command": "trend", "description": "🔮 Tendance météo (14 jours)"},
-        {"command": "menu", "description": "⚙️ Changer les heures de rapport"},
-        {"command": "city", "description": "🌍 Changer de ville via clavier ou GPS"},
-        {"command": "invite", "description": "💌 Inviter ou ajouter au groupe"},
+        {"command": "now", "description": "📡 Radar tactique (12 h)"},
+        {"command": "trend", "description": "🔮 Tendance (14 jours)"},
+        {"command": "menu", "description": "⚙️ Modifier les heures"},
+        {"command": "city", "description": "🌍 Changer de position"},
+        {"command": "invite", "description": "💌 Inviter au groupe"},
         {"command": "info", "description": "ℹ️ Bref manuel du bot"},
-        {"command": "tips", "description": "💡 Astuces et fonctions utiles"}
+        {"command": "tips", "description": "💡 Astuces et fonctions"}
     ]
 }
-# ==============================================================
 
 # KROK 1: Resetujemy wszystko we wszystkich językach i zakresach
 print("🧨 KROK 1: Reset nuklearny we wszystkich możliwych zakresach...")
