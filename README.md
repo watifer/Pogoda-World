@@ -17,10 +17,14 @@ It utilizes **Artificial Intelligence (LLM / Groq API)** to generate natural-sou
 
 ## 🚀 How to get started?
 
-The application operates on a **closed community model** (limited slots to ensure the highest quality and speed of graphic generation).
+The application currently operates in a **Closed Beta / Invite-Only model** to ensure the highest quality, server stability, and lightning-fast graphic generation. 
 
-*   **Get an invite:** Click the dedicated invitation link received from a Telegram current user, or use this ready-to-go invite link:  
-    👉👉👉 `https://t.me/Twoja_pogoda_bot?start=ODM5NjgzMjgyMA`
+To join the community, check current server availability, and get your instant access link, visit our official portal:
+
+👉 **[Pogoda World - Official Invite Page](https://watifer.github.io/Pogoda-World/invite/)**
+
+---
+*💡 Already know an existing user? You can also ask them to generate a personal invitation link for you directly inside the bot using the `/invite` command!*
 *   **Set your location (New!):** Use the built-in, modern mini-app (**Telegram WebApp**) by pressing the **📍 Update with GPS** button, or use the traditional `/city` command.
 *   **All set!** The bot will automatically detect your timezone, fetch the localized city name, and immediately send you your first personalized forecast.
 
