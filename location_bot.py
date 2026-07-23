@@ -19,6 +19,17 @@ MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
+def _public_codes() -> set[str]:
+    """
+    Pobiera z .env listę aktywnych kodów promocji publicznej.
+    Pozwala na łatwą rotację i kilka kampanii jednocześnie.
+    """
+    s = os.environ.get("PUBLIC_BETA_CODES", "").strip()
+    if s:
+        return {x.strip() for x in s.split(",") if x.strip()}
+    one = os.environ.get("PUBLIC_BETA_CODE", "").strip()
+    return {one} if one else set()
+
 def get_user_lang(message):
     """
     Bezpiecznie wyciąga język z danych Telegrama (dla osób spoza bazy).
@@ -97,8 +108,8 @@ BOT_USERNAME = "Twoja_pogoda_bot" # np. "PogodaWorldBot"
 FORM_BASE = os.environ.get("FORM_BASE")
 ENTRY_ID = os.environ.get("FORM_ENTRY_ID")
 
-# --- NOWE: Link do Twojej przyszłej strony z zaproszeniem ---
-INVITE_URL = "https://watifer.github.io/Pogoda-World/invite"
+# Zamiast wpisywać na sztywno, pobieramy z pliku środowiskowego:
+INVITE_URL = os.environ.get("PUBLIC_INVITE_URL", "https://watifer.github.io/Pogoda-World/invite/")
 # ==============================================================
 
 TELEGRAM_TOKEN = os.environ.get("TG_TOKEN")
@@ -340,57 +351,55 @@ def main_bot():
                     
             
             # ==============================================================
-            # BRAMKA WEJŚCIOWA (Tylko Zaproszenia)
+            # BRAMKA WEJŚCIOWA (Tylko Zaproszenia + Kody Beta)
             # ==============================================================
             if not user_row_index:
                 text = message.get("text", "").strip()
-                
-                # --- 1. Wykrywamy język obcej osoby w locie ---
                 wykryty_jezyk = get_user_lang(message)
                 
-                # --- 2. Ciche ignorowanie zdarzeń bez tekstu (naklejki, zdjęcia, dodanie do grupy) ---
+                # Ciche ignorowanie zdarzeń bez tekstu (naklejki, systemowe wiadomości z grup)
                 if not text:
                     continue
                 
                 parts = text.split()
                 
-                # --- 3. Miękkie lądowanie dla ludzi z wyszukiwarki (samo "/start" bez kodu) ---
+                # Miękkie lądowanie dla ludzi, którzy wpisali samo /start (bez kodu)
                 if text.startswith("/start") and len(parts) < 2:
                     send_reply(chat_id, t_ui(wykryty_jezyk, "no_access", url=INVITE_URL))
                     continue
                 
-                # --- 4. Ciche ignorowanie spamu (ktoś obcy pisze "cześć", "help" itp.) ---
+                # Ciche ignorowanie spamu (ktoś pisze "cześć", "help" bez komendy /start)
                 if not (text.startswith("/start") and len(parts) >= 2):
-                    continue  # Nic nie odpisujemy, żeby nie robić spamu w czacie!
+                    continue
                     
-                # ROZSZYFROWANIE TOKENA
-                token = parts[1]
+                # Pobieramy token wejściowy
+                token = parts[1].strip()
+                
+                # --- ROZSZYFROWANIE TOKENA ZAPROSZENIA (Referral ID) ---
                 import base64
                 try:
                     padding = 4 - (len(token) % 4)
                     referrer_id = base64.urlsafe_b64decode(token + "=" * padding).decode()
                 except Exception:
-                    referrer_id = token  # Fallback, gdyby ktoś użył starego linku z jawnym ID
+                    referrer_id = token  # Fallback dla linków z jawnym ID
                 
-                # --- FURTKA DEWELOPERSKA (GOD MODE) ---
+                # --- WALIDACJA UPRAWNIEŃ ---
                 is_dev_mode = (token == MASTER_TOKEN)
+                is_public_beta = (token in _public_codes())
+                is_referral = any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
+                
+                # Jeśli kod nie pasuje do niczego (nie jest adminem, kodem beta ani poleceniem od usera)
+                if not (is_dev_mode or is_public_beta or is_referral):
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "invalid_link", url=INVITE_URL))
+                    continue
 
-                # 1. Weryfikacja limitu miejsc (50 osób) - z językiem użytkownika i linkiem do strony!
-                if len(clean_users) >= 50 and not is_dev_mode:
+                # 1. Weryfikacja limitu miejsc (Podniesiono z 50 do 200)
+                # Dev (God Mode) wchodzi zawsze, reszta jest blokowana po osiągnięciu limitu
+                if len(clean_users) >= 200 and not is_dev_mode:
                     send_reply(chat_id, t_ui(wykryty_jezyk, "limit_reached", url=INVITE_URL))
                     continue
                     
-                # 2. Weryfikacja zaproszenia
-                if is_dev_mode:
-                    referrer_exists = True  # Omijamy sprawdzanie bazy!
-                else:
-                    referrer_exists = any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
-                    
-                if not referrer_exists:
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "invalid_link", url=INVITE_URL))
-                    continue
-                    
-                # 3. Mamy autoryzację! Przystępujemy do rejestracji:
+                # 2. Mamy autoryzację! Przystępujemy do rejestracji:
                 chat_title = message.get("chat", {}).get("title")
                 first_name = message.get("from", {}).get("first_name", "Nieznany")
                 nowa_nazwa = chat_title if chat_title else first_name
