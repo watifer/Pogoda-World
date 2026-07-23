@@ -19,7 +19,7 @@ MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
-def _public_codes() -> set[str]:
+def _public_codes():
     """
     Pobiera z .env listę aktywnych kodów promocji publicznej.
     Pozwala na łatwą rotację i kilka kampanii jednocześnie.
