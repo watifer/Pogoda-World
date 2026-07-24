@@ -6,54 +6,151 @@
     <title>Panel sterowania Pogoda World</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        :root {
+            /* TWOJE DOK?ADNE KOLORY Z PYTHON / KART POGODOWYCH */
+            --bg-top: rgb(70, 86, 138);
+            --bg-bot: rgb(41, 57, 104);
+            --card-bg: rgba(255, 255, 255, 0.12);
+            --card-border: rgba(255, 255, 255, 0.18);
+            
+            --text-main: rgb(230, 235, 245);
+            --text-muted: rgba(230, 235, 245, 0.7);
+            
+            --title-today: rgb(254, 240, 138);   /* ?ó?ty */
+            --title-future: rgb(138, 226, 160);  /* Zielony */
+            --accent-purple: rgb(220, 180, 255); /* Lawendowy */
+            --alert-red: rgb(252, 129, 129);     /* Czerwony alert */
+            
+            --input-bg: rgba(0, 0, 0, 0.25);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
         body {
+            margin: 0;
+            padding: 20px 15px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            padding: 20px;
-            text-align: center;
+            background: linear-gradient(180deg, var(--bg-top) 0%, var(--bg-bot) 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
         }
-        button {
-            background-color: var(--tg-theme-button-color, #3390ec);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            width: 100%;
-            margin-top: 15px;
-        }
-        label {
-            display: block;
-            margin: 15px 0 5px;
-            text-align: left;
-            font-weight: bold;
-            font-size: 14px;
-        }
-        select {
-            width: 100%;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #ccc;
-            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
-            color: var(--tg-theme-text-color, #000000);
-            font-size: 16px;
-        }
+
         .container {
-            max-width: 350px;
-            margin: 0 auto;
+            width: 100%;
+            max-width: 420px;
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            padding: 30px 22px;
+            border-radius: 24px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.35);
+            text-align: center;
+            margin-top: 10px;
         }
+
+        h3 {
+            margin: 0 0 16px 0;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        #ui-hours-title {
+            color: var(--title-today);
+            font-size: 15px;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+
         hr {
             border: 0;
             height: 1px;
-            background: var(--tg-theme-hint-color, #ccc);
-            margin: 25px 0;
-            opacity: 0.5;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            margin: 24px 0;
         }
-        h3 {
-            margin-bottom: 10px;
+
+        label {
+            display: block;
+            margin: 16px 0 6px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--accent-purple);
+        }
+
+        select {
+            width: 100%;
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background-color: var(--input-bg);
+            color: var(--text-main);
+            font-size: 15px;
+            font-weight: 500;
+            outline: none;
+            transition: border-color 0.2s;
+            cursor: pointer;
+        }
+
+        select:focus {
+            border-color: var(--title-today);
+        }
+
+        /* Stylizacja opcji wewn?trz listy dla systemów PC */
+        option {
+            background-color: rgb(41, 57, 104);
+            color: rgb(230, 235, 245);
+        }
+
+        button {
+            width: 100%;
+            padding: 16px 20px;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            transition: transform 0.15s ease, box-shadow 0.15s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* Przycisk GPS - Taktyczny B??kit / Lawenda */
+        #gps-button {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--text-main);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            margin-bottom: 5px;
+        }
+
+        #gps-button:hover {
+            background: rgba(255, 255, 255, 0.22);
+            border-color: var(--accent-purple);
+        }
+
+        /* Przycisk Zapisz - Zielony akcent z kart (Najbli?sze dni) */
+        #save-settings-button {
+            background-color: var(--title-future);
+            color: rgb(20, 30, 55); /* Ciemny granat dla super kontrastu */
+            margin-top: 25px;
+            box-shadow: 0 4px 15px rgba(138, 226, 160, 0.25);
+        }
+
+        #save-settings-button:hover {
+            background-color: rgb(155, 235, 175);
+            box-shadow: 0 6px 20px rgba(138, 226, 160, 0.4);
         }
     </style>
 </head>
@@ -61,12 +158,12 @@
     <div class="container">
         <!-- SEKCJA 1: LOKALIZACJA -->
         <h3 id="ui-title">Panel sterowania</h3>
-        <button id="gps-button">馃搷 Zaktualizuj przez GPS</button>
+        <button id="gps-button">?? <span id="gps-text">Zaktualizuj przez GPS</span></button>
 
         <hr>
 
-        <!-- SEKCJA 2: GODZINY RAPORT脫W -->
-        <h3 id="ui-hours-title">Wybierz godziny raport贸w (domy艣lnie o 8:00 i 14:00)</h3>
+        <!-- SEKCJA 2: GODZINY RAPORTóW -->
+        <h3 id="ui-hours-title">Wybierz godziny raportów (domy?lnie o 8:00 i 14:00)</h3>
 
         <label id="ui-morning">Raport poranny</label>
         <select id="rano">
@@ -78,20 +175,20 @@
             <option value="09:00">09:00</option>
             <option value="10:00">10:00</option>
             <option value="11:00">11:00</option>
-            <option value="brak" id="opt-rano-off">Nie chc臋 rano</option>
+            <option value="brak" id="opt-rano-off">Nie chc? rano</option>
         </select>
 
-        <label id="ui-evening">Aktualizacja popo艂udniowa</label>
+        <label id="ui-evening">Aktualizacja popo?udniowa</label>
         <select id="wieczor">
             <option value="" id="opt-wiecz-none">(bez zmian)</option>
             <option value="13:00">13:00</option>
             <option value="14:00">14:00</option>
             <option value="15:00">15:00</option>
             <option value="16:00">16:00</option>
-            <option value="brak" id="opt-wiecz-off">Nie chc臋 popo艂udniu</option>
+            <option value="brak" id="opt-wiecz-off">Nie chc? popo?udniu</option>
         </select>
 
-        <button id="save-settings-button">馃捑 Zapisz ustawienia raport贸w</button>
+        <button id="save-settings-button">?? <span id="save-text">Zapisz ustawienia raportów</span></button>
     </div>
 
     <script>
@@ -103,87 +200,84 @@
         let currentLang = (urlParams.get('lang') || 'en').toLowerCase();
         if (currentLang === "nb") currentLang = "no"; 
 
-        // Pe艂en rozbudowany s艂ownik ze wszystkimi elementami wn臋trza list
         const translations = {
             "pl": { 
                 title: "Panel sterowania", 
-                btnGps: "馃搷 Zaktualizuj przez GPS", 
-                hoursTitle: "Wybierz godziny raport贸w (domy艣lnie o 8:00 i 14:00)",
+                btnGps: "Zaktualizuj przez GPS", 
+                hoursTitle: "Wybierz godziny raportów (domy?lnie o 8:00 i 14:00)",
                 morning: "Raport poranny", 
-                evening: "Aktualizacja popo艂udniowa", 
-                btnSave: "馃捑 Zapisz ustawienia raport贸w",
+                evening: "Aktualizacja popo?udniowa", 
+                btnSave: "Zapisz ustawienia raportów",
                 optNoChange: "(bez zmian)",
-                optOffMorn: "Nie chc臋 rano",
-                optOffEve: "Nie chc臋 popo艂udniu"
+                optOffMorn: "Nie chc? rano",
+                optOffEve: "Nie chc? popo?udniu"
             },
             "en": { 
                 title: "Control Panel", 
-                btnGps: "馃搷 Update via GPS", 
+                btnGps: "Update via GPS", 
                 hoursTitle: "Choose report hours (default at 8:00 and 14:00)",
                 morning: "Morning report", 
                 evening: "Afternoon update", 
-                btnSave: "馃捑 Save report settings",
+                btnSave: "Save report settings",
                 optNoChange: "(no change)",
                 optOffMorn: "Turn off morning report",
                 optOffEve: "Turn off afternoon update"
             },
             "de": { 
                 title: "Bedienfeld", 
-                btnGps: "馃搷 Mit GPS aktualisieren", 
-                hoursTitle: "Berichtszeiten w盲hlen (Standard um 8:00 und 14:00)",
+                btnGps: "Mit GPS aktualisieren", 
+                hoursTitle: "Berichtszeiten w?hlen (Standard um 8:00 und 14:00)",
                 morning: "Morgenbericht", 
                 evening: "Nachmittags-Update", 
-                btnSave: "馃捑 Berichtseinstellungen speichern",
-                optNoChange: "(keine 脛nderung)",
+                btnSave: "Berichtseinstellungen speichern",
+                optNoChange: "(keine ?nderung)",
                 optOffMorn: "Morgens deaktivieren",
                 optOffEve: "Nachmittags deaktivieren"
             },
             "fr": { 
                 title: "Panneau de configuration", 
-                btnGps: "馃搷 Mettre 脿 jour via GPS", 
-                hoursTitle: "Choisissez les heures (par d茅faut 脿 8:00 et 14:00)",
+                btnGps: "Mettre à jour via GPS", 
+                hoursTitle: "Choisissez les heures (par défaut à 8:00 et 14:00)",
                 morning: "Rapport matinal", 
-                evening: "Mise 脿 jour l'apr猫s-midi", 
-                btnSave: "馃捑 Enregistrer les param猫tres",
+                evening: "Mise à jour l'après-midi", 
+                btnSave: "Enregistrer les paramètres",
                 optNoChange: "(aucun changement)",
-                optOffMorn: "D茅sactiver le matin",
-                optOffEve: "D茅sactiver l'apr猫s-midi"
+                optOffMorn: "Désactiver le matin",
+                optOffEve: "Désactiver l'après-midi"
             },
             "es": { 
                 title: "Panel de control", 
-                btnGps: "馃搷 Actualizar v铆a GPS", 
+                btnGps: "Actualizar vía GPS", 
                 hoursTitle: "Elige las horas de reporte (por defecto a las 8:00 y 14:00)",
                 morning: "Reporte matutino", 
-                evening: "Actualizaci贸n de tarde", 
-                btnSave: "馃捑 Guardar ajustes de reporte",
+                evening: "Actualización de tarde", 
+                btnSave: "Guardar ajustes de reporte",
                 optNoChange: "(sin cambios)",
-                optOffMorn: "Desactivar por la ma帽ana",
+                optOffMorn: "Desactivar por la ma?ana",
                 optOffEve: "Desactivar por la tarde"
             },
             "no": { 
                 title: "Kontrollpanel", 
-                btnGps: "馃搷 Oppdater via GPS", 
+                btnGps: "Oppdater via GPS", 
                 hoursTitle: "Velg rapporttider (standard kl. 8:00 og 14:00)",
                 morning: "Morgenrapport", 
                 evening: "Ettermiddagsoppdatering", 
-                btnSave: "馃捑 Lagre rapportinnstillinger",
+                btnSave: "Lagre rapportinnstillinger",
                 optNoChange: "(ingen endring)",
-                optOffMorn: "Sl氓 av morgenrapport",
-                optOffEve: "Sl氓 av ettermiddagsoppdatering"
+                optOffMorn: "Sl? av morgenrapport",
+                optOffEve: "Sl? av ettermiddagsoppdatering"
             }
         };
 
         const t = translations[currentLang] || translations["en"];
         
-        // Aktualizacja tekst贸w g艂贸wnych
         document.getElementById("ui-title").innerText = t.title;
-        document.getElementById("gps-button").innerText = t.btnGps;
+        document.getElementById("gps-text").innerText = t.btnGps;
         document.getElementById("ui-hours-title").innerText = t.hoursTitle;
         document.getElementById("ui-morning").innerText = t.morning;
         document.getElementById("ui-evening").innerText = t.evening;
-        document.getElementById("save-settings-button").innerText = t.btnSave;
+        document.getElementById("save-text").innerText = t.btnSave;
 
-        // Aktualizacja tekst贸w wewn膮trz list rozwijanych (option)
         document.getElementById("opt-rano-none").innerText = t.optNoChange;
         document.getElementById("opt-wiecz-none").innerText = t.optNoChange;
         document.getElementById("opt-rano-off").innerText = t.optOffMorn;
@@ -200,7 +294,7 @@
                         });
                         tg.sendData(payload);
                     },
-                    (error) => { alert("B艂膮d GPS / GPS Error: " + error.message); }
+                    (error) => { alert("B??d GPS / GPS Error: " + error.message); }
                 );
             } else {
                 alert("Geolokalizacja nie jest wspierana. / Geolocation not supported.");
