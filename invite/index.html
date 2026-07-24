@@ -15,9 +15,9 @@
             --text-main: rgb(230, 235, 245);
             --text-muted: rgba(230, 235, 245, 0.75);
             
-            --title-today: rgb(254, 240, 138);   /* Żółty */
-            --title-future: rgb(138, 226, 160);  /* Zielony */
-            --accent-purple: rgb(220, 180, 255); /* Lawendowy */
+            --title-today: rgb(254, 240, 138);   /* Żółty alert / odznaka */
+            --title-future: rgb(138, 226, 160);  /* Zielony przycisk wejścia */
+            --accent-purple: rgb(220, 180, 255); /* Lawendowy akcent */
         }
         
         * { 
@@ -101,7 +101,7 @@
             font-weight: 700; 
         }
         
-        /* Odznaka BETA - w kolorze żółtym (Dziś warto wiedzieć) */
+        /* Odznaka - w kolorze żółtym */
         .badge {
             background: rgba(254, 240, 138, 0.15); 
             color: var(--title-today);
@@ -128,7 +128,7 @@
             margin: 24px 0; 
         }
         
-        /* Przycisk wejścia - w kolorze zielonym (Najbliższe dni) */
+        /* Przycisk wejścia - w kolorze zielonym z ciemnym tekstem dla kontrastu */
         .btn {
             display: flex; 
             justify-content: center; 
@@ -199,20 +199,20 @@
 
     <div class="icon">🌍</div>
     <h1>Weather for You</h1>
-    <div class="badge" data-i18n="badge">🔒 BETA / TYLKO NA ZAPROSZENIA</div>
+    <div class="badge" data-i18n="badge">🔒 DOSTĘP OGRANICZONY</div>
     
-    <p data-i18n="desc">Taktyczny radar pogodowy i codzienne raporty bezpośrednio w Telegramie.</p>
+    <p data-i18n="desc">Taktyczne prognozy i codzienne raporty bezpośrednio w Telegramie.</p>
 
     <div class="steps">
         <strong data-i18n="how_title">Jak dołączyć?</strong>
         <ul>
-            <li data-i18n="step1">Bot działa obecnie w trybie zamkniętym (tylko na zaproszenia).</li>
-            <li data-i18n="step2">Jeśli masz link zaproszeniowy lub kod, kliknij przycisk poniżej.</li>
-            <li data-i18n="step3">Brak kodu? Zapytaj znajomego, który już korzysta z radaru!</li>
+            <li data-i18n="step1">Dostęp jest ograniczony, żeby utrzymać jakość i szybkość działania.</li>
+            <li data-i18n="step2">Jeśli przycisk poniżej działa, możesz dołączyć od razu.</li>
+            <li data-i18n="step3">Jeśli nie działa — poproś znajomego o zaproszenie lub wróć później.</li>
         </ul>
     </div>
 
-    <!-- PAMIĘTAJ O ZMIANIE NAZWY BOTA W LINKU PONIŻEJ NA SWOJĄ (bez znaku @) -->
+    <!-- ⚠️ PAMIĘTAJ O ZMIANIE NAZWY BOTA W LINKU PONIŻEJ NA SWOJĄ (bez znaku @) -->
     <a href="https://t.me/Twoja_pogoda_bot?start=BETA2026A" class="btn">
         ✈️ <span data-i18n="btn_open">Otwórz w Telegramie</span>
     </a>
@@ -224,57 +224,57 @@
 <script>
     const i18n = {
         pl: {
-            badge: "🔒 BETA / TYLKO NA ZAPROSZENIA",
-            desc: "Taktyczny radar pogodowy i codzienne raporty bezpośrednio w Telegramie.",
-            how_title: "🇵🇱 Jak dołączyć?",
-            step1: "Bot działa obecnie w trybie zamkniętym (tylko na zaproszenia).",
-            step2: "Jeśli masz link zaproszeniowy lub kod, kliknij przycisk poniżej.",
-            step3: "Brak kodu? Zapytaj znajomego, który już korzysta z radaru!",
+            badge: "🔒 DOSTĘP OGRANICZONY",
+            desc: "Taktyczne prognozy i codzienne raporty bezpośrednio w Telegramie.",
+            how_title: "Jak dołączyć?",
+            step1: "Dostęp jest ograniczony, żeby utrzymać jakość i szybkość działania.",
+            step2: "Jeśli przycisk poniżej działa, możesz dołączyć od razu.",
+            step3: "Jeśli nie działa — poproś znajomego o zaproszenie lub wróć później.",
             btn_open: "Otwórz w Telegramie"
         },
         en: {
-            badge: "🔒 BETA / INVITE ONLY",
-            desc: "Tactical weather radar and daily forecasts delivered directly to your Telegram.",
-            how_title: "🇬🇧 How to join?",
-            step1: "This bot currently operates in a closed invite-only beta.",
-            step2: "If you have an invite link or a valid token, click the button below.",
-            step3: "No code? Ask an existing member to generate an invite link for you!",
+            badge: "🔒 LIMITED ACCESS",
+            desc: "Tactical forecasts and daily reports delivered directly to your Telegram.",
+            how_title: "How to join?",
+            step1: "Access is limited to ensure top quality and lightning-fast performance.",
+            step2: "If the button below is active, you can join instantly.",
+            step3: "If not — ask a friend for an invite or check back later.",
             btn_open: "Open in Telegram"
         },
         de: {
-            badge: "🔒 BETA / NUR AUF EINLADUNG",
-            desc: "Taktisches Wetterradar und tägliche Berichte direkt in Telegram.",
-            how_title: "🇩🇪 Wie kann ich beitreten?",
-            step1: "Dieser Bot läuft derzeit in einer geschlossenen Beta-Phase.",
-            step2: "Wenn du einen Einladungslink oder Code hast, klicke unten.",
-            step3: "Kein Code? Frag einen Freund, der das Radar bereits nutzt!",
+            badge: "🔒 BEGRENZTER ZUGANG",
+            desc: "Taktische Wetterprognosen und tägliche Berichte direkt in Telegram.",
+            how_title: "Wie kann ich beitreten?",
+            step1: "Der Zugang ist begrenzt, um höchste Qualität und Geschwindigkeit zu garantieren.",
+            step2: "Wenn der Button unten aktiv ist, kannst du sofort beitreten.",
+            step3: "Falls nicht — frag einen Freund nach einer Einladung oder schau später wieder vorbei.",
             btn_open: "In Telegram öffnen"
         },
         es: {
-            badge: "🔒 BETA / SOLO CON INVITACIÓN",
-            desc: "Radar meteorológico táctico y pronósticos diarios en Telegram.",
-            how_title: "🇪🇸 ¿Cómo unirse?",
-            step1: "Este bot funciona actualmente en versión beta cerrada.",
-            step2: "Si tienes un enlace de invitación o código, haz clic abajo.",
-            step3: "¿Sin código? ¡Pídele un enlace a un amigo que ya lo use!",
+            badge: "🔒 ACCESO LIMITADO",
+            desc: "Pronósticos tácticos y reportes diarios directamente en Telegram.",
+            how_title: "¿Cómo unirse?",
+            step1: "El acceso está limitado para mantener la máxima calidad y velocidad.",
+            step2: "Si el botón de abajo funciona, puedes unirte al instante.",
+            step3: "Si no — pídele una invitación a un amigo o vuelve más tarde.",
             btn_open: "Abrir en Telegram"
         },
         fr: {
-            badge: "🔒 BÊTA / SUR INVITATION",
-            desc: "Radar météo tactique et rapports quotidiens directement sur Telegram.",
-            how_title: "🇫🇷 Comment rejoindre ?",
-            step1: "Ce bot fonctionne actuellement en version bêta fermée.",
-            step2: "Si vous avez un lien d'invitation ou un code, cliquez ci-dessous.",
-            step3: "Pas de code ? Demandez à un ami qui utilise déjà le radar !",
+            badge: "🔒 ACCÈS LIMITÉ",
+            desc: "Prévisions tactiques et rapports quotidiens directement sur Telegram.",
+            how_title: "Comment rejoindre ?",
+            step1: "L'accès est limité pour garantir une qualité et une vitesse optimales.",
+            step2: "Si le bouton ci-dessous est actif, vous pouvez rejoindre immédiatement.",
+            step3: "Sinon — demandez une invitation à un ami ou revenez plus tard.",
             btn_open: "Ouvrir dans Telegram"
         },
         no: {
-            badge: "🔒 BETA / KUN INVITASJON",
-            desc: "Taktisk værradar og daglige rapporter direkte i Telegram.",
-            how_title: "🇳🇴 Hvordan bli med?",
-            step1: "Denne boten er for øyeblikket i en lukket betafase.",
-            step2: "Hvis du har en invitasjonslenke eller kode, klikk nedenfor.",
-            step3: "Mangler du kode? Spør en venn som allerede bruker radaren!",
+            badge: "🔒 BEGRENSET TILGANG",
+            desc: "Taktiske prognoser og daglige rapporter direkte i Telegram.",
+            how_title: "Hvordan bli med?",
+            step1: "Tilgangen er begrenset for å opprettholde høy kvalitet og hastighet.",
+            step2: "Hvis knappen nedenfor fungerer, kan du bli med med en gang.",
+            step3: "Hvis ikke — spør en venn om en invitasjon eller prøv igjen senere.",
             btn_open: "Åpne i Telegram"
         }
     };
