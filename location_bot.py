@@ -759,8 +759,8 @@ def main_bot():
                         }
                         send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
                     else:
-                        # GRUPA (ID ujemne) -> Wysyłamy instrukcję bez przycisku
-                        instrukcja_grupa = instrukcja + "\n\n💡 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ `Berlin`"
+                        # GRUPA (ID ujemne) -> Wysyłamy instrukcję bez przycisku z dynamicznym tłumaczeniem
+                        instrukcja_grupa = instrukcja + t_ui(user_lang, "group_city_tip")
                         send_reply(chat_id, instrukcja_grupa)
                         
                     continue

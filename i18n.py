@@ -1506,7 +1506,8 @@ UI_TEXTS = {
         "search_err": "⚠️ Błąd serwera map. Spróbuj ponownie za chwilę.",
         "btn_update_gps": "📍 Aktualizuj z GPS",
         "settings_saved": "✅ Ustawienia raportów zostały pomyślnie zapisane!",
-        "btn_change_hours": "⚙️ Zmień ustawienia"
+        "btn_change_hours": "⚙️ Zmień ustawienia",
+        "group_city_tip": "\n\n🔴 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ `Warszawa`"
     },
     "en": {
         "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📍 *How to change your city?*\nUse the /city command or see /info for map instructions.\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n",
@@ -1539,7 +1540,8 @@ UI_TEXTS = {
         "search_err": "⚠️ Maps server error. Please try again later.",
         "btn_update_gps": "📍 Update with GPS",
         "settings_saved": "✅ Report settings have been successfully saved!",
-        "btn_change_hours": "⚙️ Change settings"
+        "btn_change_hours": "⚙️ Change settings",
+        "group_city_tip": "\n\n🔴 _In a group, simply type the city name now, e.g.:_ `London`"    
     },
     "de": {
         "menu_header": "⚙️ *KONTROLLZENTRUM* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Aktueller Standort:*\n└ {city}\n\n📍 *Wie ändere ich den Ort?*\nNutze /city oder lies unter /info, wie es mit der Karte geht.\n\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändere ich die Zeiten?*\nKlicke auf die Taste unten.\n",
@@ -1572,7 +1574,8 @@ UI_TEXTS = {
         "search_err": "⚠️ Karten-Serverfehler. Bitte versuche es später noch einmal.",
         "btn_update_gps": "📍 Mit GPS aktualisieren",
         "settings_saved": "✅ Berichtseinstellungen wurden erfolgreich gespeichert!",
-        "btn_change_hours": "⚙️ Einstellungen ändern"
+        "btn_change_hours": "⚙️ Einstellungen ändern",
+        "group_city_tip": "\n\n🔴 _In einer Gruppe gib jetzt einfach den Städtenamen ein, z. B.:_ `Berlin`"
     },
     "es": {
         "menu_header": "⚙️ *PANEL DE CONTROL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Ubicación actual:*\n└ {city}\n\n📍 *¿Cómo cambiar de ciudad?*\nUsa el comando /city o mira /info para instrucciones con el mapa.\n\n📅 *Tu horario:*\n├ Mañana: {disp_rano}\n└ Tarde: {disp_wieczor}\n\n⏰ *¿Cómo cambiar el horario?*\nHaz clic en el botón de abajo.\n",
@@ -1605,7 +1608,8 @@ UI_TEXTS = {
         "search_err": "⚠️ Error del servidor de mapas. Por favor, inténtalo de nuevo más tarde.",
         "btn_update_gps": "📍 Actualizar con GPS",
         "settings_saved": "✅ ¡Los ajustes del informe se han guardado correctamente!",
-        "btn_change_hours": "⚙️ Cambiar ajustes"
+        "btn_change_hours": "⚙️ Cambiar ajustes",
+        "group_city_tip": "\n\n🔴 _En un grupo, simplemente escribe el nombre de la ciudad ahora, ej.:_ `Madrid`"
     },
     "fr": {
         "menu_header": "⚙️ *PANNEAU DE CONTRÔLE* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Position actuelle :*\n└ {city}\n\n📍 *Comment changer de ville ?*\nUtilisez la commande /city ou voir /info pour les instructions avec la carte.\n\n📅 *Votre planning :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment modifier les heures ?*\nCliquez sur le bouton ci-dessous.\n",
@@ -1638,7 +1642,8 @@ UI_TEXTS = {
         "search_err": "⚠️ Erreur du serveur de cartes. Veuillez réessayer plus tard.",
         "btn_update_gps": "📍 Mettre à jour via GPS",
         "settings_saved": "✅ Les paramètres du rapport ont été enregistrés avec succès !",
-        "btn_change_hours": "⚙️ Modifier les paramètres"
+        "btn_change_hours": "⚙️ Modifier les paramètres",
+        "group_city_tip": "\n\n🔴 _Dans un groupe, tapez simplement le nom de la ville maintenant, ex. :_ `Paris`"
     },
     "no": {
         "menu_header": "⚙️ *KONTROLLPANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Nåværende posisjon:*\n└ {city}\n\n📍 *Hvordan endre by?*\nBruk /city-kommandoen eller se /info for kartinstruksjoner.\n\n📅 *Din timeplan:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tidspunkt?*\nKlikk på knappen nedenfor.\n",
@@ -1671,7 +1676,8 @@ UI_TEXTS = {
         "search_err": "⚠️ Kartserver-feil. Vennligst prøv igjen senere.",
         "btn_update_gps": "📍 Oppdater med GPS",
         "settings_saved": "✅ Rapportinnstillingene er lagret!",
-        "btn_change_hours": "⚙️ Endre innstillinger"
+        "btn_change_hours": "⚙️ Endre innstillinger",
+        "group_city_tip": "\n\n🔴 _I en gruppe skriver du nå bare bynavnet, f.eks.:_ `Oslo`"
     }
 }
 
