@@ -7,7 +7,6 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root {
-            /* TWOJE DOK?ADNE KOLORY Z PYTHON / KART POGODOWYCH */
             --bg-top: rgb(70, 86, 138);
             --bg-bot: rgb(41, 57, 104);
             --card-bg: rgba(255, 255, 255, 0.12);
@@ -16,7 +15,7 @@
             --text-main: rgb(230, 235, 245);
             --text-muted: rgba(230, 235, 245, 0.7);
             
-            --title-today: rgb(254, 240, 138);   /* ?®Æ?ty */
+            --title-today: rgb(254, 240, 138);   /* ≈ª√≥≈Çty */
             --title-future: rgb(138, 226, 160);  /* Zielony */
             --accent-purple: rgb(220, 180, 255); /* Lawendowy */
             --alert-red: rgb(252, 129, 129);     /* Czerwony alert */
@@ -102,7 +101,6 @@
             border-color: var(--title-today);
         }
 
-        /* Stylizacja opcji wewn?trz listy dla system®Æw PC */
         option {
             background-color: rgb(41, 57, 104);
             color: rgb(230, 235, 245);
@@ -127,7 +125,6 @@
             transform: scale(0.98);
         }
 
-        /* Przycisk GPS - Taktyczny B??kit / Lawenda */
         #gps-button {
             background: rgba(255, 255, 255, 0.15);
             color: var(--text-main);
@@ -140,10 +137,9 @@
             border-color: var(--accent-purple);
         }
 
-        /* Przycisk Zapisz - Zielony akcent z kart (Najbli?sze dni) */
         #save-settings-button {
             background-color: var(--title-future);
-            color: rgb(20, 30, 55); /* Ciemny granat dla super kontrastu */
+            color: rgb(20, 30, 55);
             margin-top: 25px;
             box-shadow: 0 4px 15px rgba(138, 226, 160, 0.25);
         }
@@ -158,12 +154,12 @@
     <div class="container">
         <!-- SEKCJA 1: LOKALIZACJA -->
         <h3 id="ui-title">Panel sterowania</h3>
-        <button id="gps-button">?? <span id="gps-text">Zaktualizuj przez GPS</span></button>
+        <button id="gps-button">üìç <span id="gps-text">Zaktualizuj przez GPS</span></button>
 
         <hr>
 
-        <!-- SEKCJA 2: GODZINY RAPORT®ÆW -->
-        <h3 id="ui-hours-title">Wybierz godziny raport®Æw (domy?lnie o 8:00 i 14:00)</h3>
+        <!-- SEKCJA 2: GODZINY RAPORT√ìW -->
+        <h3 id="ui-hours-title">Wybierz godziny raport√≥w (domy≈õlnie o 8:00 i 14:00)</h3>
 
         <label id="ui-morning">Raport poranny</label>
         <select id="rano">
@@ -175,20 +171,20 @@
             <option value="09:00">09:00</option>
             <option value="10:00">10:00</option>
             <option value="11:00">11:00</option>
-            <option value="brak" id="opt-rano-off">Nie chc? rano</option>
+            <option value="brak" id="opt-rano-off">Nie chcƒô rano</option>
         </select>
 
-        <label id="ui-evening">Aktualizacja popo?udniowa</label>
+        <label id="ui-evening">Aktualizacja popo≈Çudniowa</label>
         <select id="wieczor">
             <option value="" id="opt-wiecz-none">(bez zmian)</option>
             <option value="13:00">13:00</option>
             <option value="14:00">14:00</option>
             <option value="15:00">15:00</option>
             <option value="16:00">16:00</option>
-            <option value="brak" id="opt-wiecz-off">Nie chc? popo?udniu</option>
+            <option value="brak" id="opt-wiecz-off">Nie chcƒô popo≈Çudniu</option>
         </select>
 
-        <button id="save-settings-button">?? <span id="save-text">Zapisz ustawienia raport®Æw</span></button>
+        <button id="save-settings-button">üíæ <span id="save-text">Zapisz ustawienia raport√≥w</span></button>
     </div>
 
     <script>
@@ -204,13 +200,13 @@
             "pl": { 
                 title: "Panel sterowania", 
                 btnGps: "Zaktualizuj przez GPS", 
-                hoursTitle: "Wybierz godziny raport®Æw (domy?lnie o 8:00 i 14:00)",
+                hoursTitle: "Wybierz godziny raport√≥w (domy≈õlnie o 8:00 i 14:00)",
                 morning: "Raport poranny", 
-                evening: "Aktualizacja popo?udniowa", 
-                btnSave: "Zapisz ustawienia raport®Æw",
+                evening: "Aktualizacja popo≈Çudniowa", 
+                btnSave: "Zapisz ustawienia raport√≥w",
                 optNoChange: "(bez zmian)",
-                optOffMorn: "Nie chc? rano",
-                optOffEve: "Nie chc? popo?udniu"
+                optOffMorn: "Nie chcƒô rano",
+                optOffEve: "Nie chcƒô popo≈Çudniu"
             },
             "en": { 
                 title: "Control Panel", 
@@ -226,34 +222,34 @@
             "de": { 
                 title: "Bedienfeld", 
                 btnGps: "Mit GPS aktualisieren", 
-                hoursTitle: "Berichtszeiten w?hlen (Standard um 8:00 und 14:00)",
+                hoursTitle: "Berichtszeiten w√§hlen (Standard um 8:00 und 14:00)",
                 morning: "Morgenbericht", 
                 evening: "Nachmittags-Update", 
                 btnSave: "Berichtseinstellungen speichern",
-                optNoChange: "(keine ?nderung)",
+                optNoChange: "(keine √Ñnderung)",
                 optOffMorn: "Morgens deaktivieren",
                 optOffEve: "Nachmittags deaktivieren"
             },
             "fr": { 
                 title: "Panneau de configuration", 
-                btnGps: "Mettre ®§ jour via GPS", 
-                hoursTitle: "Choisissez les heures (par d®¶faut ®§ 8:00 et 14:00)",
+                btnGps: "Mettre √† jour via GPS", 
+                hoursTitle: "Choisissez les heures (par d√©faut √† 8:00 et 14:00)",
                 morning: "Rapport matinal", 
-                evening: "Mise ®§ jour l'apr®®s-midi", 
-                btnSave: "Enregistrer les param®®tres",
+                evening: "Mise √† jour l'apr√®s-midi", 
+                btnSave: "Enregistrer les param√®tres",
                 optNoChange: "(aucun changement)",
-                optOffMorn: "D®¶sactiver le matin",
-                optOffEve: "D®¶sactiver l'apr®®s-midi"
+                optOffMorn: "D√©sactiver le matin",
+                optOffEve: "D√©sactiver l'apr√®s-midi"
             },
             "es": { 
                 title: "Panel de control", 
-                btnGps: "Actualizar v®™a GPS", 
+                btnGps: "Actualizar v√≠a GPS", 
                 hoursTitle: "Elige las horas de reporte (por defecto a las 8:00 y 14:00)",
                 morning: "Reporte matutino", 
-                evening: "Actualizaci®Æn de tarde", 
+                evening: "Actualizaci√≥n de tarde", 
                 btnSave: "Guardar ajustes de reporte",
                 optNoChange: "(sin cambios)",
-                optOffMorn: "Desactivar por la ma?ana",
+                optOffMorn: "Desactivar por la ma√±ana",
                 optOffEve: "Desactivar por la tarde"
             },
             "no": { 
@@ -264,8 +260,8 @@
                 evening: "Ettermiddagsoppdatering", 
                 btnSave: "Lagre rapportinnstillinger",
                 optNoChange: "(ingen endring)",
-                optOffMorn: "Sl? av morgenrapport",
-                optOffEve: "Sl? av ettermiddagsoppdatering"
+                optOffMorn: "Sl√• av morgenrapport",
+                optOffEve: "Sl√• av ettermiddagsoppdatering"
             }
         };
 
@@ -294,7 +290,7 @@
                         });
                         tg.sendData(payload);
                     },
-                    (error) => { alert("B??d GPS / GPS Error: " + error.message); }
+                    (error) => { alert("B≈ÇƒÖd GPS / GPS Error: " + error.message); }
                 );
             } else {
                 alert("Geolokalizacja nie jest wspierana. / Geolocation not supported.");
