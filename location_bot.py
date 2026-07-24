@@ -11,7 +11,13 @@ from geopy.geocoders import Nominatim
 load_dotenv()
 #Furtka do testowanie bota bez zaproszenia
 MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
+import time
 
+# =====================================================================
+# PAMIĘĆ RAM DLA STANU OCZEKIWANIA NA MIASTO (State Machine z TTL)
+# =====================================================================
+PENDING_CITY = {}       # Format: { str(chat_id): expires_timestamp }
+PENDING_TTL_SEC = 300   # 5 minut (300 sekund) na wpisanie miasta
 
 
 
@@ -693,84 +699,113 @@ def main_bot():
                 
                           
                 
-            # 8. Ręczna zmiana miasta przez tekst (/miasto, /city, /loc)
-            elif message.get("text", "").lower().startswith(("/miasto", "/city", "/loc")):
-                
-                # Pobieramy pełny tekst i dzielimy na komendę i resztę
-                text_parts = message.get("text", "").split(" ", 1)
-                
-                if len(text_parts) < 2 or not text_parts[1].strip():
-                    # --- POBIERANIE OBECNEGO MIASTA DO WYŚWIETLENIA ---
-                        bezpieczny_lat = str(user_data.get("Lat", 0)).replace(',', '.')
-                        bezpieczny_lon = str(user_data.get("Lon", 0)).replace(',', '.')
-                        city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon, user_lang)
-                        
-                        if any(char.isdigit() for char in city):
-                            city = "Nieznana miejscowość"
-                        # --------------------------------------------------
-                        
-                        instrukcja = t_ui(user_lang, "city_prompt", city=city)
-                        
-                        # Pobieramy z i18n nazwę przycisku na podstawie języka usera!
-                        nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
-                        
-                        # TWORZYMY DOLNĄ KLAWIATURĘ (Reply Keyboard) Z WEBAPP
-                        klawiatura_gps = {
-                            "keyboard": [
-                                [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
-                            ],
-                            "resize_keyboard": True
-                        }
-                        send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
-                        continue
-                
-                city_query = text_parts[1].strip()
-                send_reply(chat_id, t_ui(user_lang, "search_loc"))
-                
-                lat, lon, full_address = get_coords_from_city(city_query, user_lang)
-                
-                if lat and lon:
-                    print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
-                    try:
-                        # --- ZNALEZIENIE WŁAŚCIWEGO WIERSZA W FIZYCZNYM ARKUSZU ---
-                        real_row_index = None
-                        for idx, r in enumerate(users_records):
-                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                                if str(r.get("Imię", "")).strip() != "":
-                                    real_row_index = idx + 2  
-                                    break
-                        
-                        if not real_row_index:
-                            komorka = main_sheet.find(str(chat_id), in_column=2)
-                            real_row_index = komorka.row
-                        # --------------------------------------------------------
+            # --- PRZYGOTOWANIE ZMIENNYCH I WYGASZANIE STARYCH STANÓW (TTL) ---
+            text = (message.get("text") or "").strip()
+            text_low = text.lower()
+            now_ts = time.time()
+            chat_id_str = str(chat_id)
 
-                        # Aktualizacja Arkusza Google przy użyciu prawdziwego wiersza
-                        col_lat = headers.index("Lat") + 1
-                        col_lon = headers.index("Lon") + 1
-                        main_sheet.update_cell(real_row_index, col_lat, lat)
-                        main_sheet.update_cell(real_row_index, col_lon, lon)
-                        
-                        krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
-                        if krotka_nazwa in ("Lokalizacja w terenie", "", None):
-                            krotka_nazwa = city_query.capitalize()
-                            
-                        if "Miasto" in headers:
-                            col_miasto = headers.index("Miasto") + 1
-                            main_sheet.update_cell(real_row_index, col_miasto, krotka_nazwa)
-                            
-                        # Pobranie i wysłanie dynamicznego tłumaczenia
-                        sukces_msg = t_ui(user_lang, "search_success", city=krotka_nazwa, address=full_address, query=city_query)
-                        send_reply(chat_id, sukces_msg)
-                        
-                    except Exception as e:
-                        send_reply(chat_id, t_ui(user_lang, "search_err"))
-                        alert_admin(f"❌ Błąd aktualizacji miasta z tekstu: {e}")
-                else:
-                    send_reply(chat_id, t_ui(user_lang, "search_fail"))
+            # 0. Automatyczne wygaszenie stanu, jeśli minęło 5 minut
+            exp = PENDING_CITY.get(chat_id_str)
+            if exp and now_ts > exp:
+                PENDING_CITY.pop(chat_id_str, None)
+                print(f"  [TTL] Wygasł stan oczekiwania na miasto dla: {chat_id_str}")
+
+            # =====================================================================
+            # 8A. Komenda /miasto BEZ argumentu -> Ustawiamy stan w RAM
+            # =====================================================================
+            if text_low.startswith(("/miasto", "/city", "/loc")):
+                text_parts = text.split(" ", 1)
+                
+                # Użytkownik wpisał samo "/miasto" (lub kliknął opcję z menu, która to wywołała)
+                if len(text_parts) < 2 or not text_parts[1].strip():
+                    # AKTYWUJEMY STAN W RAM NA 5 MINUT!
+                    PENDING_CITY[chat_id_str] = now_ts + PENDING_TTL_SEC
+                    print(f"  [STATE MACHINE] Aktywowano oczekiwanie na miasto dla: {chat_id_str}")
                     
+                    # Pobieramy obecne miasto do wyświetlenia
+                    bezpieczny_lat = str(user_data.get("Lat", 0)).replace(',', '.')
+                    bezpieczny_lon = str(user_data.get("Lon", 0)).replace(',', '.')
+                    city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon, user_lang)
+                    if any(char.isdigit() for char in city):
+                        city = "Nieznana miejscowość"
+                    
+                    instrukcja = t_ui(user_lang, "city_prompt", city=city)
+                    nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
+                    
+                    # Dolna klawiatura GPS z WebApp
+                    klawiatura_gps = {
+                        "keyboard": [
+                            [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
+                        ],
+                        "resize_keyboard": True
+                    }
+                    send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
+                    continue
+                
+                # Użytkownik wpisał od razu "/miasto Warszawa" -> od razu geokodujemy
+                city_query = text_parts[1].strip()
+
+            # =====================================================================
+            # 8B. Zwykły tekst (np. "Warszawa"), gdy bot CZEKA NA MIASTO w RAM
+            # =====================================================================
+            elif PENDING_CITY.get(chat_id_str) and text and not text.startswith("/"):
+                city_query = text
+                # Zdejmujemy stan OD RAZU, żeby użytkownik nie utknął, gdyby wpisał głupotę!
+                PENDING_CITY.pop(chat_id_str, None)
+                print(f"  [STATE MACHINE] Wykryto wpisanie samego miasta: {city_query}")
+
+            # =====================================================================
+            # 8C. Ignorowanie pozostałych wiadomości
+            # =====================================================================
             else:
                 print(f"  [DEBUG] Wiadomość od {user_data.get('Imię')} ignorowana.")
+                continue
+
+            # =====================================================================
+            # WSPÓLNA LOGIKA GEOKODOWANIA (Dla /miasto Warszawa ORAZ samego "Warszawa")
+            # =====================================================================
+            send_reply(chat_id, t_ui(user_lang, "search_loc"))
+            
+            lat, lon, full_address = get_coords_from_city(city_query, user_lang)
+            
+            if lat and lon:
+                print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
+                try:
+                    # Znalezienie właściwego wiersza w Arkuszu
+                    real_row_index = None
+                    for idx, r in enumerate(users_records):
+                        if str(r.get("Chat ID", "")).strip() == str(chat_id):
+                            if str(r.get("Imię", "")).strip() != "":
+                                real_row_index = idx + 2  
+                                break
+                    if not real_row_index:
+                        komorka = main_sheet.find(str(chat_id), in_column=2)
+                        real_row_index = komorka.row
+
+                    # Czysta aktualizacja współrzędnych i nazwy w Arkuszu (bez żadnych stanów techniczych!)
+                    col_lat = headers.index("Lat") + 1
+                    col_lon = headers.index("Lon") + 1
+                    main_sheet.update_cell(real_row_index, col_lat, lat)
+                    main_sheet.update_cell(real_row_index, col_lon, lon)
+                    
+                    krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
+                    if krotka_nazwa in ("Lokalizacja w terenie", "", None, "Nieznana miejscowość"):
+                        krotka_nazwa = city_query.capitalize()
+                        
+                    if "Miasto" in headers:
+                        col_miasto = headers.index("Miasto") + 1
+                        main_sheet.update_cell(real_row_index, col_miasto, krotka_nazwa)
+                        
+                    sukces_msg = t_ui(user_lang, "search_success", city=krotka_nazwa, address=full_address, query=city_query)
+                    send_reply(chat_id, sukces_msg)
+                    
+                except Exception as e:
+                    send_reply(chat_id, t_ui(user_lang, "search_err"))
+                    alert_admin(f"❌ Błąd aktualizacji miasta: {e}")
+            else:
+                # Jeśli geokodowanie się nie udało, nie przywracamy stanu. User może kliknąć /miasto z menu jeszcze raz.
+                send_reply(chat_id, t_ui(user_lang, "search_fail"))
 
         except Exception as e:
             print(f"❌ Krytyczny błąd podczas przetwarzania wiadomości od {chat_id}: {e}")
