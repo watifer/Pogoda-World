@@ -449,15 +449,25 @@ def main_bot():
                     clean_users.append(user_data)
                     
                         
-                    # Pobieramy tłumaczenie na przycisk i wyświetlamy klawiaturę!
+                    # Pobieramy tłumaczenie na przycisk i sprawdzamy typ czatu!
                     nazwa_przycisku = t_ui(wykryty_jezyk, "btn_update_gps")
-                    klawiatura_gps = {
-                        "keyboard": [
-                            [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={wykryty_jezyk}"}}]
-                        ],
-                        "resize_keyboard": True
-                    }
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "welcome_new"), reply_markup=klawiatura_gps)
+                    tekst_powitania = t_ui(wykryty_jezyk, "welcome_new")
+                    
+                    if int(chat_id) > 0:
+                        # CZAT PRYWATNY -> Wysyłamy WebApp
+                        klawiatura_gps = {
+                            "keyboard": [
+                                [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={wykryty_jezyk}"}}]
+                            ],
+                            "resize_keyboard": True
+                        }
+                        send_reply(chat_id, tekst_powitania, reply_markup=klawiatura_gps)
+                    else:
+                        # GRUPA (ID ujemne) -> Telegram zabrania WebApp na grupach!
+                        # Dopisywanie krótkiej instrukcji tekstowej:
+                        powitanie_dla_grupy = tekst_powitania + "\n\n💡 _Aby ustawić miasto dla tej grupy, wpisz po prostu:_ `/miasto Berlin` _(lub inną nazwę)._"
+                        send_reply(chat_id, powitanie_dla_grupy)
+                        
                     continue # Rejestracja zrobiona, pomijamy resztę pętli dla tej wiadomości
                     
                 except Exception as e:
@@ -576,18 +586,24 @@ def main_bot():
                 if not wyswietlana_nazwa:
                     wyswietlana_nazwa = "Użytkownik"
                 
-                # Budowanie przycisku WebApp otwierającego nowy panel
+                # Budowanie przycisku WebApp otwierającego nowy panel (tylko dla czatów prywatnych!)
                 try:
                     nazwa_przycisku = t_ui(user_lang, "btn_change_hours")
                 except Exception:
                     nazwa_przycisku = "⚙️ Zmień ustawienia"
 
-                klawiatura = {
-                    "keyboard": [
-                        [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
-                    ],
-                    "resize_keyboard": True
-                }
+                if int(chat_id) > 0:
+                    # CZAT PRYWATNY -> Tworzymy klawiaturę WebApp
+                    klawiatura = {
+                        "keyboard": [
+                            [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
+                        ],
+                        "resize_keyboard": True
+                    }
+                else:
+                    # GRUPA (ID ujemne) -> Telegram zabrania WebApp na grupach!
+                    # Ustawiamy None, żeby send_reply niżej nie wysyłało niedozwolonej klawiatury:
+                    klawiatura = None
 
                 # --- BUDOWANIE WIADOMOŚCI Z I18N (Teraz jest w dobrym miejscu!) ---
                 msg = t_ui(user_lang, "menu_header", name=wyswietlana_nazwa, city=city, disp_rano=disp_rano, disp_wieczor=disp_wieczor)
@@ -733,14 +749,20 @@ def main_bot():
                     instrukcja = t_ui(user_lang, "city_prompt", city=city)
                     nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
                     
-                    # Dolna klawiatura GPS z WebApp
-                    klawiatura_gps = {
-                        "keyboard": [
-                            [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
-                        ],
-                        "resize_keyboard": True
-                    }
-                    send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
+                    # Dolna klawiatura GPS z WebApp (tylko w czatach prywatnych!)
+                    if int(chat_id) > 0:
+                        klawiatura_gps = {
+                            "keyboard": [
+                                [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
+                            ],
+                            "resize_keyboard": True
+                        }
+                        send_reply(chat_id, instrukcja, reply_markup=klawiatura_gps)
+                    else:
+                        # GRUPA (ID ujemne) -> Wysyłamy instrukcję bez przycisku
+                        instrukcja_grupa = instrukcja + "\n\n💡 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ `Berlin`"
+                        send_reply(chat_id, instrukcja_grupa)
+                        
                     continue
                 
                 # Użytkownik wpisał od razu "/miasto Warszawa" -> od razu geokodujemy
