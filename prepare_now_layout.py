@@ -409,9 +409,11 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # ══════════════════════════════════════════════════════════
     # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /now
     # ══════════════════════════════════════════════════════════
-    if lang == "en":
-        hero_summary = translate_weather_text(hero_summary, lang)
-        context_line = translate_weather_text(context_line, lang)
+    if lang != "pl":
+        if hero_summary:
+            hero_summary = translate_weather_text(hero_summary, lang)
+        if context_line:
+            context_line = translate_weather_text(context_line, lang)
         
         for block in today_blocks:
             if block.get("primary_desc"): 

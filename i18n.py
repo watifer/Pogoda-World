@@ -1,8 +1,18 @@
 import re
 
-# ==============================================================
-# SŁOWNIK ELEMENTÓW KARTY (STRINGS)
-# ==============================================================
+# =====================================================================
+# 1. SŁOWNIK ELEMENTÓW KARTY (STRINGS)
+# =====================================================================
+# KIEDY STOSUJEMY: 
+#   Na etapie GENEROWANIA STRUKTURY (layoutu) karty pogodowej w kodzie
+#   (np. w plikach prepare_now_layout.py oraz prepare_layout.py).
+# DO CZEGO SŁUŻY:
+#   Przechowuje stałe etykiety wizualne, nagłówki sekcji, nazwy dni tygodnia,
+#   prefiksy (np. "Odczuwalna") oraz stopki, które budują "szkielet" karty.
+# JAK DZIAŁA:
+#   Pobieramy je bezpośrednio po kluczu języka, np.: STRINGS["de"]["section_title"].
+#   To są elementy, o których wiemy OD RAZU, w jakim języku mają być wygenerowane.
+# =====================================================================
 STRINGS = {
   "pl": {
     "report_morning": "raport poranny",
@@ -401,9 +411,20 @@ def t(lang: str, key: str, **kw) -> str:
     d = STRINGS.get(lang) or STRINGS["pl"]
     s = d.get(key) or STRINGS["pl"].get(key) or key
     return s.format(**kw) if kw else s
-
 # =====================================================================
-# SŁOWNIKI DYNAMICZNEGO TŁUMACZA (EXACT MAPS)
+# 2. SŁOWNIKI DYNAMICZNEGO TŁUMACZA (EXACT MAPS)
+# =====================================================================
+# KIEDY STOSUJEMY: 
+#   W tzw. "Ostatniej Mili" (funkcja translate_weather_text), gdy mamy już
+#   wygenerowany opis pogody po polsku i musimy go zamienić na język obcy.
+# DO CZEGO SŁUŻY:
+#   Do mapowania 1:1 całych, gotowych zdań, stanów pogody lub komunikatów
+#   systemowych (np. "Bezchmurnie" -> "Wolkenlos", "Burza" -> "Gewitter",
+#   lub całego zdania: "Nocne dane — możliwa korekta prognozy rano.").
+# JAK DZIAŁA:
+#   Silnik sprawdza, czy cały tekst od początku do końca jest równy kluczowi
+#   (if text.strip() == klucz). Najszybsza i najbezpieczniejsza metoda
+#   tłumaczenia bez ryzyka przypadkowej zmiany fragmentu innego słowa.
 # =====================================================================
 EXACT_MAPS = {
     "en": {
@@ -724,7 +745,18 @@ EXACT_MAPS = {
 }
 
 # =====================================================================
-# SŁOWNIKI CZĄSTKOWE (REPLACEMENTS)
+# 3. SŁOWNIKI CZĄSTKOWE (REPLACEMENTS)
+# =====================================================================
+# KIEDY STOSUJEMY: 
+#   W "Ostatniej Mili" (translate_weather_text) JAKO FALLBACK, gdy 
+#   słownik EXACT_MAPS nie znalazł dopasowania 1:1 dla całego ciągu tekstowego.
+# DO CZEGO SŁUŻY:
+#   Do podmieniania słów kluczowych, przymiotników lub fraz wklejonych wewnątrz
+#   bardziej złożonego tekstu (np. zamiana słowa "przelotny " w zdaniu 
+#   "przelotny deszcz (15 mm)" albo zamiana "silny wiatr" w "silny wiatr (65 km/h)").
+# JAK DZIAŁA:
+#   Silnik przeszukuje tekst i podmienia tylko pasujący fragment (string.replace),
+#   zostawiając resztę zdania (np. liczby, nawiasy, wartości mm i km/h) w spokoju.
 # =====================================================================
 REPLACEMENTS = {
     "en": [
@@ -1473,9 +1505,21 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
     return translate_snippet(text)
 
 
-# ==============================================================
-# SŁOWNIK INTERFEJSU TELEGRAMA (UI)
-# ==============================================================
+# =====================================================================
+# 4. SŁOWNIK INTERFEJSU TELEGRAMA (UI)
+# =====================================================================
+# KIEDY STOSUJEMY: 
+#   Wszędzie POZA kartą pogodową! W pliku głównego bota (location_bot.py)
+#   oraz w handlerach obsługujących czat z użytkownikiem.
+# DO CZEGO SŁUŻY:
+#   Przechowuje "głos bota" na czacie: treść dymków tekstowych, instrukcje
+#   komend (/miasto, /info), opisy na przyciskach klawiatury ("Otwórz w Telegramie"),
+#   komunikaty o błędach (np. brak GPS) oraz powitania dla nowych osób.
+# JAK DZIAŁA:
+#   Wywołujemy go funkcją t_ui(user_lang, "klucz_komunikatu", **zmienne).
+#   Dzięki temu sam interfejs czatu rozmawia z użytkownikiem w tym samym
+#   języku, co wygenerowana dla niego karta pogodowa.
+# =====================================================================
 UI_TEXTS = {
     "pl": {
         "menu_header": "⚙️ *PANEL STEROWANIA* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Obecna lokalizacja:*\n└ {city}\n\n📍 *Jak zmienić miejscowość?*\nUżyj opcji /miasto lub zobacz instrukcję /info jak to zrobić z mapy.\n\n📅 *Twój harmonogram:*\n├ Rano: {disp_rano}\n└ Popołudnie: {disp_wieczor}\n\n⏰ *Jak zmienić godziny?*\nKliknij przycisk poniżej.\n",

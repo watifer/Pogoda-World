@@ -123,28 +123,27 @@ def prepare_future_layout_data(payload, now=None):
     if actual_days == 0:
         actual_days = 14
         
-    # Bezpieczne sprawdzanie i tłumaczenie nagłówków
-    if actual_days == 14:
-        dynamic_weekday = t(lang, "outlook_14d")
-        dynamic_title = t(lang, "next_14d_trend")
-    else:
-        # Płaski fallback, jeśli liczba dni z API nagle się zmieni
-        if lang == "en":
-            dynamic_weekday = f"{actual_days}-day outlook"
-            dynamic_title = f"{actual_days}-day trend"
-        else:
-            dynamic_weekday = f"Prognoza {actual_days}-dniowa"
-            dynamic_title = f"Trend na kolejne {actual_days} dni"
+    # Pobieramy Twoje gotowe nagłówki ze słownika
+    dynamic_weekday = t(lang, "outlook_14d")
+    dynamic_title = t(lang, "next_14d_trend")
+    
+    # Jeśli API zwróci inną liczbę dni niż 14, po prostu podmieniamy cyfrę w gotowym tłumaczeniu!
+    if actual_days != 14:
+        dynamic_weekday = dynamic_weekday.replace("14", str(actual_days))
+        dynamic_title = dynamic_title.replace("14", str(actual_days))
             
     # ══════════════════════════════════════════════════════════
     # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /future
     # ══════════════════════════════════════════════════════════
-    if lang == "en":
-        hero_summary = translate_weather_text(hero_summary, lang)
+    if lang != "pl":
+        if hero_summary:
+            hero_summary = translate_weather_text(hero_summary, lang)
         
         for d in future_days:
-            if d.get("precip_badge"): d["precip_badge"] = translate_weather_text(d["precip_badge"], lang)
-            if d.get("descriptor"): d["descriptor"] = translate_weather_text(d["descriptor"], lang)
+            if d.get("precip_badge"): 
+                d["precip_badge"] = translate_weather_text(d["precip_badge"], lang)
+            if d.get("descriptor"): 
+                d["descriptor"] = translate_weather_text(d["descriptor"], lang)
     # ══════════════════════════════════════════════════════════
         
     return {
