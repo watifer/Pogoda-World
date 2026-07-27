@@ -64,8 +64,9 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         
     now_floored = now.replace(minute=0, second=0, microsecond=0)
     
-    # Wyciągamy język (z fallbackiem na pl)
-    lang = payload.get("lang", "pl")
+    # --- PANCERNA NORMALIZACJA JĘZYKA (Defensive Programming) ---
+    raw_lang = str(payload.get("lang", "pl")).strip().lower()
+    lang = raw_lang[:2]  # Zabezpiecza przed frazami typu "DE ", "en-US" itp.
     
     # Przetłumaczony dzień tygodnia
     weekday = DAYS_FULL.get(lang, DAYS_FULL["pl"])[now.weekday()]
@@ -321,24 +322,20 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             "extra_lines": extra_lines
         })
         
-    # --- UI softening dla /now: spójne z prepare_layout (gdy POP straszy, ale mm nie potwierdza) ---
+    # --- UI softening dla /now: spójne z prepare_layout ---
     soft_now = (pop_val >= 60 and max_precip < 0.2)
     if soft_now:
-        # Wyciągamy język z danych (awaryjnie angielski)
-        obecny_jezyk = payload.get("lang", "en")
-        
         # 1) hero: jeśli było o opadach, zmiękcz
-        # hero_summary ma format "opis\nlinia2" (np. "Deszcz\nwietrznie")
         parts = (hero_summary or "").split("\n", 1)
         if parts:
-            parts[0] = soften_possible_prefix(strip_mm_pct_parens(parts[0]), lang=obecny_jezyk)
+            parts[0] = soften_possible_prefix(strip_mm_pct_parens(parts[0]), lang=lang)
             hero_summary = "\n".join(parts)
             
-        # 2) godziny: zdejmij mm i dodaj prefiks zależny od języka
+        # 2) godziny: zdejmij mm i dodaj prefiks zależny od znormalizowanego języka
         for b in today_blocks:
             pd_desc = b.get("primary_desc", "")
             pd2 = strip_mm_pct_parens(pd_desc)
-            pd2 = soften_possible_prefix(pd2, lang=obecny_jezyk)
+            pd2 = soften_possible_prefix(pd2, lang=lang)
             b["primary_desc"] = pd2
     
 
@@ -407,7 +404,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     
     
     # ══════════════════════════════════════════════════════════
-    # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /now
+    # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /now (TYLKO RAZ!)
     # ══════════════════════════════════════════════════════════
     if lang != "pl":
         if hero_summary:
@@ -417,13 +414,16 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         
         for block in today_blocks:
             if block.get("primary_desc"): 
-                block["primary_desc"] = translate_weather_text(block["primary_desc"], lang)
+                # Tłumaczymy i bezpiecznie podnosimy 1. literę (np. "Regen (1.5 mm)")
+                val = translate_weather_text(block["primary_desc"], lang)
+                block["primary_desc"] = val[:1].upper() + val[1:] if val else val
+                
             for el in block.get("extra_lines", []):
                 if isinstance(el, dict):
                     # 1. Tłumaczymy główny tekst (jeśli istnieje)
                     if el.get("text"):
                         el["text"] = translate_weather_text(el["text"], lang)
-                    # 2. NIEZALEŻNIE tłumaczymy spany (nawet jak nie ma głównego tekstu!)
+                    # 2. NIEZALEŻNIE tłumaczymy spany
                     for sp in el.get("spans", []):
                         if sp.get("text"): 
                             sp["text"] = translate_weather_text(sp["text"], lang)

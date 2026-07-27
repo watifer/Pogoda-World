@@ -879,7 +879,11 @@ def prepare_layout_data(payload, now=None):
     now = now or datetime.now(tz)
     # Wyciągamy język (z twardym fallbackiem na polski)
     #lang = payload.get("lang", "pl")
-    lang = (payload.get("lang") or "pl").strip().lower()
+    #lang = (payload.get("lang") or "pl").strip().lower()
+    
+    # Wyciągamy język i od razu go normalizujemy (bezpiecznik na "DE ", "en-US" itp.)
+    raw_lang = str(payload.get("lang", "pl")).strip().lower()
+    lang = raw_lang[:2]  # Bierzemy zawsze tylko 2 pierwsze znaki, np. z "en-us" robi się "en"
 
     today_str    = now.strftime("%Y-%m-%d")
     tomorrow_str = (now + timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1422,10 +1426,14 @@ def prepare_layout_data(payload, now=None):
         if wk and isinstance(wk, dict) and wk.get("text"):
             wk["text"] = translate_weather_text(wk["text"], lang)
             
-        # Płaskie dni na dole (future outlook)
+        # Płaskie dni na dole (future outlook) - z podnoszeniem 1. litery!
         for d in nd:
-            if d.get("precip_badge"): d["precip_badge"] = translate_weather_text(d["precip_badge"], lang)
-            if d.get("descriptor"): d["descriptor"] = translate_weather_text(d["descriptor"], lang)
+            if d.get("precip_badge"): 
+                val = translate_weather_text(d["precip_badge"], lang)
+                d["precip_badge"] = val[:1].upper() + val[1:] if val else val
+            if d.get("descriptor"): 
+                val = translate_weather_text(d["descriptor"], lang)
+                d["descriptor"] = val[:1].upper() + val[1:] if val else val
             
         # Szczegółowe bloki weekendowe
         for day in wdd:
@@ -1446,30 +1454,20 @@ def prepare_layout_data(payload, now=None):
                     for sp in el.get("spans", []):
                         if sp.get("text"): sp["text"] = translate_weather_text(sp["text"], lang)
 
-        # ----------------------------------------------------------
-        # Tłumaczenie opisów weekend teaser'a
-        # ----------------------------------------------------------
-        if weekend_teaser:
-            for k in ("sat", "sun"):
-                d = weekend_teaser.get(k)
-                if isinstance(d, dict) and d.get("desc"):
-                    # 1. Tłumaczenie zjawiska (tylko dla języków obcych)
-                    if lang != "pl":
-                        d["desc"] = translate_weather_text(d["desc"], lang)
-                    
-                    # 2. Małe litery bezwzględnie dla wszystkich języków (PL i inne)
-                    d["desc"] = d["desc"].lower()
-
     # ----------------------------------------------------------
-    # UJEDNOLICENIE WIELKOŚCI LITER DLA WEEKENDU (WSZYSTKIE JĘZYKI)
+    # UJEDNOLICENIE I TŁUMACZENIE WEEKEND TEASER'A (WSZYSTKIE JĘZYKI)
     # ----------------------------------------------------------
-    # Ten kod wykonuje się dla KAŻDEGO języka (również pl),
-    # dzięki czemu polska "Mżawka" też zmieni się w "mżawka".
     if weekend_teaser:
         for k in ("sat", "sun"):
             d = weekend_teaser.get(k)
             if isinstance(d, dict) and d.get("desc"):
-                d["desc"] = d["desc"].lower()
+                if lang != "pl":
+                    # Tłumaczymy i podnosimy 1. literę (np. "Gewitter 12–13")
+                    val = translate_weather_text(d["desc"], lang)
+                    d["desc"] = val[:1].upper() + val[1:] if val else val
+                else:
+                    # Dla języka polskiego celowo zachowujemy małe litery
+                    d["desc"] = d["desc"].lower()
     # ══════════════════════════════════════════════════════════
     
     

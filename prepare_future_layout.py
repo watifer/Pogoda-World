@@ -19,8 +19,11 @@ def prepare_future_layout_data(payload, now=None):
     now = now or datetime.now(tz)
 
     # Wyciągamy język (z twardym fallbackiem na polski)
-    lang = payload.get("lang", "pl")
-
+    #lang = payload.get("lang", "pl")
+    # Zabezpieczamy i normalizujemy zmienną lang
+    raw_lang = str(payload.get("lang", "pl")).strip().lower()
+    lang = raw_lang[:2]
+    
     # 1. NAJPIERW definiujemy listy (skąd bierzemy dane)
     hours = payload.get("hours", [])
     hy = [h for h in hours if h.get("source") == "yrno"]
@@ -141,9 +144,11 @@ def prepare_future_layout_data(payload, now=None):
         
         for d in future_days:
             if d.get("precip_badge"): 
-                d["precip_badge"] = translate_weather_text(d["precip_badge"], lang)
+                val = translate_weather_text(d["precip_badge"], lang)
+                d["precip_badge"] = val[:1].upper() + val[1:] if val else val
             if d.get("descriptor"): 
-                d["descriptor"] = translate_weather_text(d["descriptor"], lang)
+                val = translate_weather_text(d["descriptor"], lang)
+                d["descriptor"] = val[:1].upper() + val[1:] if val else val
     # ══════════════════════════════════════════════════════════
         
     return {
