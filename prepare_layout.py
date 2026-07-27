@@ -783,7 +783,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
                 elif "śnieg" in badge: badge = "nocny śnieg"
                 else: badge = "nocny deszcz"
                 
-                badge = f"{base_sky} · {badge}{pop_for_badge}" # <--- ZMIANA
+                badge = f"{_smart_cap(badge)}{pop_for_badge}"
         else:
             badge += pop_for_badge # <--- ZMIANA
     else:
