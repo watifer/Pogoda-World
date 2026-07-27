@@ -142,13 +142,20 @@ def prepare_future_layout_data(payload, now=None):
         if hero_summary:
             hero_summary = translate_weather_text(hero_summary, lang)
         
-        for d in future_days:
+        # --- PANCERNY HELPER DO WIELKICH LITER (Odporny na spacje, "·" i "•") ---
+        def _smart_cap(val: str) -> str:
+            if not val or not isinstance(val, str):
+                return val
+            for i, char in enumerate(val):
+                if char.isalpha():
+                    return val[:i] + char.upper() + val[i+1:]
+            return val
+
+        for d in future_days or []:
             if d.get("precip_badge"): 
-                val = translate_weather_text(d["precip_badge"], lang)
-                d["precip_badge"] = val[:1].upper() + val[1:] if val else val
+                d["precip_badge"] = _smart_cap(translate_weather_text(d["precip_badge"], lang))
             if d.get("descriptor"): 
-                val = translate_weather_text(d["descriptor"], lang)
-                d["descriptor"] = val[:1].upper() + val[1:] if val else val
+                d["descriptor"] = _smart_cap(translate_weather_text(d["descriptor"], lang))
     # ══════════════════════════════════════════════════════════
         
     return {

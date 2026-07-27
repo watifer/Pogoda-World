@@ -1413,63 +1413,69 @@ def prepare_layout_data(payload, now=None):
             d["descriptor"] = d["descriptor"][0].lower() + d["descriptor"][1:]
             
     # ══════════════════════════════════════════════════════════
-    # OSTATNIA MILA: TŁUMACZENIE CAŁEGO LAYOUTU NA INNE JĘZYKI
+    # OSTATNIA MILA: TŁUMACZENIE I PANCERNE FORMATOWANIE LAYOUTU
     # ══════════════════════════════════════════════════════════
+
+    # --- PANCERNY HELPER DO WIELKICH LITER (Odporny na spacje, "·" i "•") ---
+    def _smart_cap(val: str) -> str:
+        if not val or not isinstance(val, str):
+            return val
+        for i, char in enumerate(val):
+            if char.isalpha():
+                return val[:i] + char.upper() + val[i+1:]
+        return val
+
     if lang != "pl":
-        hero_summary_line = translate_weather_text(hero_summary_line, lang)
-        final_context_line = translate_weather_text(final_context_line, lang)
+        if hero_summary_line:
+            hero_summary_line = translate_weather_text(hero_summary_line, lang)
+        if final_context_line:
+            final_context_line = translate_weather_text(final_context_line, lang)
         
-        # Alerty i ostrzeżenia
         alerts = [translate_weather_text(a, lang) for a in alerts if a]
         
-        # Sekcja Warto Wiedzieć (WK)
         if wk and isinstance(wk, dict) and wk.get("text"):
             wk["text"] = translate_weather_text(wk["text"], lang)
-            
-        # Płaskie dni na dole (future outlook) - z podnoszeniem 1. litery!
-        for d in nd:
+
+        # 1) Płaskie dni na dole (nd)
+        for d in nd or []:
             if d.get("precip_badge"): 
-                val = translate_weather_text(d["precip_badge"], lang)
-                d["precip_badge"] = val[:1].upper() + val[1:] if val else val
+                d["precip_badge"] = _smart_cap(translate_weather_text(d["precip_badge"], lang))
             if d.get("descriptor"): 
-                val = translate_weather_text(d["descriptor"], lang)
-                d["descriptor"] = val[:1].upper() + val[1:] if val else val
+                d["descriptor"] = _smart_cap(translate_weather_text(d["descriptor"], lang))
+
+        # 2) Połączona obsługa bloków: dzisiejszych (today_blocks) oraz weekendowych (wdd)
+        all_blocks = list(today_blocks or [])
+        for day in wdd or []:
+            all_blocks.extend(day.get("blocks", []) or [])
+
+        for b in all_blocks:
+            if b.get("primary_desc"):
+                b["primary_desc"] = _smart_cap(translate_weather_text(b["primary_desc"], lang))
             
-        # Szczegółowe bloki weekendowe
-        for day in wdd:
-            for block in day.get("blocks", []):
-                if block.get("primary_desc"): block["primary_desc"] = translate_weather_text(block["primary_desc"], lang)
-                for el in block.get("extra_lines", []):
-                    if isinstance(el, dict) and el.get("text"):
-                        el["text"] = translate_weather_text(el["text"], lang)
-                        for sp in el.get("spans", []):
-                            if sp.get("text"): sp["text"] = translate_weather_text(sp["text"], lang)
+            # Bezpieczna mutacja listy extra_lines (obsługuje zarówno dict, jak i zwykły str!)
+            extra = b.get("extra_lines", []) or []
+            for i, ex in enumerate(extra):
+                if isinstance(ex, str):
+                    extra[i] = _smart_cap(translate_weather_text(ex, lang))
+                elif isinstance(ex, dict):
+                    if ex.get("text"):
+                        ex["text"] = _smart_cap(translate_weather_text(ex["text"], lang))
+                    if isinstance(ex.get("spans"), list):
+                        for sp in ex["spans"]:
+                            if isinstance(sp, dict) and sp.get("text"):
+                                sp["text"] = _smart_cap(translate_weather_text(sp["text"], lang))
 
-        # Dzisiejsze 3 główne bloki godzinowe
-        for block in today_blocks:
-            if block.get("primary_desc"): block["primary_desc"] = translate_weather_text(block["primary_desc"], lang)
-            for el in block.get("extra_lines", []):
-                if isinstance(el, dict) and el.get("text"):
-                    el["text"] = translate_weather_text(el["text"], lang)
-                    for sp in el.get("spans", []):
-                        if sp.get("text"): sp["text"] = translate_weather_text(sp["text"], lang)
-
-    # ----------------------------------------------------------
-    # UJEDNOLICENIE I TŁUMACZENIE WEEKEND TEASER'A (WSZYSTKIE JĘZYKI)
-    # ----------------------------------------------------------
+    # 3) Weekend teaser (obsługiwany niezależnie dla PL i innych języków)
     if weekend_teaser:
         for k in ("sat", "sun"):
             d = weekend_teaser.get(k)
             if isinstance(d, dict) and d.get("desc"):
                 if lang != "pl":
-                    # Tłumaczymy i podnosimy 1. literę (np. "Gewitter 12–13")
-                    val = translate_weather_text(d["desc"], lang)
-                    d["desc"] = val[:1].upper() + val[1:] if val else val
+                    # Czysto i elegancko z wykorzystaniem globalnego helpera:
+                    d["desc"] = _smart_cap(translate_weather_text(d["desc"], lang))
                 else:
-                    # Dla języka polskiego celowo zachowujemy małe litery
                     d["desc"] = d["desc"].lower()
     # ══════════════════════════════════════════════════════════
-    
     
     
     return {

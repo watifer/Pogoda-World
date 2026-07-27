@@ -412,21 +412,33 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         if context_line:
             context_line = translate_weather_text(context_line, lang)
         
-        for block in today_blocks:
+        # --- PANCERNY HELPER DO WIELKICH LITER (Odporny na spacje, "·" i "•") ---
+        def _smart_cap(val: str) -> str:
+            if not val or not isinstance(val, str):
+                return val
+            for i, char in enumerate(val):
+                if char.isalpha():
+                    return val[:i] + char.upper() + val[i+1:]
+            return val
+
+        for block in today_blocks or []:
             if block.get("primary_desc"): 
-                # Tłumaczymy i bezpiecznie podnosimy 1. literę (np. "Regen (1.5 mm)")
-                val = translate_weather_text(block["primary_desc"], lang)
-                block["primary_desc"] = val[:1].upper() + val[1:] if val else val
+                block["primary_desc"] = _smart_cap(translate_weather_text(block["primary_desc"], lang))
                 
-            for el in block.get("extra_lines", []):
-                if isinstance(el, dict):
-                    # 1. Tłumaczymy główny tekst (jeśli istnieje)
+            # Bezpieczna mutacja extra_lines (obsługa dict oraz str, tak jak w prepare_layout)
+            extra = block.get("extra_lines", []) or []
+            for i, el in enumerate(extra):
+                if isinstance(el, str):
+                    extra[i] = _smart_cap(translate_weather_text(el, lang))
+                elif isinstance(el, dict):
+                    # 1. Tłumaczymy i podnosimy główny tekst (jeśli istnieje)
                     if el.get("text"):
-                        el["text"] = translate_weather_text(el["text"], lang)
-                    # 2. NIEZALEŻNIE tłumaczymy spany
-                    for sp in el.get("spans", []):
-                        if sp.get("text"): 
-                            sp["text"] = translate_weather_text(sp["text"], lang)
+                        el["text"] = _smart_cap(translate_weather_text(el["text"], lang))
+                    # 2. NIEZALEŻNIE tłumaczymy i podnosimy spany
+                    if isinstance(el.get("spans"), list):
+                        for sp in el["spans"]:
+                            if isinstance(sp, dict) and sp.get("text"): 
+                                sp["text"] = _smart_cap(translate_weather_text(sp["text"], lang))
     # ══════════════════════════════════════════════════════════
     
     return {
