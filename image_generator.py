@@ -220,9 +220,18 @@ def fit_day_desc(draw, text, font, max_px):
             candidates.append("deszcz")
     elif "mżaw" in t:
         candidates.append("mżawka")
+        
+    # --- NOWE KLUCZOWE WARUNKI (MGŁA, SŁOŃCE I PRZEJAŚNIENIA) ---
+    elif "mgł" in t or "zamgl" in t:
+        candidates.append("mgła")
+    elif "słońc" in t or "słonecz" in t or "bezchmurn" in t or "pogodn" in t:
+        candidates.append("słonecznie")
+    elif "przejaśn" in t or "rozpogod" in t:
+        candidates.append("przejaśnienia")
             
-    # Ostateczny, bezpieczny fallback słowny
-    candidates.append("zmiennie")
+    # Ostateczny, bezpieczny fallback słowny (tylko jeśli nic wcześniej nie pasowało!)
+    if not candidates:
+        candidates.append("zmiennie")
     
     # Próbujemy dopasować kandydatów
     for c in candidates:

@@ -429,6 +429,7 @@ def t(lang: str, key: str, **kw) -> str:
 # =====================================================================
 EXACT_MAPS = {
     "en": {
+        
         "bezchmurnie, pogoda jak kryształ": "Clear sky, crystal perfect",
         "bezchmurnie": "Clear sky",
         "słonecznie": "Sunny",
@@ -492,6 +493,7 @@ EXACT_MAPS = {
         "brak danych": "No data",
     },
     "fr": {
+                
         "bezchmurnie, pogoda jak kryształ": "Ciel dégagé, temps cristallin",
         "bezchmurnie": "Ciel dégagé",
         "słonecznie": "Ensoleillé",
@@ -761,6 +763,9 @@ EXACT_MAPS = {
 # =====================================================================
 REPLACEMENTS = {
     "en": [
+        ("zmiennie", "changeable"),
+        ("zmienna pogoda", "changeable weather"),
+        ("mgła od ", "fog from "),
         # --- OPADY MIESZANE, NOCNE I ODZNAKI Z PREPARE_LAYOUT ---
         ("opady śniegu z deszczem", "sleet"),
         ("opady deszczu ze śniegiem", "sleet"),
@@ -930,6 +935,13 @@ REPLACEMENTS = {
                 
     ],
     "fr": [
+    
+        # --- BRAKUJĄCE DESKRYPTORY I CZAS ---
+        ("zmiennie", "variable"),
+        ("zmienna pogoda", "temps variable"),
+        ("mgła od ", "brouillard à partir de "),
+        ("od ", "dès "),  # Poprawia "od 21" na "dès 21" (zamiast błędnego "de 21")
+        ("do ", "jusqu'à "),
         
         # --- OPADY MIESZANE, NOCNE I ODZNAKI Z PREPARE_LAYOUT ---
         ("opady śniegu z deszczem", "neige fondante"),
@@ -1097,7 +1109,12 @@ REPLACEMENTS = {
          
     ],
     "de": [
-    
+        # --- BRAKUJĄCE DESKRYPTORY I CZAS ---
+        ("zmienna pogoda", "wechselhaftes Wetter"),
+        ("zmiennie", "wechselhaft"),
+        ("mgła od ", "Nebel ab "),
+        ("od ", "ab "),  # Poprawia m.in. "od 21" na "ab 21"
+        ("do ", "bis "),
         # --- OPADY MIESZANE I NOCNE Z PREPARE_LAYOUT ---
         ("śnieg z deszczem", "Schneeregen"),
         ("deszcz ze śniegiem", "Schneeregen"),
@@ -1260,7 +1277,9 @@ REPLACEMENTS = {
     
     ],
     "es": [
-        
+        ("zmiennie", "variable"),
+        ("zmienna pogoda", "tiempo variable"),
+        ("mgła od ", "niebla desde las "),
         # --- OPADY MIESZANE, NOCNE I ODZNAKI Z PREPARE_LAYOUT ---
         ("opady śniegu z deszczem", "aguanieve"),
         ("opady deszczu ze śniegiem", "aguanieve"),
@@ -1428,6 +1447,9 @@ REPLACEMENTS = {
         ],
     "no": [
         
+        ("zmiennie", "skiftende"),
+        ("zmienna pogoda", "skiftende vær"),
+        ("mgła od ", "tåke fra kl. "),
         # --- OPADY MIESZANE, NOCNE I ODZNAKI Z PREPARE_LAYOUT ---
         ("opady śniegu z deszczem", "sludd"),
         ("opady deszczu ze śniegiem", "sludd"),
