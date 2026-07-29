@@ -100,7 +100,9 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
 
     toks = q.split()
     candidates = []
-    for n in (min(3,len(toks)), 2, 1):
+    
+    # Bierzemy pełne zapytanie (lub max pierwsze 3 słowa) oraz ewentualnie 2 słowa, bez szukania pojedynczych słów (1) które dają fałszywe wyniki
+    for n in (min(3, len(toks)), 2):
         if len(toks) >= n:
             candidates.append(" ".join(toks[:n]))
 
@@ -113,7 +115,8 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
         seen.add(key)
         uniq.append(c)
 
-    for c in uniq:
+    # KLUCZOWY LIMIT: Bierzemy maksymalnie 2 pierwsze unikalne kandydaty!
+    for c in uniq[:2]:
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
             return (lat, lon, full, c)
