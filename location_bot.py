@@ -250,7 +250,8 @@ def main_bot():
                 bot_username=BOT_USERNAME,  # Pobiera Twoją zmienną BOT_USERNAME z konfiguracji pliku!
                 get_coords_fn=get_coords_from_city,
                 # Adaptery lambda dopasowujące Twoje istniejące funkcje do silnika gościa:
-                build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(lat, lon, lang=lang),
+                #build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(lat, lon, lang=lang),
+                build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(lat, lon, "Europe/Warsaw", lang=lang),
                 prepare_layout_fn=lambda payload: prepare_now_layout_data(payload),
                 render_png_fn=image_generator.generate_weather_card,
                 send_photo_fn=lambda c_id, path: send_photo(
