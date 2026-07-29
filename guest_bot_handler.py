@@ -2,71 +2,107 @@ import os
 import re
 import time
 import logging
-from typing import Optional, Tuple, Dict, Any
-
-# Zmienne globalne (Cache in-memory bez zewnętrznych zależności)
-_GUEST_RL: Dict[int, float] = {}              # chat_id -> timestamp następnego dozwolonego wywołania
-_GUEST_RL_SEC: int = 60                       # Limit: 1 wywołanie na 60 sekund na czat
-_GUEST_DEDUPE: Dict[Tuple[int, int], Tuple[float, bool]] = {}  # (chat_id, msg_id) -> (expires_ts, True)
-_GUEST_DEDUPE_SEC: int = 600                  # Okres deduplikacji na wypadek retries ze strony Telegram API
-_GUEST_FORECAST_CACHE: Dict[Tuple[float, float], Tuple[float, Dict[Any, Any]]] = {} # (lat3, lon3) -> (expires_ts, payload)
-_GUEST_FORECAST_TTL: int = 300                # Cache danych pogodowych na 5 minut
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# HELPERY DO ZARZĄDZANIA PAMĘCIĄ PODRĘCZNĄ (TTL CACHE)
-# ---------------------------------------------------------------------------
-def _ttl_get(cache_dict: dict, key: any) -> Optional[any]:
-    """Pobiera element z pamięci podręcznej i automatycznie usuwa przeterminowane wpisy."""
-    now = time.time()
-    item = cache_dict.get(key)
-    if not item:
-        return None
-    exp, val = item
-    if now >= exp:
-        cache_dict.pop(key, None)
-        return None
-    return val
-
-def _ttl_set(cache_dict: dict, key: any, val: any, ttl: int) -> None:
-    """Zapisuje element do pamięci podręcznej z określoną żywotnością (TTL)."""
-    cache_dict[key] = (time.time() + ttl, val)
-
-def _guest_rate_limited(chat_id: int) -> bool:
-    """Sprawdza i aktualizuje limit wywołań (Rate-Limit) dla danego czatu."""
-    now = time.time()
-    nxt = _GUEST_RL.get(chat_id, 0)
-    if now < nxt:
-        return True
-    _GUEST_RL[chat_id] = now + _GUEST_RL_SEC
-    return False
-
-def _guest_deduped(chat_id: int, message_id: int) -> bool:
-    """Zapobiega ponownemu przetwarzaniu tej samej wiadomości w przypadku ponownych wysyłek ze strony API."""
-    k = (chat_id, message_id)
-    if _ttl_get(_GUEST_DEDUPE, k) is not None:
-        return True
-    _ttl_set(_GUEST_DEDUPE, k, True, _GUEST_DEDUPE_SEC)
-    return False
+# ============================================================================
+# HELPERY TEKSTOWE I GEOKODUJĄCE
+# ============================================================================
 
 def _extract_query_from_mention(text: str, bot_username: str) -> str:
-    """
-    Bezpiecznie usuwa @wzmiankę z treści wiadomości wraz z wiodącymi znakami
-    interpunkcyjnymi (np. ':', '-', '—') za pomocą jednego przejścia RegEx.
-    """
+    """Odciąga tekst po wzmiance i ucina na twardych separatorach zdania."""
     if not text:
         return ""
-    pattern = re.compile(rf"@{re.escape(bot_username)}\b[\s:–—]*", re.IGNORECASE)
-    return pattern.sub("", text).strip()
+    
+    mention = f"@{bot_username.lower()}"
+    low = text.lower()
+    idx = low.find(mention)
+    
+    if idx == -1:
+        return ""
+        
+    after = text[idx + len(mention):]
+    # Usuń separatory zaraz po wzmiance
+    after = re.sub(r"^[\s:–—,]+", "", after).strip()
+    
+    # Ucinamy na typowych separatorach kończących myśl
+    after = re.split(r"[!\n\r\(\)\[\]\{\}]", after, maxsplit=1)[0].strip()
+    return after
 
-# ---------------------------------------------------------------------------
-# GŁÓWNY HANDLER TRYBU GOŚCIA (/now)
-# ---------------------------------------------------------------------------
+
+def _clean_location_query(q: str) -> str:
+    """Sanitizer z inteligentnym przecinkiem (dopuszcza kody i nazwy krajów)."""
+    q = (q or "").strip()
+    
+    for sep in (" — ", " – ", " - "):
+        if sep in q:
+            q = q.split(sep, 1)[0].strip()
+            
+    if "," in q:
+        parts = q.split(",", 1)
+        miasto = parts[0].strip()
+        reszta = parts[1].strip()
+        ilosc_slow = len(reszta.split())
+        
+        if 0 < ilosc_slow <= 2:
+            q = f"{miasto}, {reszta}"
+        else:
+            q = miasto
+            
+    return q
+
+
+def _geocode_best_effort(query: str, get_coords_fn, lang: str):
+    """
+    Próbuje znaleźć lokalizację bez NLP:
+    - najpierw pełny tekst po wzmiance
+    - potem wersje skrócone zachowujące wielowyrazowe nazwy
+    Zwraca: (lat, lon, full, used_query)
+    """
+    q = (query or "").strip()
+    if not q:
+        return (None, None, None, None)
+        
+    tokens = q.split()
+    candidates = [q]
+    
+    # 1) Usuń wiodące 'w/we/in' (np. "@bot w Warszawie")
+    if tokens and tokens[0].lower() in ("w", "we", "in"):
+        candidates.append(" ".join(tokens[1:]))
+        
+    # 2) Fallback: ostatnie N tokenów (dla "Rio de Janeiro jutro")
+    for n in (4, 3, 2, 1):
+        if len(tokens) >= n:
+            candidates.append(" ".join(tokens[-n:]))
+            
+    # Deduplikacja (case-insensitive) z zachowaniem kolejności
+    seen = set()
+    uniq = []
+    for c in candidates:
+        c = " ".join((c or "").split()).strip()
+        if not c:
+            continue
+        key = c.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(c)
+        
+    # Max 4 próby, żeby nie spamować geokodera (Nominatim)
+    for c in uniq[:4]:
+        lat, lon, full = get_coords_fn(c, lang)
+        if lat and lon:
+            return (lat, lon, full, c)
+            
+    return (None, None, None, None)
+
+# ============================================================================
+# GŁÓWNY HANDLER TRYBU GOŚCIA
+# ============================================================================
+
 def handle_guest_now(
     message: dict, 
     bot_username: str,
-    # Haki (Hooks) - wstrzykiwane zależności z Twojego głównego systemu:
     get_coords_fn,
     build_payload_fn,
     prepare_layout_fn,
@@ -74,92 +110,71 @@ def handle_guest_now(
     send_photo_fn,
     send_reply_fn
 ) -> bool:
-    """
-    Jednorazowy handler w trybie gościa. Zwraca True, jeżeli wiadomość została obsłużona 
-    jako interakcja gościnna (lub świadomie zignorowana ze względu na limity/błędy).
-    Zwraca False, jeżeli wiadomość nie była wywołaniem @mention bota.
-    """
-    if not message:
-        return False
-
+    
+    text = (message.get("text") or "").strip()
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
-    if chat_id is None:
-        return False
-
-    msg_id = message.get("message_id")
-    if msg_id is not None and _guest_deduped(chat_id, msg_id):
-        return True  # Wiadomość już przetworzona w ostatnich 10 minutach
-
-    text = (message.get("text") or "").strip()
+    chat_type = chat.get("type", "")
+    is_private = (chat_type == "private")
     
-    # 1. Weryfikacja, czy wiadomość zawiera wzmiankę @bota
-    if f"@{bot_username.lower()}" not in text.lower():
+    # --- ODCINAMY WSZYSTKO, CO NIE JEST WZMIANKĄ ---
+    mention = f"@{bot_username.lower()}"
+    if mention not in text.lower():
         return False
-
-    # 2. Ochrona przed spamem (Rate-Limit per czat)
-    if _guest_rate_limited(chat_id):
-        logger.warning(f"[GuestMode] Rate-limited wywołanie w czacie: {chat_id}")
-        return True
-
-    # 3. Odporna normalizacja kodu językowego
-    raw_lang = str(((message.get("from") or {}).get("language_code") or "en")).split("-")[0].strip().lower()
-    user_lang = raw_lang[:2]
-    if user_lang == "no":
-        user_lang = "nb"
-
-    # 4. Ustalenie współrzędnych geograficznych (priorytet ma odpowiedź z lokalizacją)
+        
+    user_lang = (message.get("from", {}) or {}).get("language_code", "en")[:2].lower()
+    
     reply = message.get("reply_to_message") or {}
     loc = reply.get("location")
     
+    # POBRANIE WSPÓŁRZĘDNYCH (Z pinezki lub z tekstu)
     if loc and "latitude" in loc and "longitude" in loc:
         lat = float(loc["latitude"])
         lon = float(loc["longitude"])
     else:
+        # Krok 1 & 2: Odcięcie szumu i wstępne czyszczenie
         query = _extract_query_from_mention(text, bot_username)
+        query = _clean_location_query(query)
+        
         if not query:
-            send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy po @nazwie_bota.")
-            return True
-
+            if is_private:
+                send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy po @nazwie_bota.")
+            return True  # W grupie zachowujemy ciszę
+            
+        # Krok 3: Inteligentne geokodowanie (Fallback)
         try:
-            lat, lon, _full = get_coords_fn(query, user_lang)
+            lat, lon, _full, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
+            
             if not lat or not lon:
-                send_reply_fn(chat_id, f"Nie znaleziono lokalizacji '{query}'. Podaj inne miasto lub kod pocztowy.")
-                return True
+                if is_private:
+                    send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
+                return True  # W grupie zachowujemy ciszę
+                
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
-            send_reply_fn(chat_id, "Wystąpił chwilowy problem ze znalezieniem lokalizacji. Spróbuj ponownie za chwilę.")
-            return True
+            if is_private:
+                send_reply_fn(chat_id, "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę.")
+            return True  # W grupie zachowujemy ciszę
 
-    # 5. Pobranie danych pogodowych z uwzględnieniem pamięci podręcznej
-    key = (round(lat, 3), round(lon, 3))
-    payload = _ttl_get(_GUEST_FORECAST_CACHE, key)
-    
-    if payload is None:
-        try:
-            # POBIERANIE BEZSTAWE: Brak odczytów z Google Sheets i zapisów w bazie
-            payload = build_payload_fn(lat, lon, lang=user_lang, is_now=True)
-            _ttl_set(_GUEST_FORECAST_CACHE, key, payload, _GUEST_FORECAST_TTL)
-        except Exception as e:
-            logger.error(f"[GuestMode] Błąd generowania payloadu dla coords {key}: {e}")
-            send_reply_fn(chat_id, "Nie udało się pobrać aktualnych danych pogodowych. Spróbuj ponownie.")
-            return True
-
-    # 6. Generowanie widoku, renderowanie karty PNG i wysyłka
-    png_path = None
+    # --- GENEROWANIE KARTY (Jeśli mamy koordynaty) ---
     try:
+        payload = build_payload_fn(lat, lon, user_lang, is_now=True)
         layout = prepare_layout_fn(payload)
-        png_path = render_png_fn(layout)
-        send_photo_fn(chat_id, png_path)
-    except Exception as e:
-        logger.error(f"[GuestMode] Błąd renderowania/wysyłki karty: {e}")
-        send_reply_fn(chat_id, "Wystąpił błąd przy generowaniu karty pogodowej.")
-    finally:
-        # PROGRAMOWANIE DEFENSYWNE: Bezpieczne czyszczenie dysku na serwerze
-        if png_path and os.path.exists(png_path):
+        img_path = render_png_fn(layout)
+        
+        if img_path:
+            send_photo_fn(chat_id, img_path)
             try:
-                os.remove(png_path)
-            except OSError as os_err:
-                logger.error(f"[GuestMode] Nie udało się usunąć pliku {png_path}: {os_err}")
-
+                os.remove(img_path)
+            except Exception as e:
+                logger.error(f"[GuestMode] Błąd usuwania pliku {img_path}: {e}")
+        else:
+            if is_private:
+                send_reply_fn(chat_id, "Błąd podczas generowania grafiki pogodowej.")
+                
+    except Exception as e:
+        logger.error(f"[GuestMode] Wyjątek podczas generowania/wysyłki karty: {e}")
+        if is_private:
+            send_reply_fn(chat_id, "Nie udało się pobrać aktualnych danych pogodowych. Spróbuj ponownie.")
+            
     return True
