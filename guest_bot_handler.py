@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 # HELPERY TEKSTOWE I GEOKODUJĄCE
 # ============================================================================
+# --- PAMIĘĆ PODRĘCZNA (CACHE) DLA GEOMETRII I NAZW ---
+_GEO_CACHE = {}      # (lang, query_lower) -> (expiry_time, (lat, lon, full_address))
+_GEO_TTL = 3600      # 1 godzina
+
+_CITY_CACHE = {}     # (lat_rounded, lon_rounded, lang) -> (expiry_time, city_name)
+_CITY_TTL = 86400    # 24 godziny
 
 def _ttl_get(cache_dict, key):
     """Pobiera z cache jeśli nie wygasł TTL."""
