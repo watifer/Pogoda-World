@@ -251,11 +251,11 @@ def main_bot():
                 get_coords_fn=get_coords_from_city,
                 
                 # Adapter do silnika pogodowego (Teraz z dynamiczną strefą TZ i nazwą miasta!)
-                build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(
+                build_payload_fn=lambda lat, lon, lang, is_now, city_name: build_payload_for_location(
                     lat=lat,
                     lon=lon,
                     tz_name=_resolve_tz(lat, lon),                      # Zgaduje strefę na podstawie mapy!
-                    location_name=get_city_from_coords(lat, lon, lang), # Zmienia "Twoja okolica" na nazwę!
+                    location_name=city_name if city_name else "Twoja okolica",
                     lang=lang
                 ),
                 
