@@ -174,32 +174,25 @@ def handle_guest_now(
                 send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy po @nazwie_bota.")
             return True
             
-        # === START STOPERA ===
-        t0 = time.time()
-
         try:
-            # 1. GEOKODOWANIE
+            # 1. Sprawdzamy cache geokodowania
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
             
             if cached_geo:
                 lat, lon, full_address = cached_geo
                 used_query = query
-                print("[DEBUG] Geokodowanie z CACHE!", flush=True)
             else:
                 lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
                 if lat and lon:
                     _ttl_set(_GEO_CACHE, qkey, (lat, lon, full_address), _GEO_TTL)
-            
-            t1 = time.time()
-            print(f"[DEBUG-TIME] 1. Geokodowanie zajęło: {t1 - t0:.2f} s", flush=True)
                     
             if not lat or not lon:
                 if is_private:
                     send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
                 return True
                 
-            # 2. REVERSE GEOCODING (Nazwa miasta)
+            # 2. Reverse geocoding dla ładnej nazwy
             city_name = None
             if get_city_fn:
                 try:
@@ -209,8 +202,6 @@ def handle_guest_now(
                         city_name = get_city_fn(lat, lon, user_lang)
                         if city_name:
                             _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
-                    else:
-                        print("[DEBUG] Nazwa miasta z CACHE!", flush=True)
                 except Exception:
                     pass
                     
@@ -218,15 +209,37 @@ def handle_guest_now(
                 city_name = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
                 
             oficjalna_nazwa = city_name
-            
-            t2 = time.time()
-            print(f"[DEBUG-TIME] 2. Reverse Geo zajęło: {t2 - t1:.2f} s", flush=True)
                 
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
             if is_private:
                 send_reply_fn(chat_id, "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę.")
             return True
+
+    # --- GENEROWANIE KARTY ---
+    try:
+        # ZMIANA: Przekazujemy oficjalna_nazwa z powrotem do funkcji
+        payload = build_payload_fn(lat, lon, user_lang, True, oficjalna_nazwa)
+        
+        layout = prepare_layout_fn(payload)
+        img_path = render_png_fn(layout)
+        
+        if img_path:
+            send_photo_fn(chat_id, img_path)
+            try:
+                os.remove(img_path)
+            except Exception as e:
+                logger.error(f"[GuestMode] Błąd usuwania pliku {img_path}: {e}")
+        else:
+            if is_private:
+                send_reply_fn(chat_id, "Błąd podczas generowania grafiki pogodowej.")
+                
+    except Exception as e:
+        logger.error(f"[GuestMode] Wyjątek podczas generowania/wysyłki karty: {e}")
+        if is_private:
+            send_reply_fn(chat_id, "Nie udało się pobrać danych pogodowych. Spróbuj ponownie.")
+            
+    return True
 
     # --- GENEROWANIE KARTY ---
     try:
