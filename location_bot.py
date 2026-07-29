@@ -6,7 +6,7 @@ import main_card
 from i18n import t_ui
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
-from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR
+from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
 from geopy.geocoders import Nominatim
 from guest_bot_handler import handle_guest_now
 from prepare_now_layout import prepare_now_layout_data
@@ -249,9 +249,16 @@ def main_bot():
                 message=message,
                 bot_username=BOT_USERNAME,  # Pobiera Twoją zmienną BOT_USERNAME z konfiguracji pliku!
                 get_coords_fn=get_coords_from_city,
-                # Adaptery lambda dopasowujące Twoje istniejące funkcje do silnika gościa:
-                #build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(lat, lon, lang=lang),
-                build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(lat, lon, "Europe/Warsaw", lang=lang),
+                
+                # Adapter do silnika pogodowego (Teraz z dynamiczną strefą TZ i nazwą miasta!)
+                build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(
+                    lat=lat,
+                    lon=lon,
+                    tz_name=_resolve_tz(lat, lon),                      # Zgaduje strefę na podstawie mapy!
+                    location_name=get_city_from_coords(lat, lon, lang), # Zmienia "Twoja okolica" na nazwę!
+                    lang=lang
+                ),
+                
                 prepare_layout_fn=lambda payload: prepare_now_layout_data(payload),
                 render_png_fn=image_generator.generate_weather_card,
                 send_photo_fn=lambda c_id, path: send_photo(
