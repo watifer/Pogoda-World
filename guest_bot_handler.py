@@ -10,6 +10,20 @@ logger = logging.getLogger(__name__)
 # HELPERY TEKSTOWE I GEOKODUJĄCE
 # ============================================================================
 
+def _ttl_get(cache_dict, key):
+    """Pobiera z cache jeśli nie wygasł TTL."""
+    if key in cache_dict:
+        exp, val = cache_dict[key]
+        if time.time() < exp:
+            return val
+        else:
+            del cache_dict[key]
+    return None
+
+def _ttl_set(cache_dict, key, val, ttl_seconds):
+    """Zapisuje w cache z czasem wygaśnięcia."""
+    cache_dict[key] = (time.time() + ttl_seconds, val)
+
 def _extract_query_from_mention(text: str, bot_username: str) -> str:
     if not text:
         return ""
@@ -152,6 +166,25 @@ def handle_guest_now(
             return True
             
         try:
+            
+            # 1. Sprawdzamy cache geokodowania (zamiast za każdym razem męczyć API OSM)
+            qkey = (user_lang, query.lower())
+            cached_geo = _ttl_get(_GEO_CACHE, qkey)
+            
+            if cached_geo:
+                lat, lon, full_address = cached_geo
+                used_query = query
+            else:
+                lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
+                if lat and lon:
+                    _ttl_set(_GEO_CACHE, qkey, (lat, lon, full_address), _GEO_TTL)
+                    
+            if not lat or not lon:
+                if is_private:
+                    send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
+                return True
+            
+            
             # POBIERAMY DANE (zmienna full_address to pełny adres z bazy OSM!)
             lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
             
@@ -167,13 +200,18 @@ def handle_guest_now(
             city_name = None
             if get_city_fn:
                 try:
-                    city_name = get_city_fn(lat, lon, user_lang)
+                    ckey = (round(lat, 3), round(lon, 3), user_lang)
+                    city_name = _ttl_get(_CITY_CACHE, ckey)
+                    if not city_name:
+                        city_name = get_city_fn(lat, lon, user_lang)
+                        if city_name:
+                            _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
                 except Exception:
                     pass
-            # fallback tylko gdy reverse nie da sensownej miejscowości
+            # Fallback jeśli reverse nic nie zwróci
             if (not city_name) or ("Lokalizacja" in city_name) or any(ch.isdigit() for ch in city_name):
                 city_name = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
-
+                
             oficjalna_nazwa = city_name
                 
         except Exception as e:
