@@ -10,24 +10,36 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 def _extract_query_from_mention(text: str, bot_username: str) -> str:
-    """Odciąga tekst po wzmiance i ucina na twardych separatorach zdania."""
     if not text:
         return ""
-    
+
     mention = f"@{bot_username.lower()}"
     low = text.lower()
     idx = low.find(mention)
-    
     if idx == -1:
         return ""
-        
+
     after = text[idx + len(mention):]
-    # Usuń separatory zaraz po wzmiance
     after = re.sub(r"^[\s:–—,]+", "", after).strip()
-    
-    # Ucinamy na typowych separatorach kończących myśl
     after = re.split(r"[!\n\r\(\)\[\]\{\}]", after, maxsplit=1)[0].strip()
-    return after
+
+    # Stopwordy komentarza (PL + kilka podstawowych)
+    stop = {
+        "tak","będzie","bedzie","dziś","dzis","dzisiaj","jutro",
+        "today","tomorrow","now","heute","morgen","hoy","mañana","aujourd'hui"
+    }
+
+    toks = after.split()
+    kept = []
+    for tok in toks:
+        t = tok.lower().strip(".,;:!?")
+        if t in stop:
+            break
+        kept.append(tok)
+        if len(kept) >= 4:
+            break
+
+    return " ".join(kept).strip()
 
 
 def _clean_location_query(q: str) -> str:
@@ -65,49 +77,22 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
     if not q:
         return (None, None, None, None)
 
-    tokens = q.split()
-
-    # Jeśli ktoś pisze "jaka pogoda jutro Zakopane", to najpierw próbujemy końcówkę.
-    noise_start = {"jaka", "jaki", "jakie", "pogoda", "weather", "wetter", "meteo", "forecast"}
-
+    toks = q.split()
     candidates = []
+    for n in (min(3,len(toks)), 2, 1):
+        if len(toks) >= n:
+            candidates.append(" ".join(toks[:n]))
 
-    # 1) Usuń wiodące w/we/in
-    if tokens and tokens[0].lower() in ("w", "we", "in"):
-        tokens2 = tokens[1:]
-    else:
-        tokens2 = tokens
-
-    # 2) Budujemy kandydaty w DOBREJ kolejności:
-    #    - jeśli zaczyna się od "pogoda/jaka/..." -> suffixy
-    #    - w przeciwnym razie -> prefixy (to jest Twój przypadek: "Bielsko Biała ...")
-    if tokens2 and tokens2[0].lower().strip(".,;:!?") in noise_start:
-        for n in (3, 2, 1):
-            if len(tokens2) >= n:
-                candidates.append(" ".join(tokens2[-n:]))
-    else:
-        for n in (4, 3, 2, 1):
-            if len(tokens2) >= n:
-                candidates.append(" ".join(tokens2[:n]))
-
-    # 3) Dopiero NA KONIEC (albo wcale) pełny tekst – to właśnie robiło POI typu "Ale Mebel"
-    # Jeżeli po _clean_location_query q jest już krótkie, to i tak nie zaszkodzi.
-    candidates.append(" ".join(tokens2))
-
-    # Dedupe
     seen = set()
     uniq = []
     for c in candidates:
-        c = " ".join((c or "").split()).strip()
-        if not c:
-            continue
         key = c.lower()
-        if key in seen:
+        if key in seen: 
             continue
         seen.add(key)
         uniq.append(c)
 
-    for c in uniq[:5]:
+    for c in uniq:
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
             return (lat, lon, full, c)
