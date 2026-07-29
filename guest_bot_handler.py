@@ -175,7 +175,6 @@ def handle_guest_now(
             return True
             
         try:
-            
             # 1. Sprawdzamy cache geokodowania (zamiast za każdym razem męczyć API OSM)
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
@@ -192,20 +191,9 @@ def handle_guest_now(
                 if is_private:
                     send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
                 return True
-            
-            
-            # POBIERAMY DANE (zmienna full_address to pełny adres z bazy OSM!)
-            lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
-            
-            if not lat or not lon:
-                if is_private:
-                    send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
-                return True
                 
             # --- TARCZA PRZED BZDURAMI I LITERÓWKAMI ---
-            
             # --- NAZWA MIASTA Z WSPÓŁRZĘDNYCH (pewna, nie bierze POI) ---
-            #city_name = get_city_from_coords(lat, lon, user_lang)
             city_name = None
             if get_city_fn:
                 try:
@@ -217,6 +205,7 @@ def handle_guest_now(
                             _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
                 except Exception:
                     pass
+                    
             # Fallback jeśli reverse nic nie zwróci
             if (not city_name) or ("Lokalizacja" in city_name) or any(ch.isdigit() for ch in city_name):
                 city_name = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
