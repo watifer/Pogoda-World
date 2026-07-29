@@ -55,9 +55,9 @@ def _clean_location_query(q: str) -> str:
 def _geocode_best_effort(query: str, get_coords_fn, lang: str):
     """
     Próbuje znaleźć lokalizację bez NLP:
-    - najpierw pełny tekst po wzmiance
-    - potem wersje skrócone zachowujące wielowyrazowe nazwy
-    Zwraca: (lat, lon, full, used_query)
+    - pełny tekst
+    - PIERWSZE N słów (jeśli miasto jest od razu po @bocie)
+    - OSTATNIE N słów (jeśli miasto jest na końcu zdania)
     """
     q = (query or "").strip()
     if not q:
@@ -70,12 +70,17 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
     if tokens and tokens[0].lower() in ("w", "we", "in"):
         candidates.append(" ".join(tokens[1:]))
         
-    # 2) Fallback: ostatnie N tokenów (dla "Rio de Janeiro jutro")
-    for n in (4, 3, 2, 1):
-        if len(tokens) >= n:
+    # 2) Bierzemy PIERWSZE N tokenów (Dla: "@bot Bielsko tam daleko...")
+    for n in (3, 2, 1):
+        if len(tokens) > n:
+            candidates.append(" ".join(tokens[:n]))
+            
+    # 3) Bierzemy OSTATNIE N tokenów (Dla: "@bot jaka pogoda jutro Zakopane")
+    for n in (3, 2, 1):
+        if len(tokens) > n:
             candidates.append(" ".join(tokens[-n:]))
             
-    # Deduplikacja (case-insensitive) z zachowaniem kolejności
+    # Deduplikacja z zachowaniem kolejności
     seen = set()
     uniq = []
     for c in candidates:
@@ -88,8 +93,8 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
         seen.add(key)
         uniq.append(c)
         
-    # Max 4 próby, żeby nie spamować geokodera (Nominatim)
-    for c in uniq[:4]:
+    # Max 5 prób, żeby nie obciążać API mapy
+    for c in uniq[:5]:
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
             return (lat, lon, full, c)
