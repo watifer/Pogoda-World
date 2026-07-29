@@ -174,26 +174,32 @@ def handle_guest_now(
                 send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy po @nazwie_bota.")
             return True
             
+        # === START STOPERA ===
+        t0 = time.time()
+
         try:
-            # 1. Sprawdzamy cache geokodowania (zamiast za każdym razem męczyć API OSM)
+            # 1. GEOKODOWANIE
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
             
             if cached_geo:
                 lat, lon, full_address = cached_geo
                 used_query = query
+                logger.info("[DEBUG] Geokodowanie pobrane z CACHE!")
             else:
                 lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
                 if lat and lon:
                     _ttl_set(_GEO_CACHE, qkey, (lat, lon, full_address), _GEO_TTL)
+            
+            t1 = time.time()
+            logger.info(f"[DEBUG-TIME] 1. Geokodowanie zajęło: {t1 - t0:.2f} sekund")
                     
             if not lat or not lon:
                 if is_private:
                     send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
                 return True
                 
-            # --- TARCZA PRZED BZDURAMI I LITERÓWKAMI ---
-            # --- NAZWA MIASTA Z WSPÓŁRZĘDNYCH (pewna, nie bierze POI) ---
+            # 2. REVERSE GEOCODING (Nazwa miasta)
             city_name = None
             if get_city_fn:
                 try:
@@ -203,20 +209,59 @@ def handle_guest_now(
                         city_name = get_city_fn(lat, lon, user_lang)
                         if city_name:
                             _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
+                    else:
+                        logger.info("[DEBUG] Nazwa miasta pobrana z CACHE!")
                 except Exception:
                     pass
                     
-            # Fallback jeśli reverse nic nie zwróci
             if (not city_name) or ("Lokalizacja" in city_name) or any(ch.isdigit() for ch in city_name):
                 city_name = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
                 
             oficjalna_nazwa = city_name
+            
+            t2 = time.time()
+            logger.info(f"[DEBUG-TIME] 2. Reverse Geocoding zajęło: {t2 - t1:.2f} sekund")
                 
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
             if is_private:
                 send_reply_fn(chat_id, "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę.")
             return True
+
+    # --- GENEROWANIE KARTY ---
+    try:
+        # 3. POBIERANIE POGODY
+        payload = build_payload_fn(lat, lon, user_lang, True, oficjalna_nazwa)
+        t3 = time.time()
+        logger.info(f"[DEBUG-TIME] 3. Pobieranie API Pogody zajęło: {t3 - t2:.2f} sekund")
+        
+        # 4. RYSOWANIE KARTY PNG
+        layout = prepare_layout_fn(payload)
+        img_path = render_png_fn(layout)
+        t4 = time.time()
+        logger.info(f"[DEBUG-TIME] 4. Generowanie PNG zajęło: {t4 - t3:.2f} sekund")
+        
+        # 5. WYSYŁKA DO TELEGRAMA
+        if img_path:
+            send_photo_fn(chat_id, img_path)
+            t5 = time.time()
+            logger.info(f"[DEBUG-TIME] 5. Wysłanie zdjęcia do Telegrama zajęło: {t5 - t4:.2f} sekund")
+            logger.info(f"[DEBUG-TIME] 🚀 CAŁKOWITY CZAS: {t5 - t0:.2f} sekund")
+            
+            try:
+                os.remove(img_path)
+            except Exception as e:
+                logger.error(f"[GuestMode] Błąd usuwania pliku {img_path}: {e}")
+        else:
+            if is_private:
+                send_reply_fn(chat_id, "Błąd podczas generowania grafiki pogodowej.")
+                
+    except Exception as e:
+        logger.error(f"[GuestMode] Wyjątek podczas generowania/wysyłki karty: {e}")
+        if is_private:
+            send_reply_fn(chat_id, "Nie udało się pobrać danych pogodowych. Spróbuj ponownie.")
+            
+    return True
 
     # --- GENEROWANIE KARTY ---
     try:
