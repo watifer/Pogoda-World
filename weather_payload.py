@@ -231,21 +231,16 @@ def _select_hours(hours: list, tz: ZoneInfo, days_ahead: int = 5) -> list:
 # AIRLY — opcjonalne, best-effort
 # ═══════════════════════════════════════
 
-def _airly_get(url: str, api_key: str, retries: int = 3):
+def _airly_get(url: str, api_key: str):
+    """Błyskawiczne pobieranie Airly - bez pętli i mrożenia bota!"""
     headers = {"Accept": "application/json", "apikey": api_key}
-    last_exc = None
-    for i in range(retries):
-        try:
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.status_code in (429, 502, 503, 504):
-                time.sleep(1.5 * (2 ** i))
-                continue
-            r.raise_for_status()
-            return r.json()
-        except requests.RequestException as e:
-            last_exc = e
-            time.sleep(1.5 * (2 ** i))
-    raise last_exc
+    try:
+        r = requests.get(url, headers=headers, timeout=2.5)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        print(f"[weather_payload] Airly pominięte (Błąd limitu/Brak stacji): {e}")
+        return None
 
 
 def _fetch_airly(lat: float, lon: float, max_km: float = 3.0) -> dict | None:
