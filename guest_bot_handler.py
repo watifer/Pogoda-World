@@ -133,37 +133,47 @@ def handle_guest_now(
     loc = reply.get("location")
     
     # POBRANIE WSPÓŁRZĘDNYCH (Z pinezki lub z tekstu)
+    used_query = None  # <--- Dodajemy pustą zmienną
+    
     if loc and "latitude" in loc and "longitude" in loc:
         lat = float(loc["latitude"])
         lon = float(loc["longitude"])
     else:
-        # Krok 1 & 2: Odcięcie szumu i wstępne czyszczenie
         query = _extract_query_from_mention(text, bot_username)
         query = _clean_location_query(query)
         
         if not query:
             if is_private:
                 send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy po @nazwie_bota.")
-            return True  # W grupie zachowujemy ciszę
+            return True
             
-        # Krok 3: Inteligentne geokodowanie (Fallback)
         try:
-            lat, lon, _full, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
+            # POBIERAMY DANE (zmienna full_address to pełny adres z bazy OSM!)
+            lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
             
             if not lat or not lon:
                 if is_private:
                     send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
-                return True  # W grupie zachowujemy ciszę
+                return True
+                
+            # --- TARCZA PRZED BZDURAMI I LITERÓWKAMI ---
+            # Bierzemy z oficjalnego adresu wszystko do pierwszego przecinka
+            if full_address:
+                oficjalna_nazwa = full_address.split(",")[0].strip()
+            else:
+                oficjalna_nazwa = used_query.title() if used_query else "Twoja okolica"
                 
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
             if is_private:
                 send_reply_fn(chat_id, "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę.")
-            return True  # W grupie zachowujemy ciszę
+            return True
 
-    # --- GENEROWANIE KARTY (Jeśli mamy koordynaty) ---
+    # --- GENEROWANIE KARTY ---
     try:
-        payload = build_payload_fn(lat, lon, user_lang, is_now=True)
+        # ZMIANA: Przekazujemy oficjalna_nazwa zamiast used_query!
+        payload = build_payload_fn(lat, lon, user_lang, True, oficjalna_nazwa)
+        
         layout = prepare_layout_fn(payload)
         img_path = render_png_fn(layout)
         
@@ -180,6 +190,6 @@ def handle_guest_now(
     except Exception as e:
         logger.error(f"[GuestMode] Wyjątek podczas generowania/wysyłki karty: {e}")
         if is_private:
-            send_reply_fn(chat_id, "Nie udało się pobrać aktualnych danych pogodowych. Spróbuj ponownie.")
+            send_reply_fn(chat_id, "Nie udało się pobrać danych pogodowych. Spróbuj ponownie.")
             
     return True
