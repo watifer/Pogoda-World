@@ -3,6 +3,7 @@ import re
 import time
 import logging
 
+
 logger = logging.getLogger(__name__)
 
 # ============================================================================
@@ -111,7 +112,8 @@ def handle_guest_now(
     prepare_layout_fn,
     render_png_fn,
     send_photo_fn,
-    send_reply_fn
+    send_reply_fn,
+    get_city_fn=None    
 ) -> bool:
     
     text = (message.get("text") or "").strip()
@@ -160,8 +162,19 @@ def handle_guest_now(
                 
             # --- TARCZA PRZED BZDURAMI I LITERÓWKAMI ---
             
-            # NIE bierzemy z full_address (POI!), tylko z tego co user wpisał i co realnie zgeokodowaliśmy.
-            oficjalna_nazwa = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
+            # --- NAZWA MIASTA Z WSPÓŁRZĘDNYCH (pewna, nie bierze POI) ---
+            #city_name = get_city_from_coords(lat, lon, user_lang)
+            city_name = None
+            if get_city_fn:
+                try:
+                    city_name = get_city_fn(lat, lon, user_lang)
+                except Exception:
+                    pass
+            # fallback tylko gdy reverse nie da sensownej miejscowości
+            if (not city_name) or ("Lokalizacja" in city_name) or any(ch.isdigit() for ch in city_name):
+                city_name = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
+
+            oficjalna_nazwa = city_name
                 
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")

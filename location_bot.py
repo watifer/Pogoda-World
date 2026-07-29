@@ -267,7 +267,8 @@ def main_bot():
                     caption="⚡ *Pogoda World*\nPełna prognoza, alerty i radary.\n👉 Otwórz bota w czacie prywatnym!",
                     parse_mode="Markdown"
                 ),
-                send_reply_fn=lambda c_id, txt: send_reply(c_id, txt)
+                send_reply_fn=lambda c_id, txt: send_reply(c_id, txt),
+                get_city_fn=get_city_from_coords
             )
             if is_guest:
                 # Wiadomość była @wzmianką w grupie/priv i została obsłużona.
