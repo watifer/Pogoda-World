@@ -115,6 +115,10 @@ def handle_guest_now(
 ) -> bool:
     
     text = (message.get("text") or "").strip()
+    # NIE obsługujemy guest-mode dla komend typu /now@bot
+    # bo to ma iść normalną ścieżką bota w grupie.
+    if text.startswith("/"):
+        return False
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
     chat_type = chat.get("type", "")
@@ -155,11 +159,9 @@ def handle_guest_now(
                 return True
                 
             # --- TARCZA PRZED BZDURAMI I LITERÓWKAMI ---
-            # Bierzemy z oficjalnego adresu wszystko do pierwszego przecinka
-            if full_address:
-                oficjalna_nazwa = full_address.split(",")[0].strip()
-            else:
-                oficjalna_nazwa = used_query.title() if used_query else "Twoja okolica"
+            
+            # NIE bierzemy z full_address (POI!), tylko z tego co user wpisał i co realnie zgeokodowaliśmy.
+            oficjalna_nazwa = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
                 
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
