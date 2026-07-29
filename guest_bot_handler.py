@@ -49,38 +49,52 @@ def _clean_location_query(q: str) -> str:
         else:
             q = miasto
             
+    # --- NOWOŚĆ: ucinamy komentarze po spójnikach (bez NLP) ---
+    stopwords = {"ale", "lecz", "jednak", "but", "aber", "pero", "mais"}
+    toks = q.split()
+    for i, tok in enumerate(toks):
+        if tok.lower().strip(".,;:!?") in stopwords and i >= 1:
+            q = " ".join(toks[:i]).strip()
+            break
+            
     return q
 
 
 def _geocode_best_effort(query: str, get_coords_fn, lang: str):
-    """
-    Próbuje znaleźć lokalizację bez NLP:
-    - pełny tekst
-    - PIERWSZE N słów (jeśli miasto jest od razu po @bocie)
-    - OSTATNIE N słów (jeśli miasto jest na końcu zdania)
-    """
     q = (query or "").strip()
     if not q:
         return (None, None, None, None)
-        
+
     tokens = q.split()
-    candidates = [q]
-    
-    # 1) Usuń wiodące 'w/we/in' (np. "@bot w Warszawie")
+
+    # Jeśli ktoś pisze "jaka pogoda jutro Zakopane", to najpierw próbujemy końcówkę.
+    noise_start = {"jaka", "jaki", "jakie", "pogoda", "weather", "wetter", "meteo", "forecast"}
+
+    candidates = []
+
+    # 1) Usuń wiodące w/we/in
     if tokens and tokens[0].lower() in ("w", "we", "in"):
-        candidates.append(" ".join(tokens[1:]))
-        
-    # 2) Bierzemy PIERWSZE N tokenów (Dla: "@bot Bielsko tam daleko...")
-    for n in (3, 2, 1):
-        if len(tokens) > n:
-            candidates.append(" ".join(tokens[:n]))
-            
-    # 3) Bierzemy OSTATNIE N tokenów (Dla: "@bot jaka pogoda jutro Zakopane")
-    for n in (3, 2, 1):
-        if len(tokens) > n:
-            candidates.append(" ".join(tokens[-n:]))
-            
-    # Deduplikacja z zachowaniem kolejności
+        tokens2 = tokens[1:]
+    else:
+        tokens2 = tokens
+
+    # 2) Budujemy kandydaty w DOBREJ kolejności:
+    #    - jeśli zaczyna się od "pogoda/jaka/..." -> suffixy
+    #    - w przeciwnym razie -> prefixy (to jest Twój przypadek: "Bielsko Biała ...")
+    if tokens2 and tokens2[0].lower().strip(".,;:!?") in noise_start:
+        for n in (3, 2, 1):
+            if len(tokens2) >= n:
+                candidates.append(" ".join(tokens2[-n:]))
+    else:
+        for n in (4, 3, 2, 1):
+            if len(tokens2) >= n:
+                candidates.append(" ".join(tokens2[:n]))
+
+    # 3) Dopiero NA KONIEC (albo wcale) pełny tekst – to właśnie robiło POI typu "Ale Mebel"
+    # Jeżeli po _clean_location_query q jest już krótkie, to i tak nie zaszkodzi.
+    candidates.append(" ".join(tokens2))
+
+    # Dedupe
     seen = set()
     uniq = []
     for c in candidates:
@@ -92,13 +106,12 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
             continue
         seen.add(key)
         uniq.append(c)
-        
-    # Max 5 prób, żeby nie obciążać API mapy
+
     for c in uniq[:5]:
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
             return (lat, lon, full, c)
-            
+
     return (None, None, None, None)
 
 # ============================================================================
