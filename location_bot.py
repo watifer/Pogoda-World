@@ -8,6 +8,12 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR
 from geopy.geocoders import Nominatim
+from guest_bot_handler import handle_guest_now
+from prepare_now_layout import prepare_now_layout_data
+
+from weather_payload import build_payload_for_location
+import image_generator
+
 load_dotenv()
 #Furtka do testowanie bota bez zaproszenia
 MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
@@ -177,6 +183,22 @@ def send_reply(chat_id, text, reply_markup=None):
             
     except requests.exceptions.RequestException as e:
         print(f"⚠️ Błąd sieci podczas wysyłania wiadomości (Timeout/DNS): {e}")
+        
+        
+def send_photo(chat_id, photo_path, caption=None, parse_mode="Markdown"):
+    """Bezpośredni wysyłacz kart graficznych PNG dla trybu gościa i nie tylko."""
+    try:
+        with open(photo_path, "rb") as photo:
+            payload = {"chat_id": chat_id}
+            if caption:
+                payload["caption"] = caption
+            if parse_mode:
+                payload["parse_mode"] = parse_mode
+            requests.post(f"{BASE_URL}/sendPhoto", data=payload, files={"photo": photo}, timeout=15)
+    except Exception as e:
+        print(f"⚠️ Błąd wysyłania zdjęcia (sendPhoto) do {chat_id}: {e}")
+        
+        
 
 def main_bot():
     print("🤖 Uruchamiam system nasłuchiwania (Location Bot)...")
@@ -219,6 +241,32 @@ def main_bot():
             if not chat_id: 
                 continue
             
+            # ==============================================================
+            # 0A. TRYB GOŚCIA (PUBLIC DEMO / @MENTIONS)
+            # Przechwytuje @wzmianki PRZED wejściem do Google Sheets i barierą zaproszeń!
+            # ==============================================================
+            is_guest = handle_guest_now(
+                message=message,
+                bot_username=BOT_USERNAME,  # Pobiera Twoją zmienną BOT_USERNAME z konfiguracji pliku!
+                get_coords_fn=get_coords_from_city,
+                # Adaptery lambda dopasowujące Twoje istniejące funkcje do silnika gościa:
+                build_payload_fn=lambda lat, lon, lang, is_now: build_payload_for_location(lat, lon, lang=lang, is_now=True),
+                prepare_layout_fn=lambda payload: prepare_now_layout_data(payload),
+                render_png_fn=image_generator.generate_weather_card,
+                send_photo_fn=lambda c_id, path: send_photo(
+                    c_id, 
+                    path, 
+                    caption="⚡ *Pogoda World* | Pełna prognoza 14 dni, poranne raporty i alerty: otwórz bota w czacie prywatnym!",
+                    parse_mode="Markdown"
+                ),
+                send_reply_fn=lambda c_id, txt: send_reply(c_id, txt)
+            )
+            if is_guest:
+                # Wiadomość była @wzmianką w grupie/priv i została obsłużona.
+                # Przerywamy obieg pętli dla tej wiadomości – NIE idziemy do autoryzacji arkusza!
+                continue
+            # ==============================================================
+
             # ==============================================================
             # 0. ABSOLUTNY PRIORYTET: LOKALIZACJA Z WEB APP (GPS)
             # ==============================================================
