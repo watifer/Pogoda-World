@@ -241,35 +241,43 @@ def main_bot():
             if not chat_id: 
                 continue
             
+            # --- DODAJ TO TUTAJ: Błyskawiczne pobranie języka dla Gościa ---
+            raw_guest = message.get("from", {}).get("language_code", "en")[:2].lower()
+            guest_lang = "no" if raw_guest in ("no", "nb") else raw_guest
+            if guest_lang not in ("pl", "en", "de", "fr", "es", "no"):
+                guest_lang = "en"
+            # ---------------------------------------------------------------
+
             # ==============================================================
             # 0A. TRYB GOŚCIA (PUBLIC DEMO / @MENTIONS)
-            # Przechwytuje @wzmianki PRZED wejściem do Google Sheets i barierą zaproszeń!
             # ==============================================================
             is_guest = handle_guest_now(
                 message=message,
-                bot_username=BOT_USERNAME,  # Pobiera Twoją zmienną BOT_USERNAME z konfiguracji pliku!
+                bot_username=BOT_USERNAME, 
                 get_coords_fn=get_coords_from_city,
                 
-                # Adapter do silnika pogodowego (Teraz z dynamiczną strefą TZ i nazwą miasta!)
                 build_payload_fn=lambda lat, lon, lang, is_now, city_name: build_payload_for_location(
                     lat=lat,
                     lon=lon,
-                    tz_name=_resolve_tz(lat, lon),                      # Zgaduje strefę na podstawie mapy!
+                    tz_name=_resolve_tz(lat, lon), 
                     location_name=city_name if city_name else "Twoja okolica",
                     lang=lang
                 ),
                 
                 prepare_layout_fn=lambda payload: prepare_now_layout_data(payload),
                 render_png_fn=image_generator.generate_weather_card,
+                
+                # ZMIANA PONIŻEJ: Zmieniamy user_lang na guest_lang
                 send_photo_fn=lambda c_id, path: send_photo(
                     c_id, 
                     path, 
-                    caption=t_ui(user_lang, "guest_caption"),
+                    caption=t_ui(guest_lang, "guest_caption"), 
                     parse_mode="Markdown"
                 ),
                 send_reply_fn=lambda c_id, txt: send_reply(c_id, txt),
                 get_city_fn=get_city_from_coords
             )
+            
             if is_guest:
                 # Wiadomość była @wzmianką w grupie/priv i została obsłużona.
                 # Przerywamy obieg pętli dla tej wiadomości – NIE idziemy do autoryzacji arkusza!

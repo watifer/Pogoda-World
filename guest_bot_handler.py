@@ -159,13 +159,15 @@ def handle_guest_now(
     if mention not in text.lower():
         return False
         
-    user_lang = (message.get("from", {}) or {}).get("language_code", "en")[:2].lower()
+    # --- BEZPIECZNE POBRANIE JĘZYKA ---
+    raw_l = (message.get("from", {}) or {}).get("language_code", "en")[:2].lower()
+    user_lang = "no" if raw_l in ("no", "nb") else raw_l
+    if user_lang not in ("pl", "en", "de", "fr", "es", "no"):
+        user_lang = "en"
+    # ----------------------------------
     
     reply = message.get("reply_to_message") or {}
     loc = reply.get("location")
-    
-    # POBRANIE WSPÓŁRZĘDNYCH (Z pinezki lub z tekstu)
-    used_query = None  
     
     # --- BEZPIECZNE POBRANIE TŁUMACZEŃ ---
     try:
