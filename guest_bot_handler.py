@@ -160,7 +160,10 @@ def handle_guest_now(
     mention = f"@{bot_username.lower()}"
     
     is_mention = mention in text_lower
-    is_shortcut = text_lower.startswith("!p ") or text_lower == "!p"
+    #is_shortcut = text_lower.startswith("!p ") or text_lower == "!p"
+    # Super-wygodne skróty (kropka jest zawsze pod kciukiem obok spacji!)
+    prefixes = ("!p ", "?p ", ".p ", "!p", "?p", ".p")
+    is_shortcut = text_lower.startswith(prefixes)
     
     if not (is_mention or is_shortcut):
         return False
