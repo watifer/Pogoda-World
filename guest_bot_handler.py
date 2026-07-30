@@ -149,18 +149,24 @@ def handle_guest_now(
     # bo to ma iść normalną ścieżką bota w grupie.
     if text.startswith("/"):
         return False
+        
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
     chat_type = chat.get("type", "")
-    is_private = (chat_type == "private")
     
+    # --- NOWOŚĆ: CAŁKOWITA BLOKADA DLA CZATU PRYWATNEGO (1:1) ---
+    # Jeśli to priv, przerywamy działanie Gościa.
+    if chat_type == "private":
+        return False
+    # ------------------------------------------------------------
+    
+    is_private = (chat_type == "private") # Od teraz to z definicji zawsze będzie False.
     
     # --- ODCINAMY WSZYSTKO, CO NIE JEST WZMIANKĄ LUB SKRÓTEM ---
     text_lower = text.lower()
     mention = f"@{bot_username.lower()}"
     
     is_mention = mention in text_lower
-    #is_shortcut = text_lower.startswith("!p ") or text_lower == "!p"
     # Super-wygodne skróty (kropka jest zawsze pod kciukiem obok spacji!)
     prefixes = ("!p ", "?p ", ".p ", "!p", "?p", ".p")
     is_shortcut = text_lower.startswith(prefixes)
