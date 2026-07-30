@@ -154,9 +154,15 @@ def handle_guest_now(
     chat_type = chat.get("type", "")
     is_private = (chat_type == "private")
     
-    # --- ODCINAMY WSZYSTKO, CO NIE JEST WZMIANKĄ ---
+    
+    # --- ODCINAMY WSZYSTKO, CO NIE JEST WZMIANKĄ LUB SKRÓTEM ---
+    text_lower = text.lower()
     mention = f"@{bot_username.lower()}"
-    if mention not in text.lower():
+    
+    is_mention = mention in text_lower
+    is_shortcut = text_lower.startswith("!p ") or text_lower == "!p"
+    
+    if not (is_mention or is_shortcut):
         return False
         
     # --- BEZPIECZNE POBRANIE JĘZYKA ---
@@ -202,7 +208,11 @@ def handle_guest_now(
                 
     else:
         # --- 2. ŚCIEŻKA DLA WYSZUKIWANIA TEKSTOWEGO ---
-        query = _extract_query_from_mention(text, bot_username)
+        if is_shortcut:
+            query = text[2:].strip()  # Odcinamy "!p"
+        else:
+            query = _extract_query_from_mention(text, bot_username)
+            
         query = _clean_location_query(query)
         
         if not query:
