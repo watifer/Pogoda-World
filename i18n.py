@@ -1745,7 +1745,9 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Aktualizuj z GPS",
         "settings_saved": "✅ Ustawienia raportów zostały pomyślnie zapisane!",
         "btn_change_hours": "⚙️ Zmień ustawienia",
-        "group_city_tip": "\n\n🔴 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ `Warszawa`"
+        "group_city_tip": "\n\n🔴 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ `Warszawa`",
+        "default_city": "Twoja okolica",
+        "guest_caption": "⚡ *Pogoda World*\nPełna prognoza, alerty i radary.\n👉 Otwórz bota w czacie prywatnym!"
     },
     "en": {
         "menu_header": "⚙️ *CONTROL PANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Current location:*\n└ {city}\n\n📍 *How to change your city?*\nUse the /city command or see /info for map instructions.\n\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change hours?*\nClick the button below.\n",
@@ -1779,7 +1781,9 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Update with GPS",
         "settings_saved": "✅ Report settings have been successfully saved!",
         "btn_change_hours": "⚙️ Change settings",
-        "group_city_tip": "\n\n🔴 _In a group, simply type the city name now, e.g.:_ `London`"    
+        "group_city_tip": "\n\n🔴 _In a group, simply type the city name now, e.g.:_ `London`",
+        "default_city": "Your area",
+        "guest_caption": "⚡ *Weather World*\nFull forecast, alerts, and radars.\n👉 Open the bot in a private chat!"
     },
     "de": {
     "menu_header": "⚙️ *KONTROLLZENTRUM* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Aktueller Standort:*\n└ {city}\n\n📍 *Wie ändere ich den Ort?*\nNutze /city oder lies unter /info, wie es mit der Karte geht.\n\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändere ich die Zeiten?*\nKlicke auf den Button unten.\n",
@@ -1810,7 +1814,9 @@ UI_TEXTS = {
     "search_err": "⚠️ Karten-Serverfehler. Bitte versuche es später noch einmal.",
     "btn_update_gps": "📍 Mit GPS aktualisieren",
     "settings_saved": "✅ Berichtseinstellungen wurden erfolgreich gespeichert!",
-    "group_city_tip": "\n\n🔴 _In einer Gruppe gib jetzt einfach den Städtenamen ein, z. B.:_ `Berlin`"
+    "group_city_tip": "\n\n🔴 _In einer Gruppe gib jetzt einfach den Städtenamen ein, z. B.:_ `Berlin`",
+    "default_city": "Deine Umgebung",
+    "guest_caption": "⚡ *Wetter World*\nKomplette Vorhersage, Warnungen und Radare.\n👉 Öffne den Bot in einem privaten Chat!"
 
     },
     "es": {
@@ -1845,7 +1851,9 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Actualizar con GPS",
         "settings_saved": "✅ ¡Los ajustes del informe se han guardado correctamente!",
         "btn_change_hours": "⚙️ Cambiar ajustes",
-        "group_city_tip": "\n\n🔴 _En un grupo, simplemente escribe el nombre de la ciudad ahora, ej.:_ `Madrid`"
+        "group_city_tip": "\n\n🔴 _En un grupo, simplemente escribe el nombre de la ciudad ahora, ej.:_ `Madrid`",
+        "default_city": "Tu área",
+        "guest_caption": "⚡ *Tiempo World*\nPronóstico completo, alertas y radares.\n👉 ¡Abre el bot en un chat privado!"
     },
     "fr": {
         "menu_header": "⚙️ *PANNEAU DE CONTRÔLE* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Position actuelle :*\n└ {city}\n\n📍 *Comment changer de ville ?*\nUtilisez la commande /city ou voir /info pour les instructions avec la carte.\n\n📅 *Votre planning :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment modifier les heures ?*\nCliquez sur le bouton ci-dessous.\n",
@@ -1879,7 +1887,9 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Mettre à jour via GPS",
         "settings_saved": "✅ Les paramètres du rapport ont été enregistrés avec succès !",
         "btn_change_hours": "⚙️ Modifier les paramètres",
-        "group_city_tip": "\n\n🔴 _Dans un groupe, tapez simplement le nom de la ville maintenant, ex. :_ `Paris`"
+        "group_city_tip": "\n\n🔴 _Dans un groupe, tapez simplement le nom de la ville maintenant, ex. :_ `Paris`",
+        "default_city": "Votre zone",
+        "guest_caption": "⚡ *Météo World*\nPrévisions complètes, alertes et radars.\n👉 Ouvrez le bot dans un chat privé !"
     },
     "no": {
         "menu_header": "⚙️ *KONTROLLPANEL* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n🌍 *Nåværende posisjon:*\n└ {city}\n\n📍 *Hvordan endre by?*\nBruk /city-kommandoen eller se /info for kartinstruksjoner.\n\n📅 *Din timeplan:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tidspunkt?*\nKlikk på knappen nedenfor.\n",
@@ -1913,7 +1923,9 @@ UI_TEXTS = {
         "btn_update_gps": "📍 Oppdater med GPS",
         "settings_saved": "✅ Rapportinnstillingene er lagret!",
         "btn_change_hours": "⚙️ Endre innstillinger",
-        "group_city_tip": "\n\n🔴 _I en gruppe skriver du nå bare bynavnet, f.eks.:_ `Oslo`"
+        "group_city_tip": "\n\n🔴 _I en gruppe skriver du nå bare bynavnet, f.eks.:_ `Oslo`",
+        "default_city": "Ditt område",
+        "guest_caption": "⚡ *Vær World*\nFull værmelding, varsler og radarer.\n👉 Åpne boten i en privat chat!"
     }
 }
 

@@ -264,7 +264,7 @@ def main_bot():
                 send_photo_fn=lambda c_id, path: send_photo(
                     c_id, 
                     path, 
-                    caption="⚡ *Pogoda World*\nPełna prognoza, alerty i radary.\n👉 Otwórz bota w czacie prywatnym!",
+                    caption=t_ui(user_lang, "guest_caption"),
                     parse_mode="Markdown"
                 ),
                 send_reply_fn=lambda c_id, txt: send_reply(c_id, txt),

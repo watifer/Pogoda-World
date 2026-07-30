@@ -83,7 +83,14 @@ def _clean_location_query(q: str) -> str:
             q = miasto
             
     # --- NOWOŚĆ: ucinamy komentarze po spójnikach (bez NLP) ---
-    stopwords = {"ale", "lecz", "jednak", "but", "aber", "pero", "mais"}
+    stopwords = {
+        "ale", "lecz", "jednak", "i", "a", "oraz", "bo", "że", "ze", "ponieważ", "więc", # PL
+        "but", "and", "because", "since", "so",                                          # EN
+        "aber", "und", "oder", "weil", "dass",                                           # DE
+        "pero", "y", "porque", "que",                                                    # ES
+        "mais", "et", "car", "parce", "que",                                             # FR
+        "men", "og", "eller", "fordi", "at"                                              # NO
+    }
     toks = q.split()
     for i, tok in enumerate(toks):
         if tok.lower().strip(".,;:!?") in stopwords and i >= 1:
@@ -98,24 +105,22 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
     if not q:
         return (None, None, None, None)
 
+    candidates = [q] # Zawsze zaczynamy od pełnego, wyczyszczonego zdania
     toks = q.split()
-    candidates = []
     
-    # Bierzemy pełne zapytanie (lub max pierwsze 3 słowa) oraz ewentualnie 2 słowa, bez szukania pojedynczych słów (1) które dają fałszywe wyniki
-    for n in (min(3, len(toks)), 2):
-        if len(toks) >= n:
-            candidates.append(" ".join(toks[:n]))
+    # Deska ratunku: jeśli ktoś wpisał np. "Nowy Jork super", sprawdzamy "Nowy Jork"
+    if len(toks) > 2:
+        candidates.append(" ".join(toks[:2]))
 
     seen = set()
     uniq = []
     for c in candidates:
         key = c.lower()
-        if key in seen: 
-            continue
-        seen.add(key)
-        uniq.append(c)
+        if key not in seen:
+            seen.add(key)
+            uniq.append(c)
 
-    # KLUCZOWY LIMIT: Bierzemy maksymalnie 2 pierwsze unikalne kandydaty!
+    # KLUCZOWY LIMIT: Zawsze robimy maksymalnie 2 zapytania!
     for c in uniq[:2]:
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
@@ -160,12 +165,41 @@ def handle_guest_now(
     loc = reply.get("location")
     
     # POBRANIE WSPÓŁRZĘDNYCH (Z pinezki lub z tekstu)
-    used_query = None  # <--- Dodajemy pustą zmienną
+    used_query = None  
+    
+    # --- BEZPIECZNE POBRANIE TŁUMACZEŃ ---
+    try:
+        from i18n import t_ui
+        fallback_city = t_ui(user_lang, "default_city")  # np. "Twoja okolica" / "Your location"
+        err_msg = t_ui(user_lang, "search_err")          # np. "Błąd wyszukiwania" / "Search error"
+    except Exception:
+        fallback_city = "Twoja okolica"
+        err_msg = "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę."
+        
+    oficjalna_nazwa = fallback_city
     
     if loc and "latitude" in loc and "longitude" in loc:
+        # --- 1. ŚCIEŻKA DLA PINEZKI ---
         lat = float(loc["latitude"])
         lon = float(loc["longitude"])
+        
+        if get_city_fn:
+            try:
+                ckey = (round(lat, 3), round(lon, 3), user_lang)
+                city_name = _ttl_get(_CITY_CACHE, ckey)
+                if not city_name:
+                    city_name = get_city_fn(lat, lon, user_lang)
+                    if city_name:
+                        _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
+                
+                # Dodaliśmy "Location", bo Nominatim po angielsku może zwrócić "Location in terrain"
+                if city_name and "Lokalizacja" not in city_name and "Location" not in city_name and not any(ch.isdigit() for ch in city_name):
+                    oficjalna_nazwa = city_name
+            except Exception:
+                pass
+                
     else:
+        # --- 2. ŚCIEŻKA DLA WYSZUKIWANIA TEKSTOWEGO ---
         query = _extract_query_from_mention(text, bot_username)
         query = _clean_location_query(query)
         
@@ -175,7 +209,7 @@ def handle_guest_now(
             return True
             
         try:
-            # 1. Sprawdzamy cache geokodowania
+            # Sprawdzamy cache geokodowania
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
             
@@ -192,7 +226,7 @@ def handle_guest_now(
                     send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
                 return True
                 
-            # 2. Reverse geocoding dla ładnej nazwy
+            # Reverse geocoding dla ładnej nazwy
             city_name = None
             if get_city_fn:
                 try:
@@ -205,15 +239,16 @@ def handle_guest_now(
                 except Exception:
                     pass
                     
-            if (not city_name) or ("Lokalizacja" in city_name) or any(ch.isdigit() for ch in city_name):
-                city_name = (used_query or query).strip() if (used_query or query) else "Twoja okolica"
+            # Przypisanie oficjalnej nazwy z obsługą błędów i cyfr
+            if (not city_name) or ("Lokalizacja" in city_name) or ("Location" in city_name) or any(ch.isdigit() for ch in city_name):
+                city_name = (used_query or query).strip() if (used_query or query) else fallback_city
                 
             oficjalna_nazwa = city_name
                 
         except Exception as e:
             logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
             if is_private:
-                send_reply_fn(chat_id, "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę.")
+                send_reply_fn(chat_id, err_msg)
             return True
 
     # --- GENEROWANIE KARTY ---
