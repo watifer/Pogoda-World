@@ -277,6 +277,7 @@ def handle_guest_now(
             oficjalna_nazwa = city_name
                 
         except Exception as e:
+            print(f"❌ [GuestMode] Błąd w bloku geokodowania: {e}")
             if is_private:
                 send_reply_fn(chat_id, err_msg)
             return True
@@ -285,10 +286,32 @@ def handle_guest_now(
     # OSTATNI KROK: BUDOWA I WYSYŁKA
     # ===============================
     try:
-        # 1. Przekazujemy card_type == "now" do payloadu, aby pobrać właściwy pakiet danych
+        # 1. Pobieramy pakiet danych (tu znajduje się już odpowiednia strefa czasowa dla danego miasta)
         payload = build_payload_fn(lat, lon, user_lang, card_type == "now", oficjalna_nazwa)
         if not payload:
             return True
+            
+        # --- NOWOŚĆ: BLOKADA CZASOWA DLA KARTY DZIENNEJ (.d) ---
+        if card_type == "day":
+            try:
+                from datetime import datetime
+                try:
+                    from zoneinfo import ZoneInfo
+                except ImportError:
+                    from backports.zoneinfo import ZoneInfo
+                    
+                # Pobieramy strefę czasową dla dokładnie tego wyszukanego miasta
+                tz_str = payload.get("location", {}).get("tz", "UTC")
+                local_now = datetime.now(ZoneInfo(tz_str))
+                
+                # Blokada od 16:00 do 04:59 czasu lokalnego
+                if local_now.hour < 5 or local_now.hour >= 16:
+                    from i18n import t_ui
+                    send_reply_fn(chat_id, t_ui(user_lang, "time_limit"))
+                    return True # Przerywamy działanie, nie rysujemy karty
+            except Exception as e:
+                print(f"❌ [GuestMode] Błąd weryfikacji czasu lokalnego: {e}")
+        # -------------------------------------------------------
             
         # 2. Renderujemy odpowiedni układ karty na bazie wybranego skrótu
         lay = prepare_layout_fn(payload, card_type)
@@ -298,7 +321,11 @@ def handle_guest_now(
             # 3. Wysłanie gotowej karty z wstrzyknięciem pełnego adresu z geokodera!
             final_address = full_address if full_address else oficjalna_nazwa
             send_photo_fn(chat_id, img_path, oficjalna_nazwa, final_address)
+            
     except Exception as e:
+        print(f"❌ [GuestMode] KRYTYCZNY BŁĄD generowania karty: {e}")
+        import traceback
+        traceback.print_exc()
         if is_private:
             send_reply_fn(chat_id, err_msg)
             
