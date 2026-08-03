@@ -287,7 +287,7 @@ def handle_guest_now(
     # ===============================
     try:
         # 1. Pobieramy pakiet danych (tu znajduje się już odpowiednia strefa czasowa dla danego miasta)
-        payload = build_payload_fn(lat, lon, user_lang, card_type == "now", oficjalna_nazwa)
+        payload = build_payload_fn(lat, lon, user_lang, card_type, oficjalna_nazwa)
         if not payload:
             return True
             

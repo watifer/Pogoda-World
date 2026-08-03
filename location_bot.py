@@ -256,27 +256,29 @@ def main_bot():
                 bot_username=BOT_USERNAME, 
                 get_coords_fn=get_coords_from_city,
                 
-                # ZMIANA: Usunięto problematyczny argument 'is_now=is_now', który wywalał bota
-                build_payload_fn=lambda lat, lon, lang, is_now, city_name: build_payload_for_location(
+                # ZMIANA: Przekazujemy c_type, by ustawić is_now i is_future tam, gdzie trzeba (w API)
+                build_payload_fn=lambda lat, lon, lang, c_type, city_name: build_payload_for_location(
                     lat=lat,
                     lon=lon,
                     tz_name=_resolve_tz(lat, lon), 
                     location_name=city_name if city_name else "Twoja okolica",
-                    lang=lang
+                    lang=lang,
+                    is_now=(c_type == "now"),
+                    is_future=(c_type == "future")
                 ),
                 
+                # ZMIANA: Usunięto błędy 'is_future' z funkcji przygotowującej układ
                 prepare_layout_fn=lambda payload, c_type: (
                     prepare_now_layout_data(payload) if c_type == "now" 
-                    else prepare_layout_data(payload, is_future=(c_type == "future"))
+                    else prepare_layout_data(payload)
                 ),
                 
                 render_png_fn=image_generator.generate_weather_card,
                 
-                # ZMIANA: Pancerne formatowanie HTML. Telegram nigdy się nie zawiesi na dziwnej nazwie adresu.
                 send_photo_fn=lambda c_id, path, city_name, f_address: send_photo(
                     c_id, 
                     path, 
-                    caption=f"<b>{city_name}</b>\n<i>{f_address}</i>" if f_address else f"<b>{city_name}</b>", 
+                    caption=f"<b>{str(city_name).replace('<', '').replace('>', '')}</b>\n<i>{str(f_address).replace('<', '').replace('>', '')}</i>" if f_address else f"<b>{str(city_name).replace('<', '').replace('>', '')}</b>", 
                     parse_mode="HTML"
                 ),
                 send_reply_fn=lambda c_id, txt: send_reply(c_id, txt),
