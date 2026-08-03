@@ -256,21 +256,18 @@ def main_bot():
                 bot_username=BOT_USERNAME, 
                 get_coords_fn=get_coords_from_city,
                 
-                # ZMIANA: Przekazujemy c_type, by ustawić is_now i is_future tam, gdzie trzeba (w API)
+                # ZMIANA: Usunięto całkowicie is_now i is_future. API po prostu pobiera pełne dane.
                 build_payload_fn=lambda lat, lon, lang, c_type, city_name: build_payload_for_location(
                     lat=lat,
                     lon=lon,
                     tz_name=_resolve_tz(lat, lon), 
                     location_name=city_name if city_name else "Twoja okolica",
-                    lang=lang,
-                    is_now=(c_type == "now"),
-                    is_future=(c_type == "future")
+                    lang=lang
                 ),
                 
-                # ZMIANA: Usunięto błędy 'is_future' z funkcji przygotowującej układ
                 prepare_layout_fn=lambda payload, c_type: (
                     prepare_now_layout_data(payload) if c_type == "now" 
-                    else prepare_layout_data(payload)
+                    else prepare_layout_data(payload, is_future=(c_type == "future"))
                 ),
                 
                 render_png_fn=image_generator.generate_weather_card,
