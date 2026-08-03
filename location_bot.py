@@ -11,6 +11,7 @@ from geopy.geocoders import Nominatim
 from guest_bot_handler import handle_guest_now
 from prepare_now_layout import prepare_now_layout_data
 from prepare_layout import prepare_layout_data
+from prepare_future_layout import prepare_future_layout_data
 from weather_payload import build_payload_for_location
 import image_generator
 
@@ -256,7 +257,6 @@ def main_bot():
                 bot_username=BOT_USERNAME, 
                 get_coords_fn=get_coords_from_city,
                 
-                # ZMIANA: Usunięto całkowicie is_now i is_future. API po prostu pobiera pełne dane.
                 build_payload_fn=lambda lat, lon, lang, c_type, city_name: build_payload_for_location(
                     lat=lat,
                     lon=lon,
@@ -265,9 +265,11 @@ def main_bot():
                     lang=lang
                 ),
                 
+                # ZMIANA: Pełne sterowanie ruchem dla 3 typów kart!
                 prepare_layout_fn=lambda payload, c_type: (
                     prepare_now_layout_data(payload) if c_type == "now" 
-                    else prepare_layout_data(payload, is_future=(c_type == "future"))
+                    else prepare_future_layout_data(payload) if c_type == "future"
+                    else prepare_layout_data(payload)
                 ),
                 
                 render_png_fn=image_generator.generate_weather_card,
