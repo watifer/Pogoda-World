@@ -10,7 +10,7 @@ from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _loa
 from geopy.geocoders import Nominatim
 from guest_bot_handler import handle_guest_now
 from prepare_now_layout import prepare_now_layout_data
-
+from prepare_layout import prepare_layout_data
 from weather_payload import build_payload_for_location
 import image_generator
 
@@ -249,29 +249,36 @@ def main_bot():
             # ---------------------------------------------------------------
 
             # ==============================================================
-            # 0A. TRYB GOŚCIA (PUBLIC DEMO / @MENTIONS)
+            # 0A. TRYB GOŚCIA I SZYBKIE SKRÓTY (.n, .d, .f)
             # ==============================================================
             is_guest = handle_guest_now(
                 message=message,
                 bot_username=BOT_USERNAME, 
                 get_coords_fn=get_coords_from_city,
                 
+                # Przekazujemy parametr is_now wprost z handlera do API pogody
                 build_payload_fn=lambda lat, lon, lang, is_now, city_name: build_payload_for_location(
                     lat=lat,
                     lon=lon,
                     tz_name=_resolve_tz(lat, lon), 
                     location_name=city_name if city_name else "Twoja okolica",
-                    lang=lang
+                    lang=lang,
+                    is_now=is_now
                 ),
                 
-                prepare_layout_fn=lambda payload: prepare_now_layout_data(payload),
+                # Wybieramy odpowiedni silnik rysujący na podstawie skrótu!
+                prepare_layout_fn=lambda payload, c_type: (
+                    prepare_now_layout_data(payload) if c_type == "now" 
+                    else prepare_layout_data(payload, is_future=(c_type == "future"))
+                ),
+                
                 render_png_fn=image_generator.generate_weather_card,
                 
-                # ZMIANA PONIŻEJ: Zmieniamy user_lang na guest_lang
-                send_photo_fn=lambda c_id, path: send_photo(
+                # Zmieniony podpis z zabezpieczeniem znaków specjalnych dla Markdown
+                send_photo_fn=lambda c_id, path, city_name, f_address: send_photo(
                     c_id, 
                     path, 
-                    caption=t_ui(guest_lang, "guest_caption"), 
+                    caption=f"*{str(city_name).replace('*', '')}*\n_{str(f_address).replace('_', ' ')}_" if f_address else f"*{str(city_name).replace('*', '')}*", 
                     parse_mode="Markdown"
                 ),
                 send_reply_fn=lambda c_id, txt: send_reply(c_id, txt),

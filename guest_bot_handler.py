@@ -145,8 +145,8 @@ def handle_guest_now(
 ) -> bool:
     
     text = (message.get("text") or "").strip()
-    # NIE obsługujemy guest-mode dla komend typu /now@bot
-    # bo to ma iść normalną ścieżką bota w grupie.
+    
+    # Ignorujemy tradycyjne komendy menu (aby nie dublować pracy)
     if text.startswith("/"):
         return False
         
@@ -154,23 +154,36 @@ def handle_guest_now(
     chat_id = chat.get("id")
     chat_type = chat.get("type", "")
     
-    # --- NOWOŚĆ: CAŁKOWITA BLOKADA DLA CZATU PRYWATNEGO (1:1) ---
-    # Jeśli to priv, przerywamy działanie Gościa.
-    if chat_type == "private":
-        return False
-    # ------------------------------------------------------------
+    # Od teraz tryb skrótów działa wszędzie (brak hard-blocka dla "private")
+    is_private = (chat_type == "private")
     
-    is_private = (chat_type == "private") # Od teraz to z definicji zawsze będzie False.
-    
-    # --- ODCINAMY WSZYSTKO, CO NIE JEST WZMIANKĄ LUB SKRÓTEM ---
     text_lower = text.lower()
     mention = f"@{bot_username.lower()}"
-    
     is_mention = mention in text_lower
-    # Super-wygodne skróty (kropka jest zawsze pod kciukiem obok spacji!)
-    prefixes = ("!p ", "?p ", ".p ", "!p", "?p", ".p")
-    is_shortcut = text_lower.startswith(prefixes)
     
+    # 1. IDENTYFIKACJA SKRÓTU I TYPU KARTY
+    is_shortcut = False
+    card_type = "now"  # Domyślnie dla zapytań przez @
+    query = ""
+    
+    # Sprawdzamy prefiksy z kropką i pytajnikiem
+    if text_lower.startswith((".n ", "?n ", ".n", "?n")):
+        is_shortcut = True
+        card_type = "now"
+        query = text[2:].strip()
+    elif text_lower.startswith((".d ", "?d ", ".d", "?d")):
+        is_shortcut = True
+        card_type = "day"
+        query = text[2:].strip()
+    elif text_lower.startswith((".f ", "?f ", ".f", "?f")):
+        is_shortcut = True
+        card_type = "future"
+        query = text[2:].strip()
+    elif text_lower.startswith((".p ", "?p ", ".p", "?p")): # Wsteczna kompatybilność
+        is_shortcut = True
+        card_type = "now"
+        query = text[2:].strip()
+
     if not (is_mention or is_shortcut):
         return False
         
@@ -179,24 +192,24 @@ def handle_guest_now(
     user_lang = "no" if raw_l in ("no", "nb") else raw_l
     if user_lang not in ("pl", "en", "de", "fr", "es", "no"):
         user_lang = "en"
-    # ----------------------------------
-    
+        
     reply = message.get("reply_to_message") or {}
     loc = reply.get("location")
     
-    # --- BEZPIECZNE POBRANIE TŁUMACZEŃ ---
+    used_query = None  
+    full_address = None  # <--- Zmienna na pełny, oficjalny adres państwowy
+    
     try:
         from i18n import t_ui
-        fallback_city = t_ui(user_lang, "default_city")  # np. "Twoja okolica" / "Your location"
-        err_msg = t_ui(user_lang, "search_err")          # np. "Błąd wyszukiwania" / "Search error"
+        fallback_city = t_ui(user_lang, "default_city")
+        err_msg = t_ui(user_lang, "search_err")
     except Exception:
         fallback_city = "Twoja okolica"
-        err_msg = "Chwilowy problem z wyszukiwaniem lokalizacji. Spróbuj za chwilę."
+        err_msg = "Chwilowy problem z wyszukiwaniem lokalizacji."
         
     oficjalna_nazwa = fallback_city
     
     if loc and "latitude" in loc and "longitude" in loc:
-        # --- 1. ŚCIEŻKA DLA PINEZKI ---
         lat = float(loc["latitude"])
         lon = float(loc["longitude"])
         
@@ -209,16 +222,16 @@ def handle_guest_now(
                     if city_name:
                         _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
                 
-                # Dodaliśmy "Location", bo Nominatim po angielsku może zwrócić "Location in terrain"
                 if city_name and "Lokalizacja" not in city_name and "Location" not in city_name and not any(ch.isdigit() for ch in city_name):
                     oficjalna_nazwa = city_name
+                    full_address = city_name
             except Exception:
                 pass
                 
     else:
-        # --- 2. ŚCIEŻKA DLA WYSZUKIWANIA TEKSTOWEGO ---
+        # Płynne odcinanie nazwy miasta, bez dotykania funkcji czyszczącej
         if is_shortcut:
-            query = text[2:].strip()  # Odcinamy "!p"
+            pass # (Zmienna 'query' odcięta już na samej górze!)
         else:
             query = _extract_query_from_mention(text, bot_username)
             
@@ -226,11 +239,10 @@ def handle_guest_now(
         
         if not query:
             if is_private:
-                send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy po @nazwie_bota.")
+                send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy, np. .d Paryż")
             return True
             
         try:
-            # Sprawdzamy cache geokodowania
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
             
@@ -247,7 +259,6 @@ def handle_guest_now(
                     send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
                 return True
                 
-            # Reverse geocoding dla ładnej nazwy
             city_name = None
             if get_city_fn:
                 try:
@@ -260,72 +271,35 @@ def handle_guest_now(
                 except Exception:
                     pass
                     
-            # Przypisanie oficjalnej nazwy z obsługą błędów i cyfr
             if (not city_name) or ("Lokalizacja" in city_name) or ("Location" in city_name) or any(ch.isdigit() for ch in city_name):
                 city_name = (used_query or query).strip() if (used_query or query) else fallback_city
                 
             oficjalna_nazwa = city_name
                 
         except Exception as e:
-            logger.error(f"[GuestMode] Błąd geokodowania dla '{query}': {e}")
             if is_private:
                 send_reply_fn(chat_id, err_msg)
             return True
 
-    # --- GENEROWANIE KARTY ---
+    # ===============================
+    # OSTATNI KROK: BUDOWA I WYSYŁKA
+    # ===============================
     try:
-        # ZMIANA: Przekazujemy oficjalna_nazwa z powrotem do funkcji
-        payload = build_payload_fn(lat, lon, user_lang, True, oficjalna_nazwa)
-        
-        layout = prepare_layout_fn(payload)
-        img_path = render_png_fn(layout)
+        # 1. Przekazujemy card_type == "now" do payloadu, aby pobrać właściwy pakiet danych
+        payload = build_payload_fn(lat, lon, user_lang, card_type == "now", oficjalna_nazwa)
+        if not payload:
+            return True
+            
+        # 2. Renderujemy odpowiedni układ karty na bazie wybranego skrótu
+        lay = prepare_layout_fn(payload, card_type)
+        img_path = render_png_fn(lay)
         
         if img_path:
-            send_photo_fn(chat_id, img_path)
-            try:
-                os.remove(img_path)
-            except Exception as e:
-                logger.error(f"[GuestMode] Błąd usuwania pliku {img_path}: {e}")
-        else:
-            if is_private:
-                send_reply_fn(chat_id, "Błąd podczas generowania grafiki pogodowej.")
-                
+            # 3. Wysłanie gotowej karty z wstrzyknięciem pełnego adresu z geokodera!
+            final_address = full_address if full_address else oficjalna_nazwa
+            send_photo_fn(chat_id, img_path, oficjalna_nazwa, final_address)
     except Exception as e:
-        logger.error(f"[GuestMode] Wyjątek podczas generowania/wysyłki karty: {e}")
         if is_private:
-            send_reply_fn(chat_id, "Nie udało się pobrać danych pogodowych. Spróbuj ponownie.")
-            
-    return True
-
-    # --- GENEROWANIE KARTY ---
-    try:
-        # 3. POBIERANIE POGODY
-        payload = build_payload_fn(lat, lon, user_lang, True, oficjalna_nazwa)
-        t3 = time.time()
-        print(f"[DEBUG-TIME] 3. Pobieranie API Pogody zajęło: {t3 - t2:.2f} s", flush=True)
-        
-        # 4. RYSOWANIE KARTY PNG
-        layout = prepare_layout_fn(payload)
-        img_path = render_png_fn(layout)
-        t4 = time.time()
-        print(f"[DEBUG-TIME] 4. Generowanie PNG zajęło: {t4 - t3:.2f} s", flush=True)
-        
-        # 5. WYSYŁKA DO TELEGRAMA
-        if img_path:
-            send_photo_fn(chat_id, img_path)
-            t5 = time.time()
-            print(f"[DEBUG-TIME] 5. Wysłanie zdjęcia do TG zajęło: {t5 - t4:.2f} s", flush=True)
-            print(f"[DEBUG-TIME] 🚀 CAŁKOWITY CZAS: {t5 - t0:.2f} s", flush=True)
-            
-            try:
-                os.remove(img_path)
-            except Exception as e:
-                pass
-        else:
-            if is_private:
-                send_reply_fn(chat_id, "Błąd podczas generowania grafiki pogodowej.")
-                
-    except Exception as e:
-        logger.error(f"[GuestMode] Wyjątek: {e}")
+            send_reply_fn(chat_id, err_msg)
             
     return True

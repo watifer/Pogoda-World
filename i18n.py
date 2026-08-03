@@ -544,7 +544,7 @@ EXACT_MAPS = {
         "nocne dane — możliwa korekta prognozy rano.": "Données nocturnes — ajustement possible des prévisions le matin.",
         "nocne dane — odśwież prognozę z menu później": "Données nocturnes — actualisez les prévisions depuis le menu plus tard",
         "tropikalna duchota: bardzo wysoka wilgotność sprawi, że powietrze będzie wyjątkowo ciężkie.": "Étouffement tropical : Une forte humidité rendra l'air exceptionnellement lourd.",
-        "trudny biomet: przez wysoką wilgotność odczujemy zaduch, a powietrze stanie się ciężkie i lepkie.": "Biométrie difficile : l'humidité élevée rendra l'air lourd et moite.",
+        "trudny biomet: przez wysoką wilgotność odczujemy zaduch, a powietrze stanie się ciężkie i lepkie.": "Inconfort : l'humidité élevée rendra l'air lourd et moite.",
         "niestabilna aura, możliwe opady": "Temps instable, pluie possible",
         "niepewna prognoza zachmurzenia": "Prévision incertaine de la couverture nuageuse",
         "niepewna prognoza": "Prévision incertaine",
@@ -963,6 +963,8 @@ REPLACEMENTS = {
         ("przelotne ", "averses de "),
         ("przelotny ", "averses de "),
         ("przelotna ", "averses de "),
+        ("ulewny deszcz:", "Forte pluie :"),
+        ("ulewny deszcz", "forte pluie"),
         
         # --- ALERTY Z WEATHER_PAYLOAD ---
         ("prognozowane są niszczące porywy do", "rafales destructrices prévues jusqu'à"),
