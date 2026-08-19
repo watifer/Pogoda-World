@@ -86,7 +86,8 @@ def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optiona
 
 def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str = "pl") -> Optional[str]:
     """
-    Niezależny arbiter: koryguje chmury i ukryte opady na bazie stanu 'teraz' z OWM 4.0.
+    Niezależny arbiter: wykrywa tylko ukryty opad na bazie stanu 'teraz' z OWM 4.0.
+    (Korekta zachmurzenia odbywa się całkowicie w tle przez apply_cloud_correction).
     """
     if not owm or not payload_hours:
         return None
@@ -97,11 +98,6 @@ def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str 
         return None
         
     current = data_array[0]
-    
-    owm_clouds = current.get("clouds")
-    if owm_clouds is None:
-        return None
-    owm_clouds = float(owm_clouds)
 
     # Ekstrakcja opadów OWM
     rain_1h = current.get("rain", {}).get("1h", 0) if isinstance(current.get("rain"), dict) else 0
@@ -121,34 +117,71 @@ def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str 
 
     model_precip = float(h.get("precip_mm") or 0)
 
-    # 1. PRIORYTET: Detekcja ukrytego opadu (OWM widzi wodę, model ma 0.0)
+    # PRIORYTET: Detekcja ukrytego opadu (OWM widzi wodę, model ma 0.0)
     if model_precip < 0.1 and owm_precip >= 0.2:
         return STRINGS[lang].get("nowcast_precip", "")
 
-    # 2. DRUGI PLAN: Detekcja błędu w zachmurzeniu
-    def eff(x: dict) -> float:
-        low = x.get("clouds_low_pct")
-        mid = x.get("clouds_mid_pct")
-        if low is not None and mid is not None:
-            return min(100.0, float(low) + float(mid))
-        return float(x.get("clouds_pct") or 0)
+    # Jeśli nie ma ukrytego opadu, zachowujemy milczenie w UI
+    return None
+    
+def apply_cloud_correction(ta_tuples: list, owm: dict):
+    """
+    Agresywnie koryguje chmury na 3 pierwsze bloki karty /now, 
+    relaksując dane płynnie z powrotem do uśrednionego modelu.
+    """
+    if not owm or not ta_tuples:
+        return
 
-    om_eff = eff(h)
-    yr_eff = None
-    if h.get("clouds_low_pct_yr") is not None and h.get("clouds_mid_pct_yr") is not None:
-        yr_eff = min(100.0, float(h.get("clouds_low_pct_yr")) + float(h.get("clouds_mid_pct_yr")))
-    elif h.get("clouds_pct_yr") is not None:
-        yr_eff = float(h.get("clouds_pct_yr"))
+    data_array = owm.get("data", [])
+    if not data_array:
+        return
 
-    model_eff = max(om_eff, yr_eff) if yr_eff is not None else om_eff
+    owm_clouds = data_array[0].get("clouds")
+    if owm_clouds is None:
+        return
+    owm_clouds = float(owm_clouds)
 
-    # Uruchomienie notatki chmurowej tylko przy różnicy > 40%
-    if abs(owm_clouds - model_eff) < 40:
-        return None
+    h0 = ta_tuples[0][1]
+    
+    # Wyliczamy efektywne chmury modelu dla godziny "0"
+    low = h0.get("clouds_low_pct")
+    mid = h0.get("clouds_mid_pct")
+    if low is not None and mid is not None:
+        model_eff = min(100.0, float(low) + float(mid))
+    else:
+        model_eff = float(h0.get("clouds_pct") or 0)
 
-    if owm_clouds >= 70 and model_eff <= 30:
-        return STRINGS[lang].get("nowcast_more_clouds", "")
-    if owm_clouds <= 30 and model_eff >= 70:
-        return STRINGS[lang].get("nowcast_less_clouds", "")
-        
-    return STRINGS[lang].get("nowcast_diff_clouds", "")
+    # 40% rozjazdu to sygnał do interwencji
+    diff = model_eff - owm_clouds
+    if abs(diff) >= 40:
+        # Korygujemy tylko tyle bloków, ile fizycznie istnieje (max 3)
+        steps = min(3, len(ta_tuples))
+        for step in range(steps):
+            target_h = ta_tuples[step][1]
+            
+            # Waga powrotu do modelu: 0% -> 33% -> 66%
+            correction_factor = step / 3.0
+            new_clouds = owm_clouds + (diff * correction_factor)
+            new_clouds = max(0.0, min(100.0, new_clouds))
+
+            # Brutalne nadpisanie danych o chmurach (kasujemy też ślad norweski!)
+            target_h["clouds_pct"] = new_clouds
+            target_h["clouds_low_pct"] = new_clouds
+            target_h["clouds_mid_pct"] = 0
+            target_h["clouds_high_pct"] = 0
+            
+            target_h["clouds_pct_yr"] = new_clouds
+            target_h["clouds_low_pct_yr"] = new_clouds
+            target_h["clouds_mid_pct_yr"] = 0
+            target_h["clouds_high_pct_yr"] = 0
+
+            # Korygujemy kody (TYLKO jeśli model przewidywał suchą pogodę)
+            current_code = target_h.get("weather_code")
+            if current_code in [0, 1, 2, 3] or current_code is None:
+                if new_clouds < 15: new_code = 0
+                elif new_clouds < 40: new_code = 1
+                elif new_clouds < 70: new_code = 2
+                else: new_code = 3
+                
+                target_h["weather_code"] = new_code
+                target_h["symbol_code"] = ""  # Wymusza przeliczenie na podstawie weather_code

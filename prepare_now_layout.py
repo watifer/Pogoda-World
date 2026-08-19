@@ -100,6 +100,40 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         
     start_dt = ta_tuples[0][0]
 
+    # ══════════════════════════════════════════════════════════
+    # NOWOŚĆ: INTELIGENTNA KOREKTA SATELITARNA (OWM) NA SAMYM STARCIE!
+    # ══════════════════════════════════════════════════════════
+    owm_note = None
+    should_call_owm = False
+    forecast_source = payload.get("forecast_source", "OpenMeteo + Yr.no")
+
+    # Bramka logiki: czy uderzać do OWM?
+    if " + " not in forecast_source: 
+        should_call_owm = True
+    elif hours:
+        # Szybki skan pierwszej godziny na wypadek ukrytego opadu lub wysokiego zachmurzenia
+        first_h = ta_tuples[0][1]
+        rh = float(first_h.get("rh_pct") or 0)
+        mm_now = float(first_h.get("precip_mm") or 0)
+        cld = max(float(first_h.get("clouds_low_pct") or 0) + float(first_h.get("clouds_mid_pct") or 0), float(first_h.get("clouds_pct_yr") or 0))
+        if mm_now < 0.1 and rh >= 85 and cld >= 85:
+            should_call_owm = True
+        # Zawsze sprawdzamy chmury do fuzji dla /now!
+        should_call_owm = True  # Celowo wymuszamy call dla taktycznego radaru
+
+    if should_call_owm:
+        from owm_nowcast import get_current_weather, nowcast_note, apply_cloud_correction
+        
+        # Pobieramy PRAWDZIWE dane z satelity na żywo:
+        owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=8)
+        
+        if owm:
+            # 1. NAJPIERW notatka (zanim skasujemy stare dane z modelu!)
+            owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm, lang=lang)
+            
+            # 2. DOPIERO POTEM ratunkowe nadpisanie ikon i chmur w pamięci RAM na 3 godziny
+            apply_cloud_correction(ta_tuples, owm)
+
     # --- CIŚNIENIE I TREND DLA HERO ---
     def _hour(h_dict):
         try: return datetime.fromisoformat(h_dict["time_local"].replace("Z", "+00:00")).hour
@@ -367,37 +401,10 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     
     ta_now = [h for dt, h in ta_tuples]
     
-# 1. Sprawdzamy sensor mżawki z głównego payloadu (zawsze warto mieć w zanadrzu)
+    # 1. Sprawdzamy sensor mżawki z głównego payloadu (zawsze warto mieć w zanadrzu)
     hint = _drizzle_hint(ta=ta_now, hp_all=hours, start_hour=start_dt.hour)
 
-    # --- INTELIGENTNY GATING OWM (Leniwa Weryfikacja 2.0) ---
-    should_call_owm = False
-    forecast_source = payload.get("forecast_source", "OpenMeteo + Yr.no")
-
-    # Scenariusz 1: Brak jednego ze źródeł (Fallback)
-    if " + " not in forecast_source:
-        should_call_owm = True
-    # Scenariusz 2: Age-gating wykrył "stare" dane (zmienność)
-    elif now_context_line and "nieaktualne" in now_context_line.lower():
-        should_call_owm = True
-    # Scenariusz 3: Ryzyko ukrytego opadu (0 mm, wysoka wilg. i chmury)
-    elif hours:
-        # Znajdujemy aktualną godzinę
-        current_h = next((h for h in hours if int(h.get("time_local", "00:00")[11:13]) == now.hour), None)
-        if current_h:
-            rh = float(current_h.get("rh_pct") or 0)
-            mm_now = float(current_h.get("precip_mm") or 0)
-            # Obliczenie efektywnych chmur
-            cld = max(float(current_h.get("clouds_low_pct") or 0) + float(current_h.get("clouds_mid_pct") or 0), float(current_h.get("clouds_pct_yr") or 0))
-            
-            if mm_now < 0.1 and rh >= 85 and cld >= 85:
-                should_call_owm = True
-
-    # 2. Odpytujemy OWM tylko jeśli bramka się otworzyła
-    owm_note = None
-    if should_call_owm:
-        owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=8)
-        owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm)
+    
 
     # 3. Kaskada priorytetów pozostaje taka sama
     context_line = now_context_line or owm_note or hint

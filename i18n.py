@@ -74,7 +74,7 @@ STRINGS = {
     "nowcast_diff_clouds": "Teraz zachmurzenie może odbiegać od prognozy.",
     "trust_precip": "Modele są rozbieżne co do opadów w ciągu dnia.",
     "trust_wind": "Modele są rozbieżne co do siły wiatru.",
-    "trust_clouds": "Modele są rozbieżne co do zachmurzenia."
+    "trust_clouds": "Modele są rozbieżne co do zachmurzenia. Skorygowano kartę /now"
   },
   "en": {
     "report_morning": "morning report",
@@ -136,7 +136,7 @@ STRINGS = {
     "nowcast_diff_clouds": "Current cloud cover may differ from the forecast.",
     "trust_precip": "Forecast models disagree on daytime precipitation.",
     "trust_wind": "Forecast models disagree on wind strength.",
-    "trust_clouds": "Forecast models disagree on cloud cover."
+    "trust_clouds": "Forecast models disagree on cloud cover. The /now card has been corrected."
   },
   "fr": {
     "report_morning": "rapport du matin",
@@ -198,7 +198,7 @@ STRINGS = {
     "nowcast_diff_clouds": "La couverture nuageuse peut différer des prévisions.",
     "trust_precip": "Les modèles diffèrent sur les précipitations du jour.",
     "trust_wind": "Les modèles diffèrent sur la force du vent.",
-    "trust_clouds": "Les modèles diffèrent sur la couverture nuageuse."
+    "trust_clouds": "Les modèles diffèrent sur la couverture nuageuse. La carte /now a été corrigée."
   },
   "de": {
     "report_morning": "Morgenbericht",
@@ -260,7 +260,7 @@ STRINGS = {
     "nowcast_diff_clouds": "Die aktuelle Bewölkung kann von der Vorhersage abweichen.",
     "trust_precip": "Prognosemodelle sind sich beim Niederschlag uneinig.",
     "trust_wind": "Prognosemodelle sind sich bei der Windstärke uneinig.",
-    "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig."
+    "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig. Die /now-Karte wurde korrigiert."
 
   },
   "es": {
@@ -323,7 +323,7 @@ STRINGS = {
     "nowcast_diff_clouds": "La nubosidad actual puede diferir del pronóstico.",
     "trust_precip": "Los modelos difieren sobre las precipitaciones del día.",
     "trust_wind": "Los modelos difieren sobre la fuerza del viento.",
-    "trust_clouds": "Los modelos difieren sobre la cobertura de nubes."
+    "trust_clouds": "Los modelos difieren sobre la cobertura de nubes. La tarjeta /now ha sido corregida."
   },
   "no": {
     "report_morning": "morgenrapport",
@@ -385,7 +385,7 @@ STRINGS = {
     "nowcast_diff_clouds": "Nåværende skydekke kan avvike fra varselet.",
     "trust_precip": "Varslingsmodellene er uenige om nedbør på dagtid.",
     "trust_wind": "Varslingsmodellene er uenige om vindstyrken.",
-    "trust_clouds": "Varslingsmodellene er uenige om skydekket."
+    "trust_clouds": "Varslingsmodellene er uenige om skydekket. /now-kortet har blitt korrigert."
   }
 }
 
