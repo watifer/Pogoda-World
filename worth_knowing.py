@@ -165,6 +165,7 @@ def _build_wk_facts(ta: list, blocks: list, current_hour: int, is_afternoon_repo
 
         # KOMFORTOWE OKNO
         best_comfort = None
+        best_score = -999  # Zmienna do oceniania najlepszej godziny
         if len(future_ta) >= 3:
             for i in range(len(future_ta) - 2):
                 window = future_ta[i:i+3]
@@ -173,13 +174,18 @@ def _build_wk_facts(ta: list, blocks: list, current_hour: int, is_afternoon_repo
                 w_temps = [ _f(h.get("temp_c")) for h in window if h.get("temp_c") is not None ]
                 if w_precip == 0 and w_wind < 15 and w_temps:
                     avg_t = sum(w_temps) / len(w_temps)
-                    if 16 <= avg_t <= 24:
-                        try:
-                            start_hr = int(window[0]["time_local"][11:13])
+                    if 16 <= avg_t <= 26:
+                        start_hr = int(window[0]["time_local"][11:13])
+                        # Punktujemy: im bliżej 21°C tym lepiej, preferujemy godziny dzienne (10-17)
+                        score = -abs(21 - avg_t)
+                        if 10 <= start_hr <= 17: 
+                            score += 2
+                        
+                        if score > best_score:
+                            best_score = score
                             best_comfort = (start_hr, round(avg_t))
-                            break
-                        except Exception:
-                            pass
+                            # Usunęliśmy 'break', żeby pętla sprawdziła cały dzień!
+
         if best_comfort:
             facts["comfort_hour"] = int(best_comfort[0])
             facts["comfort_avg_temp_c"] = int(best_comfort[1])
@@ -617,8 +623,9 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                     "wx": ["temp_change"]
                 })
 
-        if not has_precip and max_wind < 20 and temp_max is not None and 15 <= temp_max <= 25:
+        if not has_precip and max_wind < 20 and temp_max is not None and 15 <= temp_max <= 26:
             best_comfort_hr = None
+            best_score = -999
             for i in range(len(future_ta) - 2):
                 window_slice = future_ta[i:i+3]
                 w_precip = max((float(h.get("precip_mm") or 0) for h in window_slice), default=0)
@@ -626,14 +633,20 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                 w_temps = [h.get("temp_c") for h in window_slice if h.get("temp_c") is not None]
                 if w_precip == 0 and w_wind < 15 and w_temps:
                     avg_t = sum(w_temps) / len(w_temps)
-                    if 16 <= avg_t <= 24:
-                        best_comfort_hr = int(window_slice[0]["time_local"][11:13])
-                        break
+                    if 16 <= avg_t <= 26:
+                        start_hr = int(window_slice[0]["time_local"][11:13])
+                        score = -abs(21 - avg_t)
+                        if 10 <= start_hr <= 17: 
+                            score += 2
+                            
+                        if score > best_score:
+                            best_score = score
+                            best_comfort_hr = start_hr
 
             if best_comfort_hr is not None:
                 candidates.append({
                     "priority": 3,
-                    "text": f"najlepsze, komfortowe warunki na wyjście będą po {best_comfort_hr:02d}:00",
+                    "text": f"najlepsze, komfortowe warunki na wyjście zapowiadają się w okolicach {best_comfort_hr:02d}:00",
                     "category": "comfort_window",
                     "kind": "opportunity",
                     "wx": ["window"]
