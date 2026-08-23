@@ -1,0 +1,39 @@
+{
+  "coast:52.173:21.318": {
+    "version": "ne_10m_ocean:10m;radar:v1;r25;step10;minw20",
+    "computed_at": 1787419935,
+    "is_coastal": false,
+    "distance_to_ocean_km": 276.4821437027301,
+    "sea_sectors": [],
+    "radius_km": 25.0,
+    "step_deg": 10
+  },
+  "coast:54.34:19.23": {
+    "version": "ne_10m_ocean:10m;radar:v1;r25;step10;minw20",
+    "computed_at": 1787420376,
+    "is_coastal": true,
+    "distance_to_ocean_km": 2.74513129740825,
+    "sea_sectors": [
+      [
+        280.0,
+        70.0
+      ]
+    ],
+    "radius_km": 25.0,
+    "step_deg": 10
+  },
+  "coast:16.868:-99.894": {
+    "version": "ne_10m_ocean:10m;radar:v1;r25;step10;minw20",
+    "computed_at": 1787423068,
+    "is_coastal": true,
+    "distance_to_ocean_km": 1.4470953095585661,
+    "sea_sectors": [
+      [
+        120.0,
+        300.0
+      ]
+    ],
+    "radius_km": 25.0,
+    "step_deg": 10
+  }
+}

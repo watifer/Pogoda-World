@@ -421,7 +421,7 @@ def _extract_visible_categories(
 # ═══════════════════════════════════════
 
 def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
-                       is_afternoon_report, tomorrow_morning_events, max_wind, gust_kmh, ta, current_hour):
+                       is_afternoon_report, tomorrow_morning_events, max_wind, gust_kmh, ta, current_hour, coastal_day_alert=False):
     candidates = []
 
     # === NOWOCZESNE DANE: UV, BURZE i DUCHOTA (Najwyższy priorytet) ===
@@ -828,6 +828,9 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                 "kind": "warm_peak",
                 "wx": []
             })
+            
+            
+    
 
     return candidates
         
@@ -1186,7 +1189,8 @@ def build_worth_knowing(
 
     candidates = _candidates_level1(
         blocks, temp_min, temp_max, total_precip_mm,
-        is_afternoon_report, tomorrow_morning_events, max_wind, gust_kmh, ta, current_hour
+        is_afternoon_report, tomorrow_morning_events, max_wind, gust_kmh, ta, current_hour,
+        payload.get("coastal_day_alert", False)
     )
     candidates += _candidates_level2(blocks, temp_min, max_wind, gust_kmh, total_precip_mm)
     

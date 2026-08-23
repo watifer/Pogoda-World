@@ -404,10 +404,44 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # 1. Sprawdzamy sensor mżawki z głównego payloadu (zawsze warto mieć w zanadrzu)
     hint = _drizzle_hint(ta=ta_now, hp_all=hours, start_hour=start_dt.hour)
 
-    
+    # ==================================================================
+    # NOWY KOD: Radar wiatru od morza na żywo (/now)
+    # ==================================================================
+    coastal_note = None
+    try:
+        from main_card import GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE
+        if GLOBAL_COAST_INDEX and GLOBAL_COAST_STORE:
+            from coast_detector import get_or_compute_coast_signature, is_onshore
+            loc_lat = payload.get("location", {}).get("lat")
+            loc_lon = payload.get("location", {}).get("lon")
+            if loc_lat is not None and loc_lon is not None:
+                sig = get_or_compute_coast_signature(GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE, loc_lat, loc_lon)
+                if sig.is_coastal and sig.sea_sectors:
+                    dist = sig.distance_to_ocean_km or 999.0
+                    add_thresh = 8.0 if dist > 10.0 else 0.0
 
-    # 3. Kaskada priorytetów pozostaje taka sama
-    context_line = now_context_line or owm_note or hint
+                    # Skanujemy najbliższe 3 godziny, by dać taktyczne wyprzedzenie (Audytor - Poprawka B)
+                    for idx_h, h in enumerate(ta_now[:3]):
+                        wind_dir = float(h.get("wind_dir_deg", 0))
+                        wind_spd = float(h.get("wind_kmh", 0))
+                        gust = float(h.get("gust_kmh", h.get("wind_gust_kmh", 0)))
+                        eff_wind = max(wind_spd, gust)
+                        
+                        if is_onshore(wind_dir, sig.sea_sectors):
+                            if wind_spd >= (18.0 + add_thresh) or eff_wind >= (25.0 + add_thresh):
+                                g_txt = f", porywy do {round(eff_wind)} km/h" if eff_wind > wind_spd else ""
+                                
+                                if idx_h == 0:
+                                    coastal_note = f"🌬️ Wybrzeże: wiatr od wody {round(wind_spd)} km/h{g_txt} — na otwartym brzegu mocniej."
+                                else:
+                                    coastal_note = f"🌬️ Wybrzeże: w ciągu 1-2h wiatr od wody (do {round(eff_wind)} km/h) — na plaży mocniej."
+                                break # Zatrzymujemy pętlę na pierwszym znalezionym uderzeniu
+    except Exception as e:
+        print(f"[SYSTEM] Błąd modułu nadmorskiego w /now: {e}")
+    # ==================================================================
+
+    # 3. Kaskada priorytetów (Wiatr taktyczny przed informacją o satelicie!)
+    context_line = now_context_line or coastal_note or owm_note or hint
     
     
     # ══════════════════════════════════════════════════════════

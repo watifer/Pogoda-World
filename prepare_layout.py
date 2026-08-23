@@ -1283,6 +1283,52 @@ def prepare_layout_data(payload, now=None):
 
     alerts = list(dict.fromkeys(alerts))
 
+    # ==================================================================
+    # NOWY KOD: Detekcja Wybrzeża (Baltic Breeze) -> SEKCJA UWAŻAJ
+    # ==================================================================
+    try:
+        from main_card import GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE
+        if GLOBAL_COAST_INDEX and GLOBAL_COAST_STORE:
+            from coast_detector import get_or_compute_coast_signature, is_onshore
+            loc_lat = payload.get("location", {}).get("lat")
+            loc_lon = payload.get("location", {}).get("lon")
+            if loc_lat is not None and loc_lon is not None:
+                sig = get_or_compute_coast_signature(GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE, loc_lat, loc_lon)
+                
+                if sig.is_coastal and sig.sea_sectors:
+                    dist = sig.distance_to_ocean_km or 999.0
+                    add_t = 8.0 if dist > 10.0 else 0.0
+                    
+                    onshore_hours = []
+                    for h in ta:
+                        try:
+                            hh = int(h.get("time_local", "")[11:13])
+                            if max(8, now.hour) <= hh <= 18:
+                                wdir = float(h.get("wind_dir_deg", 0))
+                                wspd = float(h.get("wind_kmh", 0))
+                                wgst = float(h.get("gust_kmh", h.get("wind_gust_kmh", 0)))
+                                eff_w = max(wspd, wgst)
+                                if is_onshore(wdir, sig.sea_sectors):
+                                    # Warunek z Warto Wiedzieć: musi być ciepło (bmax >= 16) i bez większej ulewy (tp < 2.0)
+                                    if bmax is not None and bmax >= 16 and tp <= 2.0:
+                                        if wspd >= (22.0 + add_t) or eff_w >= (32.0 + add_t):
+                                            onshore_hours.append(hh)
+                        except Exception:
+                            pass
+                    
+                    if onshore_hours:
+                        start_h = min(onshore_hours)
+                        end_h = max(onshore_hours)
+                        time_str = f"ok. {start_h:02d}:00" if start_h == end_h else f"głównie {start_h:02d}:00–{end_h:02d}:00"
+                        
+                        # Dodajemy "Wybrzeże — " żeby UI poprawnie rozdzieliło tytuł (czerwony) od opisu (biały)
+                        coastal_alert = f"Wybrzeże — Nad wodą możliwy wiatr od morza ({time_str}). Sprawdź /now (radar taktyczny)."
+                        alerts.append(coastal_alert)
+    except Exception as e:
+        print(f"[SYSTEM] Błąd modułu nadmorskiego (prepare_layout): {e}")
+    # ==================================================================
+   
+
     wk = build_worth_knowing(
         payload=payload, blocks=hero_blocks, alerts=alerts, temp_min=bmin, temp_max=bmax,
         max_wind=max_wind, gust_kmh=max_gust, total_precip_mm=tp,

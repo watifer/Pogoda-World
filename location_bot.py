@@ -20,6 +20,9 @@ load_dotenv()
 MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
 import time
 
+
+
+
 # =====================================================================
 # PAMIĘĆ RAM DLA STANU OCZEKIWANIA NA MIASTO (State Machine z TTL)
 # =====================================================================

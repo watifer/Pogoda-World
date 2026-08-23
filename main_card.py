@@ -39,6 +39,20 @@ from prepare_future_layout import prepare_future_layout_data
 from sanity_checker import run_sanity_check
 
 
+# --- INICJALIZACJA SYSTEMU NADMORSKIEGO ---
+try:
+    from coast_detector import CoastIndex, JsonCoastSigStore
+    # Ścieżka musi zgadzać się z Twoją strukturą!
+    GLOBAL_COAST_INDEX = CoastIndex("data/natural_earth/ne_10m_ocean/ne_10m_ocean.shp")
+    GLOBAL_COAST_STORE = JsonCoastSigStore("coast_cache.json")
+    print("[SYSTEM] Zbudowano indeks przestrzenny morza (CoastIndex).")
+except Exception as e:
+    print(f"[SYSTEM] OSTRZEŻENIE: Moduł brzegowy nie załadował się ({e}).")
+    GLOBAL_COAST_INDEX = None
+    GLOBAL_COAST_STORE = None
+
+
+
 def wirtualne_scalanie(raw_records: list) -> list:
     """Kompresuje rozbite wiersze z Google Sheets w jeden perfekcyjny rekord na użytkownika, sortując je po dacie."""
     
