@@ -50,7 +50,7 @@ try:
         if GLOBAL_COAST_INDEX is None:
             # Ładujemy ciężką mapę do RAM tylko, gdy jest to absolutnie konieczne (Cache Miss)
             from coast_detector import CoastIndex
-            GLOBAL_COAST_INDEX = CoastIndex("data/natural_earth/ne_50m_ocean/ne_50m_ocean.shp")
+            GLOBAL_COAST_INDEX = CoastIndex("data/natural_earth/ne_110m_ocean/ne_110m_ocean.shp")
         return GLOBAL_COAST_INDEX
 except Exception as e:
     GLOBAL_COAST_STORE = None
