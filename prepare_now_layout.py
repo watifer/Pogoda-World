@@ -432,8 +432,9 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                     dist = getattr(sig, "distance_to_ocean_km", 999.0) or 999.0
                     add_thresh = 8.0 if dist > 10.0 else 0.0
 
-                    # Skanujemy najbliższe 3 godziny
-                    for idx_h, h in enumerate(ta_now[:3]):
+                    # Skanujemy całe 12 godzin widocznych na radarze!
+                    onshore_hits = []
+                    for idx_h, h in enumerate(ta_now):
                         wind_dir = float(h.get("wind_dir_deg", 0))
                         wind_spd = float(h.get("wind_kmh", 0))
                         gust = float(h.get("gust_kmh", h.get("wind_gust_kmh", 0)))
@@ -441,13 +442,21 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                         
                         if is_onshore(wind_dir, sig.sea_sectors):
                             if wind_spd >= (18.0 + add_thresh) or eff_wind >= (25.0 + add_thresh):
-                                g_txt = f", porywy do {round(eff_wind)} km/h" if eff_wind > wind_spd else ""
+                                hh = int(h.get("time_local", "")[11:13])
+                                onshore_hits.append((idx_h, hh, wind_spd, eff_wind))
                                 
-                                if idx_h == 0:
-                                    coastal_note = f"🌬️ Wybrzeże: wiatr od wody {round(wind_spd)} km/h{g_txt} — na otwartym brzegu mocniej."
-                                else:
-                                    coastal_note = f"🌬️ Wybrzeże: w ciągu 1-2h wiatr od wody (do {round(eff_wind)} km/h) — na plaży mocniej."
-                                break
+                    if onshore_hits:
+                        first_hit = onshore_hits[0]
+                        idx_h, hh, wind_spd, eff_wind = first_hit
+                        g_txt = f", porywy do {round(eff_wind)} km/h" if eff_wind > wind_spd else ""
+                        
+                        if idx_h == 0:
+                            coastal_note = f"🌬️ Wybrzeże: wiatr od wody {round(wind_spd)} km/h{g_txt} — na otwartym brzegu mocniej."
+                        elif idx_h <= 2:
+                            coastal_note = f"🌬️ Wybrzeże: w ciągu 1-2h wiatr od wody (do {round(eff_wind)} km/h) — na plaży mocniej."
+                        else:
+                            coastal_note = f"🌬️ Wybrzeże: od ok. {hh:02d}:00 wiatr od wody (do {round(eff_wind)} km/h)."
+                                
     except Exception as e:
         print(f"[SYSTEM] Błąd modułu nadmorskiego w /now: {e}")
     # ==================================================================
