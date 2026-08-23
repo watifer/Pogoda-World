@@ -114,7 +114,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         # Szybki skan pierwszej godziny na wypadek ukrytego opadu lub wysokiego zachmurzenia
         first_h = ta_tuples[0][1]
         rh = float(first_h.get("rh_pct") or 0)
-        mm_now = float(first_h.get("precip_mm") or 0)
+        mm_now = float(first_h.get("precip_eff_mm", first_h.get("precip_mm")) or 0)
         cld = max(float(first_h.get("clouds_low_pct") or 0) + float(first_h.get("clouds_mid_pct") or 0), float(first_h.get("clouds_pct_yr") or 0))
         if mm_now < 0.1 and rh >= 85 and cld >= 85:
             should_call_owm = True
@@ -155,7 +155,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     bmin = min(temps) if temps else 0
     bmax = max(temps) if temps else 0
     
-    precips = [float(h.get("precip_mm") or 0) for dt, h in ta_tuples]
+    precips = [float(h.get("precip_eff_mm", h.get("precip_mm")) or 0) for dt, h in ta_tuples]
     max_precip = max(precips) if precips else 0
     
     # Szukamy max POP (prawdopodobieństwo) w oknie 12h
@@ -209,11 +209,11 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         has_storm = False; has_snow = False; has_sleet = False; has_real_rain = False; has_drizzle = False
         
         for dt, h in ta_tuples:
-            prc = float(h.get("precip_mm") or 0)
+            prc = float(h.get("precip_eff_mm", h.get("precip_mm")) or 0)
             if prc > 0:
                 tmp = h.get("temp_c", 0)
-                sym = h.get("symbol_code") or ""
-                w_code = h.get("weather_code")
+                sym = h.get("symbol_code_eff", h.get("symbol_code")) or ""
+                w_code = h.get("weather_code_eff", h.get("weather_code"))
                 cld = _eff_cld_consensus(h)
                 
                 kind = classify_precip(prc, tmp, sym, w_code)
@@ -275,7 +275,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         
         cld = _eff_cld_consensus(h)
         temp = h.get("temp_c", 0)
-        prc = float(h.get("precip_mm") or 0)
+        prc = float(h.get("precip_eff_mm", h.get("precip_mm")) or 0)
         
         # POPRAWKA WIATRU DLA LINII: Porywy stają się nowym standardem
         wind_avg = float(h.get("wind_kmh") or 0)
@@ -409,18 +409,30 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # ==================================================================
     coastal_note = None
     try:
-        from main_card import GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE
-        if GLOBAL_COAST_INDEX and GLOBAL_COAST_STORE:
-            from coast_detector import get_or_compute_coast_signature, is_onshore
+        from main_card import GLOBAL_COAST_STORE, ensure_coast_index
+        if GLOBAL_COAST_STORE and ensure_coast_index:
+            from coast_detector import get_or_compute_coast_signature, is_onshore, CoastSignature
             loc_lat = payload.get("location", {}).get("lat")
             loc_lon = payload.get("location", {}).get("lon")
             if loc_lat is not None and loc_lon is not None:
-                sig = get_or_compute_coast_signature(GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE, loc_lat, loc_lon)
-                if sig.is_coastal and sig.sea_sectors:
-                    dist = sig.distance_to_ocean_km or 999.0
+                
+                # 1. Pytamy lekki plik Cache (łączymy współrzędne w klucz)
+                cache_key = f"{round(loc_lat, 2)}_{round(loc_lon, 2)}"
+                sig = GLOBAL_COAST_STORE.get(cache_key)
+                
+                if isinstance(sig, dict):
+                    sig = CoastSignature(**sig)
+                
+                # 2. Brak w Cache -> ładujemy mapę
+                if not sig:
+                    idx = ensure_coast_index()
+                    sig = get_or_compute_coast_signature(idx, GLOBAL_COAST_STORE, loc_lat, loc_lon)
+                    
+                if sig and getattr(sig, "is_coastal", False) and getattr(sig, "sea_sectors", None):
+                    dist = getattr(sig, "distance_to_ocean_km", 999.0) or 999.0
                     add_thresh = 8.0 if dist > 10.0 else 0.0
 
-                    # Skanujemy najbliższe 3 godziny, by dać taktyczne wyprzedzenie (Audytor - Poprawka B)
+                    # Skanujemy najbliższe 3 godziny
                     for idx_h, h in enumerate(ta_now[:3]):
                         wind_dir = float(h.get("wind_dir_deg", 0))
                         wind_spd = float(h.get("wind_kmh", 0))
@@ -435,7 +447,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                                     coastal_note = f"🌬️ Wybrzeże: wiatr od wody {round(wind_spd)} km/h{g_txt} — na otwartym brzegu mocniej."
                                 else:
                                     coastal_note = f"🌬️ Wybrzeże: w ciągu 1-2h wiatr od wody (do {round(eff_wind)} km/h) — na plaży mocniej."
-                                break # Zatrzymujemy pętlę na pierwszym znalezionym uderzeniu
+                                break
     except Exception as e:
         print(f"[SYSTEM] Błąd modułu nadmorskiego w /now: {e}")
     # ==================================================================

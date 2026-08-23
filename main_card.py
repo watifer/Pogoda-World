@@ -41,15 +41,21 @@ from sanity_checker import run_sanity_check
 
 # --- INICJALIZACJA SYSTEMU NADMORSKIEGO ---
 try:
-    from coast_detector import CoastIndex, JsonCoastSigStore
-    # Ścieżka musi zgadzać się z Twoją strukturą!
-    GLOBAL_COAST_INDEX = CoastIndex("data/natural_earth/ne_10m_ocean/ne_10m_ocean.shp")
+    from coast_detector import JsonCoastSigStore
     GLOBAL_COAST_STORE = JsonCoastSigStore("coast_cache.json")
-    print("[SYSTEM] Zbudowano indeks przestrzenny morza (CoastIndex).")
+    GLOBAL_COAST_INDEX = None  # Na starcie w RAM-ie nie ma żadnej mapy!
+
+    def ensure_coast_index():
+        global GLOBAL_COAST_INDEX
+        if GLOBAL_COAST_INDEX is None:
+            # Ładujemy ciężką mapę do RAM tylko, gdy jest to absolutnie konieczne (Cache Miss)
+            from coast_detector import CoastIndex
+            GLOBAL_COAST_INDEX = CoastIndex("data/natural_earth/ne_10m_ocean/ne_10m_ocean.shp")
+        return GLOBAL_COAST_INDEX
 except Exception as e:
-    print(f"[SYSTEM] OSTRZEŻENIE: Moduł brzegowy nie załadował się ({e}).")
-    GLOBAL_COAST_INDEX = None
     GLOBAL_COAST_STORE = None
+    ensure_coast_index = None
+    print(f"[SYSTEM] Błąd inicjalizacji mapy wybrzeża: {e}")
 
 
 
@@ -599,6 +605,68 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
             print(f"[main_card] 🛑 Odrzucam: Brak dwóch źródeł danych dla {chat_id}. Odkładam na kolejną minutę.")
             return False  # Zwracamy False! Bot ucieka z funkcji.
     # ══════════════════════════════════════════════════════════
+    
+    # ==================================================================
+    # FILTR OPADÓW WIDMOWYCH (VIRGA / PHANTOM RAIN) - WERSJA PRO
+    # Zabezpiecza UX przed mżawkami (<= 0.2 mm), uwzględniając chmury niskie i RH
+    # ==================================================================
+    if "hours" in payload:
+        for h in payload["hours"]:
+            prc = float(h.get("precip_mm") or 0.0)
+            pop = float(h.get("precip_prob_pct", h.get("pop_pct", h.get("pop", 0.0))) or 0.0)
+            
+            rh_raw = h.get("rh_pct")
+            rh = float(rh_raw) if rh_raw is not None else None
+            
+            # Całkowite chmury (do ikon)
+            cld_om = float(h.get("clouds_pct") or 0.0)
+            cld_yr = float(h.get("clouds_pct_yr") or cld_om)
+            cld_max = max(cld_om, cld_yr)
+            
+            # Niskie chmury (do detekcji mżawki)
+            low_om = float(h.get("clouds_low_pct") or 0.0)
+            low_yr = float(h.get("clouds_low_pct_yr") or low_om)
+            low_max = max(low_om, low_yr)
+            
+            expected_mm = prc * (pop / 100.0)
+            
+            # Domyślne wartości (przechodzą bez zmian)
+            h["precip_eff_mm"] = prc
+            h["weather_code_eff"] = h.get("weather_code")
+            h["symbol_code_eff"] = h.get("symbol_code")
+            h["precip_class_eff"] = "rain" if prc > 0 else "none"
+            
+            # Warunek na RH (jeśli brak danych, wyłączamy sprawdzanie, żeby nie psuć)
+            rh_too_dry = False if rh is None else (rh < 75)
+            
+            # FILTR: Opady <= 0.2 mm. Wyrzucamy, jeśli wystąpi CHOĆ JEDEN z objawów fałszywego opadu:
+            if 0 < prc <= 0.2 and (expected_mm < 0.05 or low_max < 50 or rh_too_dry):
+                h["precip_eff_mm"] = 0.0
+                h["precip_class_eff"] = "trace" # Śladowy opad (nie wyzwala alarmów)
+                
+                code = h.get("weather_code")
+                # Jeśli kod wskazuje na opad, podmieniamy go na rzeczywiste zachmurzenie
+                if code in [51, 53, 55, 61, 63, 65, 80, 81, 82]:
+                    if cld_max < 10:
+                        h["weather_code_eff"] = 0
+                    elif cld_max < 30:
+                        h["weather_code_eff"] = 1
+                    elif cld_max < 70:
+                        h["weather_code_eff"] = 2
+                    else:
+                        h["weather_code_eff"] = 3
+                        
+                    # Naprawa symbol_code
+                    sym = h.get("symbol_code") or ""
+                    suffix = ""
+                    if "_day" in sym: suffix = "_day"
+                    elif "_night" in sym: suffix = "_night"
+                    
+                    if cld_max < 10: h["symbol_code_eff"] = f"clearsky{suffix}"
+                    elif cld_max < 30: h["symbol_code_eff"] = f"fair{suffix}"
+                    elif cld_max < 70: h["symbol_code_eff"] = f"partlycloudy{suffix}"
+                    else: h["symbol_code_eff"] = "cloudy"
+    # ==================================================================
 
     # 2. Layout (ROZWIDLENIE ARCHITEKTONICZNE)
     if is_now:

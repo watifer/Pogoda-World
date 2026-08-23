@@ -139,7 +139,7 @@ def _drizzle_hint(ta: list, hp_all: list, start_hour: int) -> str | None:
 
 def _precip_consensus(h: dict, hp_all: list) -> float:
     """Inteligentny konsensus: nie bierze Max, tylko sprawdza prawdopodobieństwo (POP)."""
-    p_base = float(h.get("precip_mm") or 0)
+    p_base = float(h.get("precip_eff_mm", h.get("precip_mm")) or 0)
     pop_base = float(h.get("precip_prob_pct", 0))
     
     t_loc = h.get("time_local")
@@ -151,7 +151,8 @@ def _precip_consensus(h: dict, hp_all: list) -> float:
     
     if not h_alt: return p_base
     
-    p_alt = float(h_alt.get("precip_mm") or 0)
+    # TUTAJ dopisujemy pobieranie wartości efektywnej z drugiego modelu:
+    p_alt = float(h_alt.get("precip_eff_mm", h_alt.get("precip_mm")) or 0)
     pop_alt = float(h_alt.get("precip_prob_pct", 0))
     
     # LOGIKA KONSENSUSU:
@@ -347,13 +348,13 @@ def _select_block_hours(hp: list, date_str: str, next_date_str: str,
 def _build_wx_events(block_hours: list, hp_all: list = None) -> list:
     events = []
     for h in block_hours:
-        mm = _precip_consensus(h, hp_all) #### if hp_all else float(h.get("precip_mm") or 0)
+        mm = _precip_consensus(h, hp_all) #### if hp_all else float(h.get("precip_eff_mm", h.get("precip_mm")) or 0)
         temp = h.get("temp_c", 10)
         hr = _hour(h)
         kind = classify_precip(
             mm, temp,
-            symbol_code=h.get("symbol_code"),
-            weather_code=h.get("weather_code")
+            symbol_code=h.get("symbol_code_eff", h.get("symbol_code")),
+            weather_code=h.get("weather_code_eff", h.get("weather_code"))
         )
         if kind:
             events.append(WxEvent(kind, hr, hr + 1))
@@ -489,8 +490,8 @@ def _day_descriptor(hours_day: list) -> Optional[str]:
     morning = [h for h in hours_day if 6 <= _hour(h) < 10]
     has_fog = any(
         classify_precip(0, h.get("temp_c", 10),
-                        symbol_code=h.get("symbol_code"),
-                        weather_code=h.get("weather_code")) == "fog"
+                        h.get("symbol_code_eff", h.get("symbol_code")),
+                        h.get("weather_code_eff", h.get("weather_code"))) == "fog"
         for h in morning
     )
     if has_fog:
@@ -558,8 +559,8 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
             eff_clouds.append(_eff_cld_consensus(h))
 
             precip = _precip_consensus(h, hp)
-            code = str(h.get("symbol_code") or "").lower()
-            w_code = h.get("weather_code")
+            code = str(h.get("symbol_code_eff", h.get("symbol_code")) or "").lower()
+            w_code = h.get("weather_code_eff", h.get("weather_code"))
             temp_opadu = h.get("temp_c") if h.get("temp_c") is not None else 10
 
             if "fog" in code or (w_code in [41,42,43,44,45,46,47,48,49]):
@@ -1287,16 +1288,28 @@ def prepare_layout_data(payload, now=None):
     # NOWY KOD: Detekcja Wybrzeża (Baltic Breeze) -> SEKCJA UWAŻAJ
     # ==================================================================
     try:
-        from main_card import GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE
-        if GLOBAL_COAST_INDEX and GLOBAL_COAST_STORE:
-            from coast_detector import get_or_compute_coast_signature, is_onshore
+        from main_card import GLOBAL_COAST_STORE, ensure_coast_index
+        if GLOBAL_COAST_STORE and ensure_coast_index:
+            from coast_detector import get_or_compute_coast_signature, is_onshore, CoastSignature
             loc_lat = payload.get("location", {}).get("lat")
             loc_lon = payload.get("location", {}).get("lon")
             if loc_lat is not None and loc_lon is not None:
-                sig = get_or_compute_coast_signature(GLOBAL_COAST_INDEX, GLOBAL_COAST_STORE, loc_lat, loc_lon)
                 
-                if sig.is_coastal and sig.sea_sectors:
-                    dist = sig.distance_to_ocean_km or 999.0
+                # 1. NAJPIERW pytamy lekki plik Cache (łączymy współrzędne w klucz)
+                cache_key = f"{round(loc_lat, 2)}_{round(loc_lon, 2)}"
+                sig = GLOBAL_COAST_STORE.get(cache_key)
+                
+                # Zabezpieczenie: jeśli get() zwróciło słownik z JSON-a, zamieniamy go na obiekt
+                if isinstance(sig, dict):
+                    sig = CoastSignature(**sig)
+                
+                # 2. Brak w Cache -> Inicjujemy ciężką mapę (Lazy Load)
+                if not sig:
+                    idx = ensure_coast_index()
+                    sig = get_or_compute_coast_signature(idx, GLOBAL_COAST_STORE, loc_lat, loc_lon)
+                
+                if sig and getattr(sig, "is_coastal", False) and getattr(sig, "sea_sectors", None):
+                    dist = getattr(sig, "distance_to_ocean_km", 999.0) or 999.0
                     add_t = 8.0 if dist > 10.0 else 0.0
                     
                     onshore_hours = []
@@ -1309,7 +1322,7 @@ def prepare_layout_data(payload, now=None):
                                 wgst = float(h.get("gust_kmh", h.get("wind_gust_kmh", 0)))
                                 eff_w = max(wspd, wgst)
                                 if is_onshore(wdir, sig.sea_sectors):
-                                    # Warunek z Warto Wiedzieć: musi być ciepło (bmax >= 16) i bez większej ulewy (tp < 2.0)
+                                    # Warunek z Warto Wiedzieć: musi być ciepło i bez ulewy
                                     if bmax is not None and bmax >= 16 and tp <= 2.0:
                                         if wspd >= (22.0 + add_t) or eff_w >= (32.0 + add_t):
                                             onshore_hours.append(hh)
@@ -1321,7 +1334,6 @@ def prepare_layout_data(payload, now=None):
                         end_h = max(onshore_hours)
                         time_str = f"ok. {start_h:02d}:00" if start_h == end_h else f"głównie {start_h:02d}:00–{end_h:02d}:00"
                         
-                        # Dodajemy "Wybrzeże — " żeby UI poprawnie rozdzieliło tytuł (czerwony) od opisu (biały)
                         coastal_alert = f"Wybrzeże — Nad wodą możliwy wiatr od morza ({time_str}). Sprawdź /now (radar taktyczny)."
                         alerts.append(coastal_alert)
     except Exception as e:
@@ -1417,7 +1429,7 @@ def prepare_layout_data(payload, now=None):
         
         if current_h:
             rh = float(current_h.get("rh_pct") or 0)
-            mm_now = float(current_h.get("precip_mm") or 0)
+            mm_now = float(current_h.get("precip_eff_mm", current_h.get("precip_mm")) or 0)
             # Obliczenie efektywnych chmur
             cld = max(float(current_h.get("clouds_low_pct") or 0) + float(current_h.get("clouds_mid_pct") or 0), float(current_h.get("clouds_pct_yr") or 0))
             
