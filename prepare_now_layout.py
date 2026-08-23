@@ -415,18 +415,29 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             loc_lat = payload.get("location", {}).get("lat")
             loc_lon = payload.get("location", {}).get("lon")
             if loc_lat is not None and loc_lon is not None:
+                import time
+                t_coast_start = time.perf_counter()
                 
-                # 1. Pytamy lekki plik Cache (łączymy współrzędne w klucz)
-                cache_key = f"{round(loc_lat, 2)}_{round(loc_lon, 2)}"
+                # 1. Pytamy lekki plik Cache (POPRAWNY KLUCZ!)
+                cache_key = f"coast:{loc_lat:.3f}:{loc_lon:.3f}"
                 sig = GLOBAL_COAST_STORE.get(cache_key)
                 
                 if isinstance(sig, dict):
-                    sig = CoastSignature(**sig)
+                    from types import SimpleNamespace
+                    sig = SimpleNamespace(**sig)
                 
-                # 2. Brak w Cache -> ładujemy mapę
+                # 2. Brak w Cache -> Obliczamy w tle (ASYNC WARMUP)
                 if not sig:
-                    idx = ensure_coast_index()
-                    sig = get_or_compute_coast_signature(idx, GLOBAL_COAST_STORE, loc_lat, loc_lon)
+                    import threading
+                    def background_coast_calc():
+                        try:
+                            idx = ensure_coast_index()
+                            get_or_compute_coast_signature(idx, GLOBAL_COAST_STORE, loc_lat, loc_lon)
+                        except Exception as e:
+                            print(f"[SYSTEM] Błąd liczenia wybrzeża w tle: {e}")
+                            
+                    threading.Thread(target=background_coast_calc).start()
+                    sig = None
                     
                 if sig and getattr(sig, "is_coastal", False) and getattr(sig, "sea_sectors", None):
                     dist = getattr(sig, "distance_to_ocean_km", 999.0) or 999.0

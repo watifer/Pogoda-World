@@ -582,6 +582,9 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
 
     chat_id = user["chat_id"]
     print(f"[main_card] Wysyłam do {chat_id} ({user['name']})...")
+    
+    import time
+    t_fetch_start = time.perf_counter()
 
     # 1. Payload
     payload = build_payload_for_location(
@@ -591,6 +594,9 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         location_name=user["name"],
         lang=user.get("lang", "en"),  # Fallback na angielski
     )
+    
+    t_fetch_end = time.perf_counter()
+    print(f"[PERF FETCH] 📡 Czas pobierania API (Meteo + Airly): {t_fetch_end - t_fetch_start:.2f}s")
 
     # ══════════════════════════════════════════════════════════
     # TWARDA BLOKADA JAKOŚCI (Gwarancja 2 modeli dla głównego raportu)
@@ -686,7 +692,10 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         # requests.post(f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage", data={"chat_id": "TWOJE_ID_ADMINA", "text": "⚠️ Anomalie:\n" + "\n".join(anomalies)})
     
     # 3. Render
+    t_render_start = time.perf_counter()
     img_path = image_generator.generate_weather_card(layout)
+    t_render_end = time.perf_counter()
+    print(f"[PERF RENDER] 🎨 Czas generowania obrazka PNG: {t_render_end - t_render_start:.2f}s")
     if not img_path:
         print(f"[main_card] Błąd renderu dla {chat_id}")
         return False
