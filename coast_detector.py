@@ -109,7 +109,18 @@ class CoastIndex:
         sample_radii_km: tuple = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 25.0),
         min_sector_width_deg: float = 20.0,
     ):
-        # USUNIĘTO BŁĘDNY IMPORT
+        from .coast_detector import CoastSignature, _flags_to_sectors, WGS84_GEOD, _deg_bbox_around
+        from shapely.geometry import box
+
+        # SZYBKI FILTR LĄDOWY: Czy w ogóle mamy ocean w promieniu 25 km?
+        minx, miny, maxx, maxy = _deg_bbox_around(lat, lon, radius_km)
+        candidate_indices = self._tree.query(box(minx, miny, maxx, maxy))
+        
+        if len(candidate_indices) == 0:
+            # Jesteśmy w głębi lądu! Błyskawiczny powrót, zero testowania promieni.
+            return CoastSignature(False, None, [], radius_km, step_deg)
+
+        # Dopiero jeśli w pobliżu jest woda, zaczynamy precyzyjne badanie kątów
         flags = []
         min_dist = None
 
@@ -152,7 +163,6 @@ class CoastIndex:
                 normalized = [merged] + normalized[1:-1]
 
         return CoastSignature(True, float(min_dist), normalized, radius_km, step_deg)
-        
         
         
 import json
