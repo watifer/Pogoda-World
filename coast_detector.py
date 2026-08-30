@@ -14,9 +14,10 @@ WGS84_GEOD = Geod(ellps="WGS84")
 import time
 from typing import Callable
 
-# Wersja wymusi zignorowanie starych wyników liczonych na innej mapie
+# Aktualizacja wersji na 50m - wymusza przeliczenie starych danych
 COAST_SIG_VERSION = "ne_50m_ocean:50m;radar:v1;r25;step10;minw20"
 
+# Jedyna słuszna funkcja do tworzenia klucza
 def coast_cache_key(lat: float, lon: float) -> str:
     return f"coast:{lat:.3f}:{lon:.3f}"
 
@@ -134,33 +135,44 @@ class CoastIndex:
         lon: float,
         radius_km: float = 25.0,
         step_deg: int = 10,
-        sample_radii_km: Sequence[float] = (5, 10, 15, 20, 25),
+        sample_radii_km: tuple = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 25.0),
         min_sector_width_deg: float = 20.0,
-    ) -> CoastSignature:
-        dist = self.distance_to_ocean_km(lat, lon, search_km=max(120.0, radius_km * 4))
-        if dist is None or dist > radius_km:
-            return CoastSignature(False, dist, [], radius_km, step_deg)
+    ):
+        from .coast_detector import CoastSignature, _flags_to_sectors, WGS84_GEOD
+        flags = []
+        min_dist = None
 
-        flags: List[bool] = []
         for bearing in range(0, 360, step_deg):
             sea = False
             for r in sample_radii_km:
                 lon2, lat2, _ = WGS84_GEOD.fwd(lon, lat, bearing, r * 1000.0)
                 if self.is_ocean(lat2, lon2):
                     sea = True
+                    min_dist = r if min_dist is None else min(min_dist, r)
                     break
             flags.append(sea)
 
+        if min_dist is None:
+            return CoastSignature(False, None, [], radius_km, step_deg)
+
         sectors = _flags_to_sectors(flags, step_deg=step_deg)
 
+        # Filtr szerokości z użyciem matematyki okrężnej (modulo 360)
         normalized = []
         for s, e in sectors:
-            s2 = max(0.0, min(360.0, s))
-            e2 = max(0.0, min(360.0, e))
-            if e2 - s2 >= min_sector_width_deg:
+            s2 = max(0.0, min(360.0, float(s)))
+            e2 = max(0.0, min(360.0, float(e)))
+            
+            width = (e2 - s2) % 360.0
+            if width == 0:
+                width = 360.0
+                
+            if width >= min_sector_width_deg:
                 normalized.append((s2, e2))
 
-        normalized = sorted(normalized, key=lambda x: x[0])
+        normalized.sort(key=lambda x: x[0])
+
+        # Merge wrap-around (łączenie sektorów przez północ 360/0 stopni)
         if normalized:
             first = normalized[0]
             last = normalized[-1]
@@ -168,7 +180,7 @@ class CoastIndex:
                 merged = (last[0] % 360.0, first[1] % 360.0)
                 normalized = [merged] + normalized[1:-1]
 
-        return CoastSignature(True, dist, normalized, radius_km, step_deg)
+        return CoastSignature(True, float(min_dist), normalized, radius_km, step_deg)
         
         
         

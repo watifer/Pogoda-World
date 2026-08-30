@@ -409,7 +409,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # ==================================================================
     coastal_note = None
     try:
-        from main_card import GLOBAL_COAST_STORE, ensure_coast_index
+        from coast_runtime import GLOBAL_COAST_STORE, ensure_coast_index
         if GLOBAL_COAST_STORE and ensure_coast_index:
             from coast_detector import get_or_compute_coast_signature_lazy, is_onshore
             loc_lat = payload.get("location", {}).get("lat")
