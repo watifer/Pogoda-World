@@ -1290,31 +1290,18 @@ def prepare_layout_data(payload, now=None):
     try:
         from main_card import GLOBAL_COAST_STORE, ensure_coast_index
         if GLOBAL_COAST_STORE and ensure_coast_index:
-            from coast_detector import get_or_compute_coast_signature, is_onshore, CoastSignature
+            from coast_detector import get_or_compute_coast_signature_lazy, is_onshore
             loc_lat = payload.get("location", {}).get("lat")
             loc_lon = payload.get("location", {}).get("lon")
             if loc_lat is not None and loc_lon is not None:
                 
-                # 1. NAJPIERW pytamy lekki plik Cache (POPRAWNY KLUCZ!)
-                cache_key = f"coast:{loc_lat:.3f}:{loc_lon:.3f}"
-                sig = GLOBAL_COAST_STORE.get(cache_key)
-                
-                if isinstance(sig, dict):
-                    from types import SimpleNamespace
-                    sig = SimpleNamespace(**sig)
-                
-                # 2. Brak w Cache -> Obliczamy w tle (ASYNC WARMUP)
-                if not sig:
-                    import threading
-                    def background_coast_calc():
-                        try:
-                            idx = ensure_coast_index()
-                            get_or_compute_coast_signature(idx, GLOBAL_COAST_STORE, loc_lat, loc_lon)
-                        except Exception as e:
-                            print(f"[SYSTEM] Błąd liczenia wybrzeża w tle: {e}")
-                            
-                    threading.Thread(target=background_coast_calc).start()
-                    sig = None
+                # Funkcja sama sprawdzi Cache, a w razie potrzeby pobierze mapę
+                sig = get_or_compute_coast_signature_lazy(
+                    store=GLOBAL_COAST_STORE,
+                    lat=loc_lat,
+                    lon=loc_lon,
+                    idx_factory=ensure_coast_index
+                )
                 
                 if sig and getattr(sig, "is_coastal", False) and getattr(sig, "sea_sectors", None):
                     dist = getattr(sig, "distance_to_ocean_km", 999.0) or 999.0

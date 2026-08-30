@@ -40,18 +40,28 @@ from sanity_checker import run_sanity_check
 
 
 # --- INICJALIZACJA SYSTEMU NADMORSKIEGO ---
+import os
+from pathlib import Path
+
+# Absolutna ścieżka do głównego folderu bota
+BASE_DIR = Path(__file__).resolve().parent
+
 try:
     from coast_detector import JsonCoastSigStore
-    GLOBAL_COAST_STORE = JsonCoastSigStore("coast_cache.json")
-    GLOBAL_COAST_INDEX = None  # Na starcie w RAM-ie nie ma żadnej mapy!
-
+    # Gwarancja, że zawsze czytamy ten sam plik
+    GLOBAL_COAST_STORE = JsonCoastSigStore(str(BASE_DIR / "coast_cache.json"))
+    
+    _COAST_INDEX = None  # Singleton
+    
     def ensure_coast_index():
-        global GLOBAL_COAST_INDEX
-        if GLOBAL_COAST_INDEX is None:
-            # Ładujemy ciężką mapę do RAM tylko, gdy jest to absolutnie konieczne (Cache Miss)
+        global _COAST_INDEX
+        if _COAST_INDEX is None:
             from coast_detector import CoastIndex
-            GLOBAL_COAST_INDEX = CoastIndex("data/natural_earth/ne_50m_ocean/ne_50m_ocean.shp")
-        return GLOBAL_COAST_INDEX
+            shp_path = str(BASE_DIR / "data" / "natural_earth" / "ne_50m_ocean" / "ne_50m_ocean.shp")
+            _COAST_INDEX = CoastIndex(shp_path)
+            print("[SYSTEM] Zbudowano indeks przestrzenny morza (CoastIndex 50m).")
+        return _COAST_INDEX
+        
 except Exception as e:
     GLOBAL_COAST_STORE = None
     ensure_coast_index = None

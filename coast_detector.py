@@ -11,6 +11,15 @@ from pyproj import Geod, Transformer
 
 WGS84_GEOD = Geod(ellps="WGS84")
 
+import time
+from typing import Callable
+
+# Wersja wymusi zignorowanie starych wyników liczonych na innej mapie
+COAST_SIG_VERSION = "ne_50m_ocean:50m;radar:v1;r25;step10;minw20"
+
+def coast_cache_key(lat: float, lon: float) -> str:
+    return f"coast:{lat:.3f}:{lon:.3f}"
+
 def _deg_bbox_around(lat: float, lon: float, km: float) -> Tuple[float, float, float, float]:
     """Zgrubny bbox w stopniach do wstępnego query w STRtree."""
     lat_delta = km / 111.0
@@ -237,6 +246,46 @@ def get_or_compute_coast_signature(
 def is_onshore(wind_dir_deg: float, sea_sectors: List[Tuple[float,float]]) -> bool:
     """Prosty helper logiczny: czy wiatr wieje nam od strony morza?"""
     return any(bearing_in_sector(wind_dir_deg, s, e) for s, e in sea_sectors)
+    
+    
+def get_or_compute_coast_signature_lazy(
+    store,
+    lat: float,
+    lon: float,
+    idx_factory: Callable[[], 'CoastIndex'],
+) -> 'CoastSignature':
+    
+    key = coast_cache_key(lat, lon)
+    cached = store.get(key)
+    
+    # 1. Mamy to w Cache i wersja się zgadza -> Zwracamy od razu!
+    if cached and cached.get("version") == COAST_SIG_VERSION:
+        return CoastSignature(
+            is_coastal=bool(cached.get("is_coastal", False)),
+            distance_to_ocean_km=cached.get("distance_to_ocean_km"),
+            sea_sectors=[tuple(x) for x in cached.get("sea_sectors", [])],
+            radius_km=float(cached.get("radius_km", 25.0)),
+            step_deg=int(cached.get("step_deg", 10)),
+        )
+
+    # 2. Cache MISS -> Blokujemy działanie, ładujemy mapę i liczymy
+    print(f"[COAST] Cache MISS dla {key}. Inicjuję mapę...")
+    idx = idx_factory()
+    sig = idx.compute_signature(lat=lat, lon=lon, radius_km=25.0, step_deg=10, min_sector_width_deg=20.0)
+    
+    # Zapis do Cache
+    payload = {
+        "version": COAST_SIG_VERSION,
+        "computed_at": int(time.time()),
+        "is_coastal": getattr(sig, "is_coastal", False),
+        "distance_to_ocean_km": getattr(sig, "distance_to_ocean_km", None),
+        "sea_sectors": [list(x) for x in getattr(sig, "sea_sectors", [])],
+        "radius_km": getattr(sig, "radius_km", 25.0),
+        "step_deg": getattr(sig, "step_deg", 10),
+    }
+    store.set(key, payload)
+    
+    return sig
 
 # --- BLOK TESTOWY ---
 if __name__ == "__main__":
