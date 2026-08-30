@@ -98,36 +98,7 @@ class CoastIndex:
         candidate_indices = self._tree.query(p)
         return any(self._ocean_geoms[i].contains(p) for i in candidate_indices)
 
-    def distance_to_ocean_km(self, lat: float, lon: float, search_km: float = 120.0) -> Optional[float]:
-        p = Point(lon, lat)
-        if self.is_ocean(lat, lon):
-            return 0.0
-
-        minx, miny, maxx, maxy = _deg_bbox_around(lat, lon, search_km)
-        qbox = box(minx, miny, maxx, maxy)
-        candidate_indices = self._tree.query(qbox)
-
-        # Sprawdzamy długość tablicy (czy znaleziono jakiekolwiek poligony)
-        if len(candidate_indices) == 0:
-            return None
-
-        transformer = _make_local_aeqd_transformer(lat, lon)
-        tf = lambda x, y: transformer.transform(x, y)
-
-        p_m = transform(tf, p)
-
-        best_m = None
-        for i in candidate_indices:
-            # Odpytujemy naszą listę geometrii używając otrzymanego indeksu
-            g = self._ocean_geoms[i]
-            g_m = transform(tf, g)
-            d = g_m.boundary.distance(p_m)
-            if best_m is None or d < best_m:
-                best_m = d
-
-        if best_m is None:
-            return None
-        return best_m / 1000.0
+    
 
     def compute_signature(
         self,
@@ -138,7 +109,7 @@ class CoastIndex:
         sample_radii_km: tuple = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 25.0),
         min_sector_width_deg: float = 20.0,
     ):
-        from .coast_detector import CoastSignature, _flags_to_sectors, WGS84_GEOD
+        # USUNIĘTO BŁĘDNY IMPORT
         flags = []
         min_dist = None
 
