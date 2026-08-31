@@ -813,10 +813,18 @@ def main_bot():
                     PENDING_CITY[chat_id_str] = now_ts + PENDING_TTL_SEC
                     print(f"  [STATE MACHINE] Aktywowano oczekiwanie na miasto dla: {chat_id_str}")
                     
-                    # Pobieramy obecne miasto do wyświetlenia
-                    bezpieczny_lat = str(user_data.get("Lat", 0)).replace(',', '.')
-                    bezpieczny_lon = str(user_data.get("Lon", 0)).replace(',', '.')
-                    city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon, user_lang)
+                    # Pobieramy obecne miasto do wyświetlenia (zabezpieczone przed pustymi danymi)
+                    bezpieczny_lat = str(user_data.get("Lat", "")).strip().replace(',', '.')
+                    bezpieczny_lon = str(user_data.get("Lon", "")).strip().replace(',', '.')
+                    
+                    if not bezpieczny_lat or not bezpieczny_lon or bezpieczny_lat in ("0", "None"):
+                        city = "Nieznana miejscowość"
+                    else:
+                        try:
+                            city = get_city_from_coords(bezpieczny_lat, bezpieczny_lon, user_lang)
+                        except Exception:
+                            city = "Nieznana miejscowość"
+
                     if any(char.isdigit() for char in city):
                         city = "Nieznana miejscowość"
                     
