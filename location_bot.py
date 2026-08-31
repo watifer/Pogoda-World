@@ -825,7 +825,7 @@ def main_bot():
                         except Exception:
                             city = "Nieznana miejscowość"
 
-                    if any(char.isdigit() for char in city):
+                    if not city or any(char.isdigit() for char in str(city)):
                         city = "Nieznana miejscowość"
                     
                     instrukcja = t_ui(user_lang, "city_prompt", city=city)
