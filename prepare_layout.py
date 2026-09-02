@@ -805,7 +805,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
 # WEEKEND TEASER
 # ═══════════════════════════════════════
 
-def _build_weekend_day_teaser(hp: list, day_short: str) -> Optional[dict]:
+def _build_weekend_day_teaser(hp: list, day_short: str, payload: dict = None) -> Optional[dict]:
     if not hp: return None
     
     date_str = hp[0].get("time_local", "")[:10]
@@ -819,7 +819,20 @@ def _build_weekend_day_teaser(hp: list, day_short: str) -> Optional[dict]:
 
     desc = summary.get("precip_badge") or summary.get("descriptor") or "Brak danych"
     desc = desc[0].upper() + desc[1:] if desc else ""
-
+    
+    if payload:
+        import os
+        #ENABLE_VOLATILITY_UI = True
+        ENABLE_VOLATILITY_UI = os.getenv("ENABLE_VOLATILITY_UI", "1") == "1"
+        diag = payload.get("daily_diag", {}).get(date_str, {})
+        
+        if ENABLE_VOLATILITY_UI and diag.get("is_volatile"):
+            # Produkcyjny bezpiecznik: minimum 6h z OM i 3 interwały z Yr.no
+            if diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
+                
+                desc = f"⚠️ Rozbieżność modeli ({diag['spread']}°C)"
+    # -------------------------------------------------
+    
     return {
         "label": day_short,
         "date_short": date_short_formatted,
@@ -1367,13 +1380,14 @@ def prepare_layout_data(payload, now=None):
         sat_h   = [h for h in hp if h.get("time_local", "").startswith(sat.strftime("%Y-%m-%d"))]
         sun_h   = [h for h in hp if h.get("time_local", "").startswith(sun.strftime("%Y-%m-%d"))]
         
-        # --- ZMIANA AUDYTORA: Dni prosto z jedynego źródła prawdy ---
+        # --- ZMIANA : Dni prosto z jedynego źródła prawdy ---
         
         #lang_days = DAYS_SHORT.get(lang, DAYS_SHORT["pl"])
         lang_days = DAYS_SHORT.get(lang, DAYS_SHORT["en"])
         
-        sat_t   = _build_weekend_day_teaser(sat_h, lang_days[5])  # Indeks 5 to Sob/Sat
-        sun_t   = _build_weekend_day_teaser(sun_h, lang_days[6])  # Indeks 6 to Ndz/Sun
+        # Podajemy słownik payload do weryfikatora
+        sat_t   = _build_weekend_day_teaser(sat_h, lang_days[5], payload=payload)  
+        sun_t   = _build_weekend_day_teaser(sun_h, lang_days[6], payload=payload)  
         
         if sat_t and sun_t:
             weekend_teaser = {"sat": sat_t, "sun": sun_t, "title": t(lang, "next_weekend")}

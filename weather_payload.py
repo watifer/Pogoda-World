@@ -22,6 +22,82 @@ try:
     from zoneinfo import ZoneInfo
 except ImportError:
     from backports.zoneinfo import ZoneInfo
+    
+    
+import json
+from pathlib import Path
+
+ENABLE_VOLATILITY_UI = os.getenv("ENABLE_VOLATILITY_UI", "1") == "1"
+ENABLE_AUDIT_LOG = os.getenv("ENABLE_AUDIT_LOG", "1") == "1"
+BASE_DIR = Path(__file__).resolve().parent
+AUDIT_PATH = BASE_DIR / "audit_spread.jsonl"
+VOLATILITY_SPREAD_C = float(os.getenv("VOLATILITY_SPREAD_C", "5.0"))
+
+
+def build_daily_diagnostics(hours_list, location_name, fetched_at_local=None):
+    tmp = {} 
+    
+    for h in hours_list:
+        tl = h.get("time_local")
+        if not tl or len(tl) < 10:
+            continue
+            
+        date_str = tl[:10]
+        src = h.get("source", "unknown")
+        temp = h.get("temp_c")
+        
+        if temp is None:
+            continue
+            
+        d = tmp.setdefault(date_str, {"om": [], "yr": [], "om_n": 0, "yr_n": 0})
+        
+        if src == "openmeteo":
+            d["om"].append(float(temp))
+            d["om_n"] += 1
+        elif src == "yrno":
+            d["yr"].append(float(temp))
+            d["yr_n"] += 1
+
+    diagnostics = {}
+    audit_lines = []
+    
+    for date_str, d in tmp.items():
+        max_om = max(d["om"]) if d["om"] else None
+        max_yr = max(d["yr"]) if d["yr"] else None
+        
+        spread = None
+        if max_om is not None and max_yr is not None:
+            spread = round(abs(max_om - max_yr), 1)
+            
+        is_volatile = (spread is not None) and (spread >= VOLATILITY_SPREAD_C)
+        
+        diagnostics[date_str] = {
+            "max_om": max_om,
+            "max_yr": max_yr,
+            "spread": spread,
+            "is_volatile": is_volatile,
+            "n_om": d["om_n"],
+            "n_yr": d["yr_n"],
+        }
+        
+        if ENABLE_AUDIT_LOG:
+            audit_lines.append(json.dumps({
+                "fetched_at_local": fetched_at_local,
+                "location": location_name,
+                "date": date_str,
+                "max_om": max_om,
+                "max_yr": max_yr,
+                "spread": spread,
+                "n_om": d["om_n"],
+                "n_yr": d["yr_n"],
+            }, ensure_ascii=False))
+
+    if ENABLE_AUDIT_LOG and audit_lines:
+        with open(AUDIT_PATH, "a", encoding="utf-8") as f:
+            f.write("\n".join(audit_lines) + "\n")
+            
+    return diagnostics
+
 
 # --- TARCZA NA ORACLE CLOUD (Wymuszenie IPv4) ---
 # Rozwiązuje 90% problemów z ReadTimeout na darmowych instancjach
@@ -484,7 +560,11 @@ def build_payload_for_location(
     now_dt = datetime.now(tz)
     active_alerts = _generate_alerts(forecast_hours, now_dt)
     
-    
+    daily_diag = build_daily_diagnostics(
+        forecast_hours,
+        name,
+        fetched_at_local=now_dt.isoformat(timespec="seconds")
+    )
     
    
 
@@ -504,5 +584,6 @@ def build_payload_for_location(
         "bias_temp_c":        bias_temp,
         "hours":              forecast_hours,
         "alerts":             active_alerts,
-        "lang":               lang,  # <--- DODANA LINIJKA (Nasz kurier z językiem!)
+        "daily_diag":         daily_diag,
+        "lang":               lang,  # <---  (Nasz kurier z językiem!)
     }

@@ -109,7 +109,7 @@ class CoastIndex:
         sample_radii_km: tuple = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 25.0),
         min_sector_width_deg: float = 20.0,
     ):
-        from .coast_detector import CoastSignature, _flags_to_sectors, WGS84_GEOD, _deg_bbox_around
+        
         from shapely.geometry import box
 
         # SZYBKI FILTR LĄDOWY: Czy w ogóle mamy ocean w promieniu 25 km?
