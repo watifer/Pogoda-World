@@ -64,17 +64,21 @@ def build_daily_diagnostics(hours_list, location_name, fetched_at_local=None):
     for date_str, d in tmp.items():
         max_om = max(d["om"]) if d["om"] else None
         max_yr = max(d["yr"]) if d["yr"] else None
+        min_om = min(d["om"]) if d["om"] else None
+        min_yr = min(d["yr"]) if d["yr"] else None
         
-        spread = None
-        if max_om is not None and max_yr is not None:
-            spread = round(abs(max_om - max_yr), 1)
+        spread_max = round(abs(max_om - max_yr), 1) if (max_om is not None and max_yr is not None) else 0.0
+        spread_min = round(abs(min_om - min_yr), 1) if (min_om is not None and min_yr is not None) else 0.0
             
-        is_volatile = (spread is not None) and (spread >= VOLATILITY_SPREAD_C)
+        # Alarm: Różnica minimum 5°C za dnia LUB 4°C nocą
+        is_volatile = (spread_max >= VOLATILITY_SPREAD_C) or (spread_min >= 4.0)
         
         diagnostics[date_str] = {
             "max_om": max_om,
             "max_yr": max_yr,
-            "spread": spread,
+            "spread_max": spread_max,
+            "spread_min": spread_min,
+            "spread": spread_max, # Zostawiamy dla kompatybilności wstecznej
             "is_volatile": is_volatile,
             "n_om": d["om_n"],
             "n_yr": d["yr_n"],
@@ -85,11 +89,9 @@ def build_daily_diagnostics(hours_list, location_name, fetched_at_local=None):
                 "fetched_at_local": fetched_at_local,
                 "location": location_name,
                 "date": date_str,
-                "max_om": max_om,
-                "max_yr": max_yr,
-                "spread": spread,
-                "n_om": d["om_n"],
-                "n_yr": d["yr_n"],
+                "max_om": max_om, "max_yr": max_yr, "spread_max": spread_max,
+                "min_om": min_om, "min_yr": min_yr, "spread_min": spread_min,
+                "n_om": d["om_n"], "n_yr": d["yr_n"],
             }, ensure_ascii=False))
 
     if ENABLE_AUDIT_LOG and audit_lines:

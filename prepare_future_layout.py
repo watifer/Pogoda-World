@@ -55,6 +55,23 @@ def prepare_future_layout_data(payload, now=None):
             source_marker = " *"
 
         if summary:
+            # --- NOWOŚĆ: Oznaczanie niestabilności modeli (Strategia A) ---
+            import os
+            ENABLE_VOLATILITY_UI = os.getenv("ENABLE_VOLATILITY_UI", "1") == "1"
+            diag = payload.get("daily_diag", {}).get(ts, {})
+            
+            if ENABLE_VOLATILITY_UI and diag.get("is_volatile"):
+                if diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
+                    max_diff = diag.get("spread_max", diag.get("spread", 0))
+                    min_diff = diag.get("spread_min", 0)
+                    gorszy_spread = max(max_diff, min_diff)
+                    
+                    # Pobieramy tłumaczenie czysto z i18n.py
+                    warn_text = t(lang, "divergent_models")
+                    
+                    summary["descriptor"] = f"⚠️ {warn_text} ({gorszy_spread}°C)"
+            # --------------------------------------------------------------
+
             short_day_name = DAYS_SHORT.get(lang, DAYS_SHORT["pl"])[tgt.weekday()]
             future_days.append({
                 "name": short_day_name + source_marker,

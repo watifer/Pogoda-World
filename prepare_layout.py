@@ -822,15 +822,20 @@ def _build_weekend_day_teaser(hp: list, day_short: str, payload: dict = None) ->
     
     if payload:
         import os
-        #ENABLE_VOLATILITY_UI = True
         ENABLE_VOLATILITY_UI = os.getenv("ENABLE_VOLATILITY_UI", "1") == "1"
         diag = payload.get("daily_diag", {}).get(date_str, {})
         
         if ENABLE_VOLATILITY_UI and diag.get("is_volatile"):
-            # Produkcyjny bezpiecznik: minimum 6h z OM i 3 interwały z Yr.no
             if diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
                 
-                desc = f"⚠️ Rozbieżność modeli ({diag['spread']}°C)"
+                # Wyciągamy język bezpośrednio z danych wejściowych
+                lang = str(payload.get("lang", "pl")).strip().lower()[:2]
+                
+                from i18n import t
+                warn_text = t(lang, "divergent_models")
+                
+                spr = diag.get("spread_max", diag.get("spread", 0))
+                desc = f"⚠️ {warn_text} ({spr}°C)"
     # -------------------------------------------------
     
     return {
