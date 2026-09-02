@@ -47,15 +47,23 @@ def prepare_future_layout_data(payload, now=None):
         tgt = now + timedelta(days=off)
         ts = tgt.strftime("%Y-%m-%d")
 
-        summary = _build_day_summary(hy, ts)
-        
+        # Pobieramy diagnostykę jeszcze przed zbudowaniem dnia
+        diag = payload.get("daily_diag", {}).get(ts, {})
+        n_yr = diag.get("n_yr", 0)
+
+        summary = None
         source_marker = ""
+        
+        # Żądamy minimum 3 próbek od Yr.no, aby uznać jego prognozę za ważną
+        if n_yr >= 3:
+            summary = _build_day_summary(hy, ts)
+            
+        # Jeśli próbek jest za mało (lub brak), w całości polegamy na Open-Meteo
         if not summary:
             summary = _build_day_summary(ho, ts)
             source_marker = " *"
 
         if summary:
-            # --- NOWOŚĆ: Oznaczanie niestabilności modeli (Strategia A) ---
             import os
             ENABLE_VOLATILITY_UI = os.getenv("ENABLE_VOLATILITY_UI", "1") == "1"
             diag = payload.get("daily_diag", {}).get(ts, {})
