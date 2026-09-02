@@ -8,6 +8,7 @@ from shapely.geometry import shape, Point, box
 from shapely.strtree import STRtree
 from shapely.ops import transform
 from pyproj import Geod, Transformer
+from time import perf_counter
 
 WGS84_GEOD = Geod(ellps="WGS84")
 
@@ -94,9 +95,14 @@ class CoastIndex:
 
     def is_ocean(self, lat: float, lon: float) -> bool:
         p = Point(lon, lat)
-        # Shapely 2.0 zwraca numery (indeksy), a nie poligony!
-        candidate_indices = self._tree.query(p)
-        return any(self._ocean_geoms[i].contains(p) for i in candidate_indices)
+        # Shapely 2.x: Predykat w C eliminuje pętlę w Pythonie
+        return len(self._tree.query(p, predicate="intersects")) > 0
+
+    def is_coastal_bbox_precheck(self, lat: float, lon: float, max_dist_km: float = 25.0) -> bool:
+        # Błyskawiczny kwadrat poszukiwań (~111km to 1 stopień)
+        deg_margin = (max_dist_km / 111.0) + 0.05
+        search_box = box(lon - deg_margin, lat - deg_margin, lon + deg_margin, lat + deg_margin)
+        return len(self._tree.query(search_box)) > 0
 
     
 
@@ -109,7 +115,14 @@ class CoastIndex:
         sample_radii_km: tuple = (1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 25.0),
         min_sector_width_deg: float = 20.0,
     ):
-        
+        # --- 1. BŁYSKAWICZNY PRE-CHECK (Inland odpada w 0.001s) ---
+        # Zakładając, że Twoja klasa ma dostęp do CoastIndex przez np. self.index
+        if hasattr(self, "index") and not self.index.is_coastal_bbox_precheck(lat, lon, radius_km):
+            return CoastSignature(
+                is_coastal=False,
+                sea_sectors=[],
+                distance_to_ocean_km=999.0
+            )
         from shapely.geometry import box
 
         # SZYBKI FILTR LĄDOWY: Czy w ogóle mamy ocean w promieniu 25 km?
@@ -188,7 +201,8 @@ class JsonCoastSigStore:
 
     def _save(self):
         with open(self.filename, 'w', encoding='utf-8') as f:
-            json.dump(self._cache, f, ensure_ascii=False, indent=2)
+            # Usunięto indent=2 - zapisuje wszystko w jednej, płaskiej i szybkiej linii
+            json.dump(self._cache, f, ensure_ascii=False)
 
     def get(self, key: str) -> Optional[dict]:
         return self._cache.get(key)
@@ -264,7 +278,10 @@ def get_or_compute_coast_signature_lazy(
     # 2. Cache MISS -> Blokujemy działanie, ładujemy mapę i liczymy
     print(f"[COAST] Cache MISS dla {key}. Inicjuję mapę...")
     idx = idx_factory()
+    
+    t0 = perf_counter()
     sig = idx.compute_signature(lat=lat, lon=lon, radius_km=25.0, step_deg=10, min_sector_width_deg=20.0)
+    t1 = perf_counter()
     
     # Zapis do Cache
     payload = {
@@ -276,7 +293,11 @@ def get_or_compute_coast_signature_lazy(
         "radius_km": getattr(sig, "radius_km", 25.0),
         "step_deg": getattr(sig, "step_deg", 10),
     }
+    
     store.set(key, payload)
+    t2 = perf_counter()
+    
+    print(f"[PERF COAST] compute: {t1-t0:.3f}s | store.set: {t2-t1:.3f}s | total: {t2-t0:.3f}s")
     
     return sig
 
