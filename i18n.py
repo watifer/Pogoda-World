@@ -74,7 +74,13 @@ STRINGS = {
     "nowcast_diff_clouds": "Teraz zachmurzenie może odbiegać od prognozy.",
     "trust_precip": "Modele są rozbieżne co do opadów w ciągu dnia.",
     "trust_wind": "Modele są rozbieżne co do siły wiatru.",
-    "divergent_models": "Rozbieżne modele",
+    "alt_model": "Inny model:",
+    "diff_day": "(dzień)",
+    "diff_night": "(noc)",
+    "alert_diag_sender": "Diagnostyka modeli",
+    "alert_diag_event_sat": "Niestabilna prognoza (sobota)",
+    "alert_diag_event_sun": "Niestabilna prognoza (niedziela)",
+    "alert_diag_desc": "Algorytmy pogodowe są ze sobą sprzeczne. Inny model sugeruje ok. {temp}°C {pora}. Bądź na to przygotowany.",
     "trust_clouds": "Modele są rozbieżne co do zachmurzenia. Skorygowano kartę /now"
   },
   "en": {
@@ -138,6 +144,15 @@ STRINGS = {
     "trust_precip": "Forecast models disagree on daytime precipitation.",
     "trust_wind": "Forecast models disagree on wind strength.",
     "divergent_models": "Divergent models",
+    "diff_day": "day",
+    "diff_night": "night",
+    "alert_diag_sender": "Model diagnostics",
+
+    "alert_diag_event_sat": "Unstable forecast (Saturday)",
+
+    "alert_diag_event_sun": "Unstable forecast (Sunday)",
+
+    "alert_diag_desc": "Weather algorithms contradict each other. Another model suggests approx. {temp}°C {pora}. Be prepared.",
     "trust_clouds": "Forecast models disagree on cloud cover. The /now card has been corrected."
   },
   "fr": {
@@ -201,6 +216,15 @@ STRINGS = {
     "trust_precip": "Les modèles diffèrent sur les précipitations du jour.",
     "trust_wind": "Les modèles diffèrent sur la force du vent.",
     "divergent_models": "Modèles divergents",
+    "diff_day": "de jour",
+    "diff_night": "de nuit",
+    "alert_diag_sender": "Diagnostic des modèles",
+
+    "alert_diag_event_sat": "Prévisions instables (samedi)",
+
+    "alert_diag_event_sun": "Prévisions instables (dimanche)",
+
+    "alert_diag_desc": "Les algorithmes météorologiques se contredisent. Un autre modèle suggère env. {temp}°C {pora}. Soyez prêt.",
     "trust_clouds": "Les modèles diffèrent sur la couverture nuageuse. La carte /now a été corrigée."
   },
   "de": {
@@ -264,6 +288,15 @@ STRINGS = {
     "trust_precip": "Prognosemodelle sind sich beim Niederschlag uneinig.",
     "trust_wind": "Prognosemodelle sind sich bei der Windstärke uneinig.",
     "divergent_models": "Modellabweichung",
+    "diff_day": "am Tag",
+    "diff_night": "in der Nacht",
+    "alert_diag_sender": "Modelldiagnose",
+
+    "alert_diag_event_sat": "Instabile Vorhersage (Samstag)",
+
+    "alert_diag_event_sun": "Instabile Vorhersage (Sonntag)",
+
+    "alert_diag_desc": "Wetteralgorithmen widersprechen sich. Ein anderes Modell deutet auf ca. {temp}°C {pora} hin. Sei darauf vorbereitet.",
     "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig. Die /now-Karte wurde korrigiert."
 
   },
@@ -328,6 +361,15 @@ STRINGS = {
     "trust_precip": "Los modelos difieren sobre las precipitaciones del día.",
     "trust_wind": "Los modelos difieren sobre la fuerza del viento.",
     "divergent_models": "Modelos divergentes",
+    "diff_day": "de día",
+    "diff_night": "de noche",
+    "alert_diag_sender": "Diagnóstico de modelos",
+
+    "alert_diag_event_sat": "Pronóstico inestable (sábado)",
+
+    "alert_diag_event_sun": "Pronóstico inestable (domingo)",
+
+    "alert_diag_desc": "Los algoritmos meteorológicos se contradicen. Otro modelo sugiere aprox. {temp}°C {pora}. Estate preparado.",
     "trust_clouds": "Los modelos difieren sobre la cobertura de nubes. La tarjeta /now ha sido corregida."
   },
   "no": {
@@ -391,6 +433,15 @@ STRINGS = {
     "trust_precip": "Varslingsmodellene er uenige om nedbør på dagtid.",
     "trust_wind": "Varslingsmodellene er uenige om vindstyrken.",
     "divergent_models": "Avvikende modeller",
+    "diff_day": "om dagen",
+    "diff_night": "om natten",
+    "alert_diag_sender": "Modelldiagnostikk",
+
+    "alert_diag_event_sat": "Ustabil værmelding (lørdag)",
+
+    "alert_diag_event_sun": "Ustabil værmelding (søndag)",
+
+    "alert_diag_desc": "Væralgoritmene motsier hverandre. En annen modell antyder ca. {temp}°C {pora}. Vær forberedt.",
     "trust_clouds": "Varslingsmodellene er uenige om skydekket. /now-kortet har blitt korrigert."
   }
 }

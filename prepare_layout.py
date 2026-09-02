@@ -828,14 +828,27 @@ def _build_weekend_day_teaser(hp: list, day_short: str, payload: dict = None) ->
         if ENABLE_VOLATILITY_UI and diag.get("is_volatile"):
             if diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
                 
-                # Wyciągamy język bezpośrednio z danych wejściowych
-                lang = str(payload.get("lang", "pl")).strip().lower()[:2]
+                # SPRAWDZAMY ZJAWISKA POGODOWE
+                icon_name = summary.get("icon", "")
+                has_bad_weather = bool(summary.get("precip_badge")) or any(x in icon_name for x in ["rain", "storm", "snow", "sleet", "showers", "wind"])
                 
-                from i18n import t
-                warn_text = t(lang, "divergent_models")
-                
-                spr = diag.get("spread_max", diag.get("spread", 0))
-                desc = f"⚠️ {warn_text} ({spr}°C)"
+                if not has_bad_weather:
+                    lang = str(payload.get("lang", "pl")).strip().lower()[:2]
+                    from i18n import t
+                    warn_text = t(lang, "alt_model")
+                    
+                    max_diff = diag.get("spread_max", diag.get("spread", 0))
+                    min_diff = diag.get("spread_min", 0)
+                    
+                    if max_diff >= min_diff:
+                        alt_temp = diag.get("max_om")
+                        pora_text = t(lang, "diff_day")
+                    else:
+                        alt_temp = diag.get("min_om")
+                        pora_text = t(lang, "diff_night")
+                    
+                    alt_val = int(round(alt_temp)) if alt_temp is not None else "?"
+                    desc = f"⚠️ {warn_text} {alt_val}°C {pora_text}"
     # -------------------------------------------------
     
     return {
@@ -1352,7 +1365,49 @@ def prepare_layout_data(payload, now=None):
     except Exception as e:
         print(f"[SYSTEM] Błąd modułu nadmorskiego (prepare_layout): {e}")
     # ==================================================================
-   
+    # ==================================================================
+    # NOWY KOD: Ostrzeżenia o rozbieżności modeli (Sekcja Uważaj)
+    # ==================================================================
+    if os.environ.get("ENABLE_VOLATILITY_UI", "1") == "1":
+        
+        daily_diag = payload.get("daily_diag", {})
+        
+        for date_str, diag in daily_diag.items():
+            if diag.get("is_volatile") and diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
+                try:
+                    dt = datetime.strptime(date_str, "%Y-%m-%d")
+                    # Celujemy tylko w weekend (5 = Sobota, 6 = Niedziela)
+                    if dt.weekday() in [5, 6]:
+                        max_diff = diag.get("spread_max", diag.get("spread", 0))
+                        min_diff = diag.get("spread_min", 0)
+                        
+                        if max_diff >= min_diff:
+                            alt_temp = diag.get("max_om")
+                            pora = t(lang, "diff_day")
+                        else:
+                            alt_temp = diag.get("min_om")
+                            pora = t(lang, "diff_night")
+                            
+                        alt_val = int(round(alt_temp)) if alt_temp is not None else "?"
+                        
+                        # Wybór odpowiedniego nagłówka (Sobota lub Niedziela)
+                        event_key = "alert_diag_event_sat" if dt.weekday() == 5 else "alert_diag_event_sun"
+                        
+                        # Formatowanie tekstu opisowego z zachowaniem języka
+                        desc_template = t(lang, "alert_diag_desc")
+                        desc_text = desc_template.format(temp=alt_val, pora=pora)
+                        
+                        # Złączenie w jeden string oddzielony znakiem " — " (wymóg struktury alertów)
+                        sender_text = f"⚠️ {t(lang, 'alert_diag_sender')}"
+                        final_alert = f"{sender_text} — {t(lang, event_key)}. {desc_text}"
+                        
+                        if final_alert not in alerts:
+                            alerts.append(final_alert)
+                except ValueError:
+                    continue
+    # ==================================================================
+
+    
 
     wk = build_worth_knowing(
         payload=payload, blocks=hero_blocks, alerts=alerts, temp_min=bmin, temp_max=bmax,

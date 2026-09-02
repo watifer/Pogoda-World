@@ -62,14 +62,26 @@ def prepare_future_layout_data(payload, now=None):
             
             if ENABLE_VOLATILITY_UI and diag.get("is_volatile"):
                 if diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
-                    max_diff = diag.get("spread_max", diag.get("spread", 0))
-                    min_diff = diag.get("spread_min", 0)
-                    gorszy_spread = max(max_diff, min_diff)
                     
-                    # Pobieramy tłumaczenie czysto z i18n.py
-                    warn_text = t(lang, "divergent_models")
+                    # SPRAWDZAMY, CZY DZIEŃ JEST SPOKOJNY
+                    icon_name = summary.get("icon", "")
+                    has_bad_weather = bool(summary.get("precip_badge")) or any(x in icon_name for x in ["rain", "storm", "snow", "sleet", "showers", "wind"])
                     
-                    summary["descriptor"] = f"⚠️ {warn_text} ({gorszy_spread}°C)"
+                    if not has_bad_weather:
+                        max_diff = diag.get("spread_max", diag.get("spread", 0))
+                        min_diff = diag.get("spread_min", 0)
+                        
+                        if max_diff >= min_diff:
+                            alt_temp = diag.get("max_om")
+                            pora_text = t(lang, "diff_day")
+                        else:
+                            alt_temp = diag.get("min_om")
+                            pora_text = t(lang, "diff_night")
+                            
+                        alt_val = int(round(alt_temp)) if alt_temp is not None else "?"
+                        warn_text = t(lang, "alt_model")
+                        
+                        summary["descriptor"] = f"⚠️ {warn_text} {alt_val}°C {pora_text}"
             # --------------------------------------------------------------
 
             short_day_name = DAYS_SHORT.get(lang, DAYS_SHORT["pl"])[tgt.weekday()]
