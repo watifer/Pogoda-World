@@ -296,7 +296,7 @@ STRINGS = {
 
     "alert_diag_event_sun": "Anomalie (Sonntag)",
 
-    "alert_diag_desc": "Modelle weichen ab. Andere Daten zeigen ca.
+    "alert_diag_desc": "Modelle weichen ab. Andere Daten zeigen ca. {temp}°C {pora}.",
     "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig. Die /now-Karte wurde korrigiert."
 
   },
