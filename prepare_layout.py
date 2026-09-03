@@ -1365,14 +1365,21 @@ def prepare_layout_data(payload, now=None):
     except Exception as e:
         print(f"[SYSTEM] Błąd modułu nadmorskiego (prepare_layout): {e}")
     # ==================================================================
-    # ==================================================================
     # NOWY KOD: Ostrzeżenia o rozbieżności modeli (Sekcja Uważaj)
     # ==================================================================
     if os.environ.get("ENABLE_VOLATILITY_UI", "1") == "1":
         
         daily_diag = payload.get("daily_diag", {})
         
+        # Wyliczamy dokładne daty dla weekendu widocznego na karcie
+        target_sat = (now + timedelta(days=(5 - now.weekday()) % 7)).strftime("%Y-%m-%d")
+        target_sun = (now + timedelta(days=(6 - now.weekday()) % 7)).strftime("%Y-%m-%d")
+        
         for date_str, diag in daily_diag.items():
+            # Złota reguła: Jeśli data z diagnostyki nie jest wyświetlaną sobotą ani niedzielą, ignoruj!
+            if date_str not in [target_sat, target_sun]:
+                continue
+                
             if diag.get("is_volatile") and diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
                 try:
                     dt = datetime.strptime(date_str, "%Y-%m-%d")
