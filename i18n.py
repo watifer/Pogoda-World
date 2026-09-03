@@ -77,10 +77,10 @@ STRINGS = {
     "alt_model": "Inny model:",
     "diff_day": "(dzień)",
     "diff_night": "(noc)",
-    "alert_diag_sender": "Diagnostyka modeli",
-    "alert_diag_event_sat": "Niestabilna prognoza (sobota)",
-    "alert_diag_event_sun": "Niestabilna prognoza (niedziela)",
-    "alert_diag_desc": "Algorytmy pogodowe są ze sobą sprzeczne. Inny model sugeruje ok. {temp}°C {pora}. Bądź na to przygotowany.",
+    "alert_diag_sender": "Diagnostyka",
+    "alert_diag_event_sat": "Anomalia (sobota)",
+    "alert_diag_event_sun": "Anomalia (niedz.)",
+    "alert_diag_desc": "Modele są rozbieżne. Inne wyliczenia sugerują ok. {temp}°C {pora}.",
     "trust_clouds": "Modele są rozbieżne co do zachmurzenia. Skorygowano kartę /now"
   },
   "en": {
@@ -146,13 +146,13 @@ STRINGS = {
     "divergent_models": "Divergent models",
     "diff_day": "day",
     "diff_night": "night",
-    "alert_diag_sender": "Model diagnostics",
+    "alert_diag_sender": "Diagnostics",
 
-    "alert_diag_event_sat": "Unstable forecast (Saturday)",
+    "alert_diag_event_sat": "Anomaly (Saturday)",
 
-    "alert_diag_event_sun": "Unstable forecast (Sunday)",
+    "alert_diag_event_sun": "Anomaly (Sunday)",
 
-    "alert_diag_desc": "Weather algorithms contradict each other. Another model suggests approx. {temp}°C {pora}. Be prepared.",
+    "alert_diag_desc": "Models disagree. Other data suggests ~{temp}°C {pora}.",
     "trust_clouds": "Forecast models disagree on cloud cover. The /now card has been corrected."
   },
   "fr": {
@@ -218,13 +218,13 @@ STRINGS = {
     "divergent_models": "Modèles divergents",
     "diff_day": "de jour",
     "diff_night": "de nuit",
-    "alert_diag_sender": "Diagnostic des modèles",
+    "alert_diag_sender": "Diagnostic",
 
-    "alert_diag_event_sat": "Prévisions instables (samedi)",
+    "alert_diag_event_sat": "Anomalie (samedi)",
 
-    "alert_diag_event_sun": "Prévisions instables (dimanche)",
+    "alert_diag_event_sun": "Anomalie (dimanche)",
 
-    "alert_diag_desc": "Les algorithmes météorologiques se contredisent. Un autre modèle suggère env. {temp}°C {pora}. Soyez prêt.",
+    "alert_diag_desc": "Les modèles divergent. D'autres données suggèrent ~{temp}°C {pora}.",
     "trust_clouds": "Les modèles diffèrent sur la couverture nuageuse. La carte /now a été corrigée."
   },
   "de": {
@@ -290,13 +290,13 @@ STRINGS = {
     "divergent_models": "Modellabweichung",
     "diff_day": "am Tag",
     "diff_night": "in der Nacht",
-    "alert_diag_sender": "Modelldiagnose",
+    "alert_diag_sender": "Diagnose",
 
-    "alert_diag_event_sat": "Instabile Vorhersage (Samstag)",
+    "alert_diag_event_sat": "Anomalie (Samstag)",
 
-    "alert_diag_event_sun": "Instabile Vorhersage (Sonntag)",
+    "alert_diag_event_sun": "Anomalie (Sonntag)",
 
-    "alert_diag_desc": "Wetteralgorithmen widersprechen sich. Ein anderes Modell deutet auf ca. {temp}°C {pora} hin. Sei darauf vorbereitet.",
+    "alert_diag_desc": "Modelle weichen ab. Andere Daten zeigen ca.
     "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig. Die /now-Karte wurde korrigiert."
 
   },
@@ -363,13 +363,13 @@ STRINGS = {
     "divergent_models": "Modelos divergentes",
     "diff_day": "de día",
     "diff_night": "de noche",
-    "alert_diag_sender": "Diagnóstico de modelos",
+    "alert_diag_sender": "Diagnóstico",
 
-    "alert_diag_event_sat": "Pronóstico inestable (sábado)",
+    "alert_diag_event_sat": "Anomalía (sábado)",
 
-    "alert_diag_event_sun": "Pronóstico inestable (domingo)",
+    "alert_diag_event_sun": "Anomalía (domingo)",
 
-    "alert_diag_desc": "Los algoritmos meteorológicos se contradicen. Otro modelo sugiere aprox. {temp}°C {pora}. Estate preparado.",
+    "alert_diag_desc": "Los modelos difieren. Otros datos sugieren ~{temp}°C {pora}.",
     "trust_clouds": "Los modelos difieren sobre la cobertura de nubes. La tarjeta /now ha sido corregida."
   },
   "no": {
@@ -435,13 +435,13 @@ STRINGS = {
     "divergent_models": "Avvikende modeller",
     "diff_day": "om dagen",
     "diff_night": "om natten",
-    "alert_diag_sender": "Modelldiagnostikk",
+    "alert_diag_sender": "Diagnostikk",
 
-    "alert_diag_event_sat": "Ustabil værmelding (lørdag)",
+    "alert_diag_event_sat": "Anomali (lørdag)",
 
-    "alert_diag_event_sun": "Ustabil værmelding (søndag)",
+    "alert_diag_event_sun": "Anomali (søndag)",
 
-    "alert_diag_desc": "Væralgoritmene motsier hverandre. En annen modell antyder ca. {temp}°C {pora}. Vær forberedt.",
+    "alert_diag_desc": "Modellene spriker. Andre data antyder ~{temp}°C {pora}.",
     "trust_clouds": "Varslingsmodellene er uenige om skydekket. /now-kortet har blitt korrigert."
   }
 }
