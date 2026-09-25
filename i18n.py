@@ -555,6 +555,13 @@ EXACT_MAPS = {
         "wzrost ciśnienia": "Pressure rise",
         "przed zapowiadanym deszczem może siąpić.": "Drizzle possible before the expected rain.",
         "możliwe lekkie siąpienie.": "Light drizzle possible.",
+        "zapowiada się pogodna noc — pełnia księżyca. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — full moon. The sky should be noticeably brighter.",
+        "zapowiada się pogodna noc — pełnia za 1 dzień. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — full moon in 1 day. The sky should be noticeably brighter.",
+        "zapowiada się pogodna noc — pełnia za 2 dni. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — full moon in 2 days. The sky should be noticeably brighter.",
+        "zapowiada się pogodna noc — pełnia za 3 dni. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — full moon in 3 days. The sky should be noticeably brighter.",
+        "zapowiada się pogodna noc — 1 dzień po pełni. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — 1 day after full moon. The sky should be noticeably brighter.",
+        "zapowiada się pogodna noc — 2 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — 2 days after full moon. The sky should be noticeably brighter.",
+        "zapowiada się pogodna noc — 3 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Clear night expected — 3 days after full moon. The sky should be noticeably brighter.",
         "brak danych": "No data",
     },
     "fr": {
@@ -622,6 +629,13 @@ EXACT_MAPS = {
         "wzrost ciśnienia": "Hausse de pression",
         "przed zapowiadanym deszczem może siąpić.": "Bruine possible avant la pluie attendue.",
         "możliwe lekkie siąpienie.": "Légère bruine possible.",
+        "zapowiada się pogodna noc — pełnia księżyca. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — pleine lune. Le ciel devrait être nettement plus lumineux.",
+        "zapowiada się pogodna noc — pełnia za 1 dzień. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — pleine lune dans 1 jour. Le ciel devrait être nettement plus lumineux.",
+        "zapowiada się pogodna noc — pełnia za 2 dni. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — pleine lune dans 2 jours. Le ciel devrait être nettement plus lumineux.",
+        "zapowiada się pogodna noc — pełnia za 3 dni. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — pleine lune dans 3 jours. Le ciel devrait être nettement plus lumineux.",
+        "zapowiada się pogodna noc — 1 dzień po pełni. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — 1 jour après la pleine lune. Le ciel devrait être nettement plus lumineux.",
+        "zapowiada się pogodna noc — 2 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — 2 jours après la pleine lune. Le ciel devrait être nettement plus lumineux.",
+        "zapowiada się pogodna noc — 3 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Nuit dégagée prévue — 3 jours après la pleine lune. Le ciel devrait être nettement plus lumineux.",
         "brak danych": "Aucune donnée"
     },
     "de": {
@@ -688,6 +702,13 @@ EXACT_MAPS = {
         "wzrost ciśnienia": "Druckanstieg",
         "przed zapowiadanym deszczem może siąpić.": "Vor dem erwarteten Regen ist Nieselregen möglich.",
         "możliwe lekkie siąpienie.": "Leichter Nieselregen möglich.",
+        "zapowiada się pogodna noc — pełnia księżyca. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — Vollmond. Der Himmel sollte deutlich heller sein.",
+        "zapowiada się pogodna noc — pełnia za 1 dzień. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — Vollmond in 1 Tag. Der Himmel sollte deutlich heller sein.",
+        "zapowiada się pogodna noc — pełnia za 2 dni. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — Vollmond in 2 Tagen. Der Himmel sollte deutlich heller sein.",
+        "zapowiada się pogodna noc — pełnia za 3 dni. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — Vollmond in 3 Tagen. Der Himmel sollte deutlich heller sein.",
+        "zapowiada się pogodna noc — 1 dzień po pełni. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — 1 Tag nach Vollmond. Der Himmel sollte deutlich heller sein.",
+        "zapowiada się pogodna noc — 2 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — 2 Tage nach Vollmond. Der Himmel sollte deutlich heller sein.",
+        "zapowiada się pogodna noc — 3 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Eine klare Nacht ist zu erwarten — 3 Tage nach Vollmond. Der Himmel sollte deutlich heller sein.",
         "brak danych": "Keine Daten"
     },
     "es": {
@@ -754,6 +775,13 @@ EXACT_MAPS = {
         "wzrost ciśnienia": "Aumento de presión",
         "przed zapowiadanym deszczem może siąpić.": "Llovizna posible antes de la lluvia esperada.",
         "możliwe lekkie siąpienie.": "Posible llovizna ligera.",
+        "zapowiada się pogodna noc — pełnia księżyca. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — luna llena. El cielo debería verse claramente más iluminado.",
+        "zapowiada się pogodna noc — pełnia za 1 dzień. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — luna llena en 1 día. El cielo debería verse claramente más iluminado.",
+        "zapowiada się pogodna noc — pełnia za 2 dni. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — luna llena en 2 días. El cielo debería verse claramente más iluminado.",
+        "zapowiada się pogodna noc — pełnia za 3 dni. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — luna llena en 3 días. El cielo debería verse claramente más iluminado.",
+        "zapowiada się pogodna noc — 1 dzień po pełni. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — 1 día después de la luna llena. El cielo debería verse claramente más iluminado.",
+        "zapowiada się pogodna noc — 2 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — 2 días después de la luna llena. El cielo debería verse claramente más iluminado.",
+        "zapowiada się pogodna noc — 3 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Se espera una noche despejada — 3 días después de la luna llena. El cielo debería verse claramente más iluminado.",
         "brak danych": "Sin datos"
     },
     "no": {
@@ -820,6 +848,13 @@ EXACT_MAPS = {
         "wzrost ciśnienia": "Trykkøkning",
         "przed zapowiadanym deszczem może siąpić.": "Yr mulig før forventet regn.",
         "możliwe lekkie siąpienie.": "Mulighet for lett yr.",
+        "zapowiada się pogodna noc — pełnia księżyca. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — fullmåne. Himmelen bør bli merkbart lysere.",
+        "zapowiada się pogodna noc — pełnia za 1 dzień. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — fullmåne om 1 dag. Himmelen bør bli merkbart lysere.",
+        "zapowiada się pogodna noc — pełnia za 2 dni. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — fullmåne om 2 dager. Himmelen bør bli merkbart lysere.",
+        "zapowiada się pogodna noc — pełnia za 3 dni. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — fullmåne om 3 dager. Himmelen bør bli merkbart lysere.",
+        "zapowiada się pogodna noc — 1 dzień po pełni. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — 1 dag etter fullmåne. Himmelen bør bli merkbart lysere.",
+        "zapowiada się pogodna noc — 2 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — 2 dager etter fullmåne. Himmelen bør bli merkbart lysere.",
+        "zapowiada się pogodna noc — 3 dni po pełni. niebo powinno być wyraźnie jaśniejsze.": "Det ventes en klar natt — 3 dager etter fullmåne. Himmelen bør bli merkbart lysere.",
         "brak danych": "Ingen data"
     }
 }

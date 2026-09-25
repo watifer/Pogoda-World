@@ -667,10 +667,19 @@ def generate_weather_card(data, palette_override=None):
 
         ha += ALERT_CP
 
-    # Warto wiedzieć
+    # Warto wiedzieć — dynamiczna wysokość, bo dopisek księżycowy może być drugą linią/akapitem.
     hwk = 0
     if data.get("worth_knowing"):
-        hwk = 20 + 62 + 38 + 20
+        f_wk_text_h = get_font("Inter-Regular.ttf", 30)
+        WK_CP_H = 20
+        DESC_X_H = MARGIN + 400
+        desc_avail_h = WIDTH - MARGIN - DESC_X_H - 10
+        wk_text_h = (data.get("worth_knowing") or {}).get("text", "")
+        wk_lines_count = 0
+        for para in str(wk_text_h or "").split("\n"):
+            wrapped = wrap_text(dummy_draw, para, f_wk_text_h, desc_avail_h) if para else [""]
+            wk_lines_count += max(1, len(wrapped))
+        hwk = WK_CP_H + 62 + max(38, wk_lines_count * 38) + WK_CP_H
 
     # Weekend Teaser (Wysokość dla nowej karty z 2 dniami)
     wt = data.get("weekend_teaser")
@@ -882,18 +891,23 @@ def generate_weather_card(data, palette_override=None):
         DESC_X = cx1 + 400 
         desc_avail = cx2 - DESC_X - 10
 
-        # Inteligentne łamanie tekstu dla białego opisu
-        words = (wk_text or "").split()
+        # Inteligentne łamanie tekstu dla białego opisu.
+        # Zachowujemy \n jako separator akapitów, żeby dopisek księżycowy był zawsze ostatni.
         wk_lines = []
-        current_line = ""
-        for w in words:
-            test = f"{current_line} {w}".strip()
-            if dummy_draw.textlength(test, font=f_wk_text) <= desc_avail:
-                current_line = test
-            else:
-                if current_line: wk_lines.append(current_line)
-                current_line = w
-        if current_line: wk_lines.append(current_line)
+        for para in str(wk_text or "").split("\n"):
+            words = para.split()
+            current_line = ""
+            para_lines = []
+            for w in words:
+                test = f"{current_line} {w}".strip()
+                if dummy_draw.textlength(test, font=f_wk_text) <= desc_avail:
+                    current_line = test
+                else:
+                    if current_line: para_lines.append(current_line)
+                    current_line = w
+            if current_line: para_lines.append(current_line)
+            if not para_lines: para_lines = [para]
+            wk_lines.extend(para_lines)
         if not wk_lines: wk_lines = [wk_text]
 
         # Dynamiczne liczenie wysokości: Margines + Tytuł (+62) + Linie opisu + Margines

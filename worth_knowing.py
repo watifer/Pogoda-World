@@ -6,7 +6,8 @@ Maksymalnie 1 komunikat na raport.
 
 from __future__ import annotations
 from typing import Optional, List, Dict, Tuple, Set
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+import math
 import re
 import os
 import json
@@ -86,6 +87,295 @@ def _uncertain_sky(ta: list) -> bool:
     big_diffs = sum(1 for d in diffs if d >= 40)
     return big_diffs >= max(2, len(diffs) // 3)
     
+
+
+def _parse_local_dt(value: str) -> Optional[datetime]:
+    try:
+        if not value:
+            return None
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def _median(values: list[float]) -> Optional[float]:
+    if not values:
+        return None
+    vals = sorted(float(v) for v in values)
+    n = len(vals)
+    mid = n // 2
+    if n % 2:
+        return vals[mid]
+    return (vals[mid - 1] + vals[mid]) / 2.0
+
+
+def _select_primary_night_hours(payload: dict) -> Tuple[List[Dict], List[Dict], Optional[datetime], Optional[datetime]]:
+    """Wybiera nadchodzącą noc 22:00–06:00 z payload['hours'] bez dublowania modeli.
+
+    Zwraca rekordy primary/fusion (preferowane OpenMeteo), rdzeń astronomiczny 23:00–05:00
+    oraz granice okna. Poranny /day nie ma bloku Noc, więc nie wolno tu polegać na blocks.
+    """
+    hours = payload.get("hours") or []
+    if not hours:
+        return [], [], None, None
+
+    base = _parse_local_dt(payload.get("generated_at_local"))
+    if base is None:
+        base = _parse_local_dt(hours[0].get("time_local"))
+    if base is None:
+        return [], [], None, None
+
+    night_start = base.replace(hour=22, minute=0, second=0, microsecond=0)
+    night_end = night_start + timedelta(hours=8)  # półotwarte: 22:00 <= dt < 06:00
+
+    window = []
+    for h in hours:
+        dt = _parse_local_dt(h.get("time_local"))
+        if dt is None:
+            continue
+        try:
+            if night_start <= dt < night_end:
+                window.append((dt, h))
+        except TypeError:
+            # Mieszanie aware/naive nie powinno wystąpić, ale bezpiecznie pomijamy.
+            continue
+
+    if not window:
+        return [], [], night_start, night_end
+
+    primary_source = "openmeteo" if any(h.get("source") == "openmeteo" for _, h in window) else None
+    if primary_source is None:
+        primary_source = "yrno" if any(h.get("source") == "yrno" for _, h in window) else window[0][1].get("source")
+
+    primary = [h for dt, h in sorted(window, key=lambda x: x[0]) if h.get("source") == primary_source]
+    core_start = night_start + timedelta(hours=1)  # 23:00
+    core_end = night_end - timedelta(hours=1)      # 05:00, półotwarte
+    core = []
+    for h in primary:
+        dt = _parse_local_dt(h.get("time_local"))
+        if dt is not None and core_start <= dt < core_end:
+            core.append(h)
+
+    return primary, core, night_start, night_end
+
+
+def _precip_consensus_wk(h: dict, hp_all: list) -> float:
+    """Lokalny odpowiednik _precip_consensus z prepare_layout.py bez importu kołowego."""
+    p_base = float(h.get("precip_eff_mm", h.get("precip_mm")) or 0)
+    pop_base = float(h.get("precip_prob_pct", 0) or 0)
+
+    t_loc = h.get("time_local")
+    if not t_loc or not hp_all:
+        return p_base
+
+    alt_source = "yrno" if h.get("source") == "openmeteo" else "openmeteo"
+    h_alt = next((y for y in hp_all if y.get("time_local") == t_loc and y.get("source") == alt_source), None)
+    if not h_alt:
+        return p_base
+
+    p_alt = float(h_alt.get("precip_eff_mm", h_alt.get("precip_mm")) or 0)
+    pop_alt = float(h_alt.get("precip_prob_pct", 0) or 0)
+
+    if p_base > 0 and p_alt > 0:
+        return (p_base + p_alt) / 2.0
+    if p_base > 0 and p_alt == 0:
+        return p_base if pop_base > 30 else 0.0
+    if p_alt > 0 and p_base == 0:
+        return p_alt if pop_alt > 30 else 0.0
+    return 0.0
+
+
+def _is_fog_hour(h: dict) -> bool:
+    code = h.get("weather_code_eff", h.get("weather_code"))
+    try:
+        if int(code) in {45, 48}:
+            return True
+    except Exception:
+        pass
+    sym = str(h.get("symbol_code_eff", h.get("symbol_code") or "") or "").lower()
+    return "fog" in sym
+
+
+def _solar_declination_rad(dt_local: datetime) -> float:
+    """Przybliżona deklinacja Słońca (NOAA). Wystarcza do filtra prawdziwej nocy."""
+    n = dt_local.timetuple().tm_yday
+    frac_hour = dt_local.hour + dt_local.minute / 60.0 + dt_local.second / 3600.0
+    gamma = 2.0 * math.pi / 365.0 * (n - 1 + (frac_hour - 12.0) / 24.0)
+    return (
+        0.006918
+        - 0.399912 * math.cos(gamma)
+        + 0.070257 * math.sin(gamma)
+        - 0.006758 * math.cos(2 * gamma)
+        + 0.000907 * math.sin(2 * gamma)
+        - 0.002697 * math.cos(3 * gamma)
+        + 0.001480 * math.sin(3 * gamma)
+    )
+
+
+def _sun_altitude_deg_approx(dt_local: datetime, lat: float, lon: float) -> float:
+    """Przybliżona wysokość Słońca nad horyzontem w stopniach, bez zależności."""
+    lat_rad = math.radians(float(lat))
+    decl = _solar_declination_rad(dt_local)
+
+    n = dt_local.timetuple().tm_yday
+    frac_hour = dt_local.hour + dt_local.minute / 60.0 + dt_local.second / 3600.0
+    gamma = 2.0 * math.pi / 365.0 * (n - 1 + (frac_hour - 12.0) / 24.0)
+    eq_time = 229.18 * (
+        0.000075
+        + 0.001868 * math.cos(gamma)
+        - 0.032077 * math.sin(gamma)
+        - 0.014615 * math.cos(2 * gamma)
+        - 0.040849 * math.sin(2 * gamma)
+    )
+    offset_min = 0.0
+    if dt_local.utcoffset() is not None:
+        offset_min = dt_local.utcoffset().total_seconds() / 60.0
+
+    true_solar_time = (frac_hour * 60.0 + eq_time + 4.0 * float(lon) - offset_min) % 1440.0
+    hour_angle = true_solar_time / 4.0 - 180.0
+    if hour_angle < -180.0:
+        hour_angle += 360.0
+    ha_rad = math.radians(hour_angle)
+
+    sin_alt = math.sin(lat_rad) * math.sin(decl) + math.cos(lat_rad) * math.cos(decl) * math.cos(ha_rad)
+    sin_alt = max(-1.0, min(1.0, sin_alt))
+    return math.degrees(math.asin(sin_alt))
+
+
+def _moon_max_alt_near_full_approx_deg(lat: float, sun_declination_rad: float) -> float:
+    """W pełni Księżyc jest blisko opozycji: decl_moon ≈ -decl_sun."""
+    return 90.0 - abs(float(lat) + math.degrees(sun_declination_rad))
+
+
+def _true_night_allows_moon_tip(core_hours: List[Dict], lat: float, lon: float) -> bool:
+    if not core_hours:
+        return False
+    max_uv = max((_f(h.get("uv_index"), 0.0) for h in core_hours), default=0.0)
+    if max_uv > MOON_TIP_MAX_CORE_UV:
+        return False
+
+    true_night_samples = 0
+    for h in core_hours:
+        dt = _parse_local_dt(h.get("time_local"))
+        if dt is None:
+            continue
+        if _sun_altitude_deg_approx(dt, lat, lon) <= MOON_TIP_TRUE_NIGHT_SUN_ALT_DEG:
+            true_night_samples += 1
+    return true_night_samples >= MOON_TIP_MIN_TRUE_NIGHT_SAMPLES
+
+
+def _moon_phase_info(target_dt: datetime) -> Optional[Dict]:
+    if target_dt is None:
+        return None
+    if target_dt.tzinfo is None:
+        target_utc = target_dt.replace(tzinfo=timezone.utc)
+    else:
+        target_utc = target_dt.astimezone(timezone.utc)
+
+    days_since_ref = (target_utc - _REF_FULL_MOON_UTC).total_seconds() / 86400.0
+    nearest_idx = round(days_since_ref / _SYNODIC_MONTH_DAYS)
+    nearest_full = _REF_FULL_MOON_UTC + timedelta(days=nearest_idx * _SYNODIC_MONTH_DAYS)
+    delta_to_full = (nearest_full - target_utc).total_seconds() / 86400.0
+    abs_delta = abs(delta_to_full)
+    illumination = (1.0 + math.cos(2.0 * math.pi * abs_delta / _SYNODIC_MONTH_DAYS)) / 2.0
+
+    if abs_delta > MOON_TIP_PHASE_WINDOW_DAYS or illumination < MOON_TIP_MIN_ILLUMINATION:
+        return None
+
+    if abs_delta < 0.5:
+        bucket = "full_today"
+    elif abs_delta < 1.5:
+        bucket = "before_1" if delta_to_full > 0 else "after_1"
+    elif abs_delta < 2.5:
+        bucket = "before_2" if delta_to_full > 0 else "after_2"
+    else:
+        bucket = "before_3" if delta_to_full > 0 else "after_3"
+
+    return {
+        "delta_days": delta_to_full,
+        "illumination": illumination,
+        "bucket": bucket,
+        "nearest_full_utc": nearest_full,
+    }
+
+
+def _night_weather_allows_moon_tip(night_hours: List[Dict], all_hours: List[Dict]) -> bool:
+    if len(night_hours) < MOON_TIP_MIN_REQUIRED_NIGHT_HOURS:
+        return False
+    if _uncertain_sky(night_hours):
+        return False
+    if any(_is_fog_hour(h) for h in night_hours):
+        return False
+
+    clouds = [_eff_cld_consensus(h) for h in night_hours]
+    med_clouds = _median(clouds)
+    if med_clouds is None:
+        return False
+    if max(clouds) > MOON_TIP_MAX_CLOUD_EFF:
+        return False
+    if med_clouds > MOON_TIP_MEDIAN_CLOUD_EFF:
+        return False
+
+    max_precip = max((_precip_consensus_wk(h, all_hours) for h in night_hours), default=0.0)
+    if max_precip > MOON_TIP_MAX_PRECIP_MM:
+        return False
+
+    max_pop = max((_f(h.get("precip_prob_pct"), 0.0) for h in night_hours), default=0.0)
+    if max_pop > MOON_TIP_MAX_POP:
+        return False
+
+    return True
+
+
+def _build_moon_night_candidate(payload: dict, alerts: List[str] = None, trust_block: bool = False) -> Optional[Dict]:
+    """Buduje dodatkowy tip o jasnej nocy.
+
+    `alerts` i `trust_block` zostają w sygnaturze dla kompatybilności testów/wywołań,
+    ale celowo NIE blokują tego dodatku: komunikaty z sekcji „Uważaj" oraz inne
+    wnioski „Warto wiedzieć" mogą współistnieć z informacją o Księżycu.
+    """
+    if os.environ.get("ENABLE_WK_MOON_TIP", "1") == "0":
+        return None
+    if " + " not in str(payload.get("forecast_source", "")):
+        return None
+
+    loc = payload.get("location") or {}
+    try:
+        lat = float(loc.get("lat"))
+        lon = float(loc.get("lon"))
+    except Exception:
+        return None
+
+    all_hours = payload.get("hours") or []
+    night_hours, core_hours, night_start, night_end = _select_primary_night_hours(payload)
+    if not night_hours or night_start is None or night_end is None:
+        return None
+
+    if not _night_weather_allows_moon_tip(night_hours, all_hours):
+        return None
+    if not _true_night_allows_moon_tip(core_hours, lat, lon):
+        return None
+
+    target_dt = night_start + (night_end - night_start) / 2  # okolice 02:00 lokalnie
+    phase = _moon_phase_info(target_dt)
+    if not phase:
+        return None
+
+    sun_decl = _solar_declination_rad(target_dt)
+    if _moon_max_alt_near_full_approx_deg(lat, sun_decl) < MOON_TIP_MIN_MOON_MAX_ALT_DEG:
+        return None
+
+    text = MOON_TIP_TEXTS.get(phase["bucket"])
+    if not text:
+        return None
+
+    return {
+        "priority": MOON_TIP_PRIORITY,
+        "text": text,
+        "category": "moon_night",
+        "kind": "opportunity",
+        "wx": [],
+    }
 
 
 
@@ -220,6 +510,34 @@ def _build_wk_facts(ta: list, blocks: list, current_hour: int, is_afternoon_repo
 
 MAX_WK_LEN = 140
 TOP_K = 5        
+
+# Jasna, pogodna noc przy pełni — rzadki tip lifestyle dla /day.
+# Zero zależności zewnętrznych: faza Księżyca liczona synodycznie,
+# a "prawdziwa noc" prostym modelem pozycji Słońca + filtrem UV z prognozy.
+MOON_TIP_PHASE_WINDOW_DAYS = 3.5
+MOON_TIP_MIN_ILLUMINATION = 0.85
+MOON_TIP_MAX_CLOUD_EFF = 35.0
+MOON_TIP_MEDIAN_CLOUD_EFF = 20.0
+MOON_TIP_MAX_PRECIP_MM = 0.05
+MOON_TIP_MAX_POP = 30.0
+MOON_TIP_MIN_REQUIRED_NIGHT_HOURS = 5
+MOON_TIP_MAX_CORE_UV = 0.1
+MOON_TIP_TRUE_NIGHT_SUN_ALT_DEG = -6.0
+MOON_TIP_MIN_TRUE_NIGHT_SAMPLES = 2
+MOON_TIP_MIN_MOON_MAX_ALT_DEG = 10.0
+MOON_TIP_PRIORITY = 14
+_SYNODIC_MONTH_DAYS = 29.530588853
+_REF_FULL_MOON_UTC = datetime(2000, 1, 21, 4, 40, tzinfo=timezone.utc)
+
+MOON_TIP_TEXTS = {
+    "full_today": "Zapowiada się pogodna noc — pełnia Księżyca. Niebo powinno być wyraźnie jaśniejsze.",
+    "before_1": "Zapowiada się pogodna noc — pełnia za 1 dzień. Niebo powinno być wyraźnie jaśniejsze.",
+    "before_2": "Zapowiada się pogodna noc — pełnia za 2 dni. Niebo powinno być wyraźnie jaśniejsze.",
+    "before_3": "Zapowiada się pogodna noc — pełnia za 3 dni. Niebo powinno być wyraźnie jaśniejsze.",
+    "after_1": "Zapowiada się pogodna noc — 1 dzień po pełni. Niebo powinno być wyraźnie jaśniejsze.",
+    "after_2": "Zapowiada się pogodna noc — 2 dni po pełni. Niebo powinno być wyraźnie jaśniejsze.",
+    "after_3": "Zapowiada się pogodna noc — 3 dni po pełni. Niebo powinno być wyraźnie jaśniejsze.",
+}
 
 FAMILY_MAP = {
     "drizzle": "rain", "light_rain": "rain", "rain": "rain",
@@ -1090,6 +1408,7 @@ LIFESTYLE_CATEGORIES = {
     "uv_alert",
     "extrema_time",
     "contrast",
+    "moon_night",
 }
 
 def _wx_tags(c: dict) -> list[str]:
@@ -1196,10 +1515,15 @@ def build_worth_knowing(
     
     if ta:
         candidates += _candidates_future(ta)
+
+    # Dodatkowy tip o jasnej nocy: NIE konkuruje w rankingu WK i NIE jest blokowany
+    # przez sekcję „Uważaj”. Jeśli spełni własne warunki meteo/astronomiczne,
+    # zostanie dopisany na końcu tekstu „Warto wiedzieć”.
+    moon_candidate = _build_moon_night_candidate(payload, alerts=alerts, trust_block=trust_block)
         
     candidates = [enforce_priority_policy(c) for c in candidates]
 
-    if not candidates:
+    if not candidates and not moon_candidate:
         return None
 
     scored = []
@@ -1209,6 +1533,11 @@ def build_worth_knowing(
             scored.append((s, c))
 
     if not scored:
+        if moon_candidate:
+            return {
+                "title": "Dziś warto wiedzieć",
+                "text": moon_candidate["text"],
+            }
         return None
 
     scored.sort(key=lambda x: x[0])
@@ -1224,12 +1553,22 @@ def build_worth_knowing(
 
     # Bezpieczny fallback
     if winner is None:
+        if moon_candidate:
+            return {
+                "title": "Dziś warto wiedzieć",
+                "text": moon_candidate["text"],
+            }
         return None
         
     # --- Trust gating jako filtr stylu (nie zabijamy twardych wskazówek) ---
     if trust_block:
         # 1) lifestyle zawsze milczy w dni niepewne
         if winner.get("category") in LIFESTYLE_CATEGORIES:
+            if moon_candidate:
+                return {
+                    "title": "Dziś warto wiedzieć",
+                    "text": moon_candidate["text"],
+                }
             return None
 
         # 2) jeśli brak hazard wx i nie jest wyjątkiem -> milczymy
@@ -1244,6 +1583,11 @@ def build_worth_knowing(
         has_hazard = any(t in HAZARD_WX for t in wx_tags)
 
         if (not has_hazard) and (winner.get("category") not in PRIORITY_EXEMPT_CATEGORIES):
+            if moon_candidate:
+                return {
+                    "title": "Dziś warto wiedzieć",
+                    "text": moon_candidate["text"],
+                }
             return None
 
     
@@ -1260,7 +1604,7 @@ def build_worth_knowing(
         BORING_PRIORITY_THRESHOLD = 12
         BORING_CATEGORIES = {"sun", "temperature", "generic"}
 
-        if (winner.get("priority", 999) >= BORING_PRIORITY_THRESHOLD) or (winner.get("category") in BORING_CATEGORIES):
+        if winner.get("category") != "moon_night" and ((winner.get("priority", 999) >= BORING_PRIORITY_THRESHOLD) or (winner.get("category") in BORING_CATEGORIES)):
         #if True:
             try:
                 from ai_client import wk_candidate_from_facts
@@ -1411,6 +1755,11 @@ def build_worth_knowing(
     if len(final_text) > MAX_WK_LEN + 5:
         truncated = final_text[:MAX_WK_LEN].rsplit(' ', 1)[0]
         final_text = truncated + "…"
+
+    if moon_candidate and moon_candidate.get("text"):
+        moon_text = moon_candidate["text"]
+        if moon_text.strip() and moon_text.strip() != final_text.strip():
+            final_text = f"{final_text}\n\n{moon_text}" if final_text else moon_text
 
     
 
