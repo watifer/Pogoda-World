@@ -554,7 +554,8 @@ def generate_weather_card(data, palette_override=None):
     blocks = data.get("today_blocks", [])
     days = data.get("next_days", [])
     wdays = data.get("weekend_detail_days", [])
-    alerts = data.get("alerts", [])
+    # Usuwamy variation selector U+FE0F z emoji alertów — Inter potrafi go pokazać jako [NO GLYPH].
+    alerts = [str(a).replace("\ufe0f", "") for a in (data.get("alerts", []) or []) if a]
     mi = data.get("main_icon", "cloud")
     if palette_override:
         pal = palette_override
@@ -577,6 +578,12 @@ def generate_weather_card(data, palette_override=None):
     # Inicjujemy narzędzie mierzące tekst ZAWSZE na samej górze
     dummy_draw = ImageDraw.Draw(Image.new("RGB", (1, 1)))
     
+    snapshot = data.get("current_snapshot_line")
+    snapshot_lines = []
+    if snapshot:
+        snapshot_lines = wrap_text(dummy_draw, snapshot, f_ctx, WIDTH - 2 * MARGIN)
+        hh += len(snapshot_lines) * 38
+
     ctx = data.get("context_line")
     ctx_lines = []
     if ctx:
@@ -791,7 +798,13 @@ def generate_weather_card(data, palette_override=None):
         draw.text((MARGIN, y), line, font=f_summ, fill=(254, 240, 138)) # <- Zmieniono na żółty
         y += 46  
         
-    # 2. Rysujemy Context/Alerts (Zawsze na ZŁOTO)
+    # 2. Rysujemy bieżący snapshot OWM dla /day (nie zastępuje Hero)
+    if snapshot_lines:
+        for line in snapshot_lines:
+            draw.text((MARGIN, y + 4), line, font=f_ctx, fill=(254, 240, 138))
+            y += 38
+
+    # 3. Rysujemy Context/Alerts (Zawsze na ZŁOTO)
     if ctx_lines:
         for line in ctx_lines:
             draw.text((MARGIN, y + 4), line, font=f_ctx, fill=(254, 240, 138)) # <- Zmieniono na żółty

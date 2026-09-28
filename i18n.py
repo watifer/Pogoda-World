@@ -26,6 +26,7 @@ STRINGS = {
     "section_next_hours": "Najbliższe godziny",
     "watch_out": "Uważaj",
     "good_to_know": "Dziś warto wiedzieć",
+    "now_prefix": "Teraz",
     "next_days": "Najbliższe dni",
     "tomorrow": "Jutro",
     "next_14d_trend": "Trend na kolejne 14 dni",
@@ -95,6 +96,7 @@ STRINGS = {
     "section_next_hours": "Next hours",
     "watch_out": "Watch out",
     "good_to_know": "Good to know",
+    "now_prefix": "Now",
     "next_days": "Next days",
     "tomorrow": "Tomorrow",
     "next_14d_trend": "14-day trend",
@@ -168,6 +170,7 @@ STRINGS = {
     "section_next_hours": "Prochaines heures",
     "watch_out": "Attention",
     "good_to_know": "Bon à savoir",
+    "now_prefix": "Maintenant",
     "next_days": "Prochains jours",
     "tomorrow": "Demain",
     "next_14d_trend": "Tendance 14 jours",
@@ -241,6 +244,7 @@ STRINGS = {
     "section_next_hours": "Nächste Stunden",
     "watch_out": "Achtung",
     "good_to_know": "Gut zu wissen",
+    "now_prefix": "Jetzt",
     "next_days": "Nächste Tage",
     "tomorrow": "Morgen",
     "next_14d_trend": "14-Tage-Trend",
@@ -315,6 +319,7 @@ STRINGS = {
     "section_next_hours": "Próximas horas",
     "watch_out": "Atención",
     "good_to_know": "Bueno saberlo",
+    "now_prefix": "Ahora",
     "next_days": "Próximos días",
     "tomorrow": "Mañana",
     "next_14d_trend": "Tendencia de 14 días",
@@ -388,6 +393,7 @@ STRINGS = {
     "section_next_hours": "Neste timer",
     "watch_out": "Se opp",
     "good_to_know": "Godt å vite",
+    "now_prefix": "Nå",
     "next_days": "Neste dager",
     "tomorrow": "I morgen",
     "next_14d_trend": "14-dagers trend",
@@ -902,6 +908,7 @@ REPLACEMENTS = {
         ("ulewny deszcz", "heavy rain"),
         ("możliwe dziś ", "possible today "),
         ("obecnie ", "currently "),
+        ("teraz", "now"),
         ("(satelita)", "(satellite)"),
         
         # --- ALERTY Z WEATHER_PAYLOAD ---
@@ -1119,6 +1126,7 @@ REPLACEMENTS = {
         ("pochmurno", "couvert"),
         ("możliwe dziś ", "possible today "),
         ("obecnie ", "currently "),
+        ("teraz", "maintenant"),
         
         # --- ALERTY Z WEATHER_PAYLOAD ---
         ("prognozowane są niszczące porywy do", "rafales destructrices prévues jusqu'à"),
@@ -1332,6 +1340,7 @@ REPLACEMENTS = {
         ("pochmurno", "bedeckt"),
         ("możliwe dziś ", "heute möglich "),
         ("obecnie ", "aktuell "),
+        ("teraz", "jetzt"),
         
         ("spodziewany jest wzrost temperatury do", "Erwarteter Temperaturanstieg auf bis zu"),
         ("w dzień tylko", "tagsüber nur"),
@@ -1524,6 +1533,7 @@ REPLACEMENTS = {
         ("pochmurno", "nublado"),
         ("możliwe dziś ", "posible hoy "),
         ("obecnie ", "actualmente "),
+        ("teraz", "ahora"),
         
         # --- ALERTY Z WEATHER_PAYLOAD ---
         ("prognozowane są niszczące porywy do", "se pronostican ráfagas destructivas de hasta"),
@@ -1728,6 +1738,7 @@ REPLACEMENTS = {
         ("pochmurno", "overskyet"),
         ("możliwe dziś ", "mulig i dag "),
         ("obecnie ", "nå "),
+        ("teraz", "nå"),
         
         # --- ALERTY Z WEATHER_PAYLOAD ---
         ("prognozowane są niszczące porywy do", "det varsles ødeleggende vindkast opptil"),

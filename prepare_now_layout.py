@@ -2,7 +2,7 @@
 prepare_now_layout.py — Moduł dedykowany wyłącznie dla komendy /now.
 Generuje taktyczną kartę z 12 najbliższymi godzinami od momentu uruchomienia.
 """
-from owm_nowcast import get_current_weather, nowcast_note
+from owm_nowcast import get_current_weather, nowcast_note, classify_owm_cloud_correction, find_model_hour_for_now
 from datetime import datetime, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -189,44 +189,13 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     cld_now = cld_model
     radar_changed_label = False
     
-    if should_call_owm and 'owm' in locals() and owm:
-        current_data = owm.get("data", [{}])[0] if "data" in owm else owm
-        real_clouds = current_data.get("clouds")
-        real_uvi = float(current_data.get("uvi") or 0.0)
-        
-        if real_clouds is not None:
-            real_clouds = float(real_clouds)
-            
-            # --- HIGH-ONLY GATE: Ochrona przed cirrusami/smugami ---
-            low = float(h0.get("clouds_low_pct") or 0.0)
-            mid = float(h0.get("clouds_mid_pct") or 0.0)
-            lowmid = low + mid
-            prc = float(h0.get("precip_eff_mm", h0.get("precip_mm")) or 0.0)
-            
-            uv_model = float(h0.get("uv_index") or 0.0)
-            uv_live  = float(real_uvi or 0.0)
-            uv = uv_model if uv_model > 0 else uv_live
-            
-            models_strong_clear = (cld_model <= 40.0)
-            looks_like_high_only = (lowmid <= 20.0) and (prc <= 0.05)
-            owm_claims_cloudy = (real_clouds >= 70.0) and ((real_clouds - cld_model) >= 30.0)
-            
-            high_only_gate = (not hero_is_night) and looks_like_high_only and models_strong_clear
-            
-            if real_clouds >= 85 and uv > 1.2 and not hero_is_night:
-                real_clouds = 65.0
-                
-            if abs(real_clouds - cld_model) >= 25:
-                # Bramka z /day - całkowicie ufamy modelom, jeśli to fałszywy satelita
-                if high_only_gate and owm_claims_cloudy:
-                    print(f"[OWM-NOW] high-only gate: model={cld_model:.1f} lowmid={lowmid:.1f} owm={real_clouds:.1f} uv={uv:.2f}")
-                    pass # Zignoruj OWM i zachowaj czyste niebo z modeli
-                else:
-                    h0["_cld_override"] = real_clouds
-                    cld_now = real_clouds
-                    
-                label_live, _ = sky_from_clouds(cld_now, hero_is_night)
-                radar_changed_label = (label_live != label_model)
+    h0_is_current_hour = h0 and find_model_hour_for_now([h for _, h in ta_tuples[:1]], now) is h0
+    if should_call_owm and 'owm' in locals() and owm and h0 and h0_is_current_hour:
+        owm_cloud = classify_owm_cloud_correction(h0, owm, now, is_night=hero_is_night)
+        if owm_cloud.get("should_override_hour0"):
+            cld_now = float(owm_cloud["effective_live_clouds"])
+            h0["_cld_override"] = cld_now
+            radar_changed_label = bool(owm_cloud.get("label_live") != owm_cloud.get("label_model"))
                 
     # Zapisz flagę do h0, żeby użyć jej później w Hero
     if h0:

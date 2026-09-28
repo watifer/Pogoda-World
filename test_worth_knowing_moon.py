@@ -237,3 +237,13 @@ def test_moon_tip_i18n_uses_real_translate_weather_text_path():
         assert translate_weather_text(s, lang) == translated
         assert "pełnia" not in translated.lower()
         assert "pogodna noc" not in translated.lower()
+
+
+def test_moon_tip_i18n_survives_appended_worth_knowing_paragraph():
+    combined = f"Silny wiatr może być odczuwalny.\n\n{MOON_TIP_TEXTS['before_2']}"
+    translated = translate_weather_text(combined, "en")
+
+    assert "\n\n" in translated
+    assert "Full moon in 2 days" in translated
+    assert "pełnia" not in translated.lower()
+    assert "pogodna noc" not in translated.lower()
