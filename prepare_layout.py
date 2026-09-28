@@ -21,7 +21,7 @@ from worth_knowing import build_worth_knowing
 from confidence_gate import compute_trust_report
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
 from i18n import t, DAYS_FULL, DAYS_SHORT, translate_weather_text
-from owm_nowcast import get_current_weather, nowcast_note
+from owm_nowcast import get_current_weather, nowcast_note, classify_owm_cloud_correction, find_model_hour_for_now
 
 # ═══════════════════════════════════════
 # STAŁE
@@ -1282,10 +1282,12 @@ def prepare_layout_data(payload, now=None):
 
     hero_synoptic = None
     if pressure_trend is not None:
-        if pressure_trend <= -6: hero_synoptic = "Gwałtowny spadek ciśnienia"
-        elif pressure_trend <= -3: hero_synoptic = "Spadek ciśnienia"
-        elif pressure_trend >= 6: hero_synoptic = "Gwałtowny wzrost ciśnienia"
-        elif pressure_trend >= 3: hero_synoptic = "Wzrost ciśnienia"
+        # Zwykły trend pokazuje już strzałka przy hPa w Hero.
+        # Osobny kontekst zostawiamy tylko przy naprawdę dużej zmianie.
+        if pressure_trend <= -8:
+            hero_synoptic = "Gwałtowny spadek ciśnienia"
+        elif pressure_trend >= 8:
+            hero_synoptic = "Gwałtowny wzrost ciśnienia"
 
     hero_blocks = []
     for bd in block_defs:
@@ -1394,7 +1396,9 @@ def prepare_layout_data(payload, now=None):
             try:
                 dt_evt = datetime.strptime(date_str, "%Y-%m-%d").date()
                 days_ahead = (dt_evt - now.date()).days
-                if days_ahead < 0 or days_ahead > MAX_VOLATILITY_DAY_HORIZON:
+                # Diagnostyka weekendowa ma sens tylko jako wyprzedzenie.
+                # Dla dzisiaj robi szum w Uważaj i dubluje normalne alerty/hero.
+                if not (1 <= days_ahead <= MAX_VOLATILITY_DAY_HORIZON):
                     continue
             except ValueError:
                 continue
@@ -1436,35 +1440,13 @@ def prepare_layout_data(payload, now=None):
                 event_key = "alert_diag_event_sat" if dt.weekday() == 5 else "alert_diag_event_sun"
                 desc_template = t(lang, "alert_diag_desc")
                 desc_text = desc_template.format(temp=alt_val, pora=pora)
-                sender_text = f"⚠️ {t(lang, 'alert_diag_sender')}"
+                # Bez selektora emoji U+FE0F — font karty renderuje go jako [NO GLYPH].
+                sender_text = f"⚠ {t(lang, 'alert_diag_sender')}"
                 final_alert = f"{sender_text} — {t(lang, event_key)}. {desc_text}"
                 if final_alert not in alerts:
                     alerts.append(final_alert)
             except ValueError:
                 continue
-                
-            if diag.get("is_volatile") and diag.get("n_om", 0) >= 6 and diag.get("n_yr", 0) >= 3:
-                try:
-                    dt = datetime.strptime(date_str, "%Y-%m-%d")
-                    if dt.weekday() in [5, 6]:
-                        max_diff = diag.get("spread_max", diag.get("spread", 0))
-                        min_diff = diag.get("spread_min", 0)
-                        if max_diff >= min_diff:
-                            alt_temp = diag.get("max_om")
-                            pora = t(lang, "diff_day")
-                        else:
-                            alt_temp = diag.get("min_om")
-                            pora = t(lang, "diff_night")
-                        alt_val = int(round(alt_temp)) if alt_temp is not None else "?"
-                        event_key = "alert_diag_event_sat" if dt.weekday() == 5 else "alert_diag_event_sun"
-                        desc_template = t(lang, "alert_diag_desc")
-                        desc_text = desc_template.format(temp=alt_val, pora=pora)
-                        sender_text = f"⚠️ {t(lang, 'alert_diag_sender')}"
-                        final_alert = f"{sender_text} — {t(lang, event_key)}. {desc_text}"
-                        if final_alert not in alerts:
-                            alerts.append(final_alert)
-                except ValueError:
-                    continue
 
     weekend_teaser = None
     if show_teaser:
@@ -1517,6 +1499,14 @@ def prepare_layout_data(payload, now=None):
             
             if mm_now < 0.1 and rh >= 85 and cld >= 85:
                 should_call_owm = True
+            # Poranny /day jest najczęściej porównywany z widokiem za oknem.
+            # Jeśli model widzi dużo chmur, dociągamy świeży snapshot OWM dla linii "Teraz: ...".
+            if 6 <= now.hour < 12 and _eff_cld_consensus(current_h) >= 70:
+                should_call_owm = True
+
+    current_snapshot_line = None
+    owm_cloud = None
+    h_owm_model = None
 
     owm = payload.get("owm_current")
     if not owm and should_call_owm:
@@ -1538,60 +1528,33 @@ def prepare_layout_data(payload, now=None):
             final_context_line = (final_context_line + " · " + owm_note) if final_context_line else owm_note
             
     # ══════════════════════════════════════════════════════════
-    # TWARDA KOREKTA HERO (SATELITA ZABIJA KŁAMSTWA MODELI NA TERAZ)
+    # OWM SNAPSHOT DLA /DAY (NIE NADPISUJE HERO)
     # ══════════════════════════════════════════════════════════
+    # /day pozostaje planem dnia: hero_summary_line i hero_icon pochodzą z day_hero/trust gate.
+    # OWM może jedynie dodać widoczny snapshot „Teraz: ..." i skorygować bieżącą godzinę bloku.
     if owm:
-        current_data = owm.get("data", [{}])[0] if "data" in owm else owm
-        if current_data:
-            real_clouds = float(current_data.get("clouds", 0))
-            real_uvi = float(current_data.get("uvi", 0.0))
-            
-            h0 = next((h for h in ta if _hour_safe(h.get("time_local", "")) == now.hour), None) or (ta[0] if ta else {})
-            
-            model_cld = _eff_cld_consensus(h0) if h0 else 0
-            label_model, _ = sky_from_clouds(model_cld, hero_is_night)
-            
-            low = float(h0.get("clouds_low_pct") or 0.0)
-            mid = float(h0.get("clouds_mid_pct") or 0.0)
-            lowmid = low + mid
-            prc = float(h0.get("precip_eff_mm", h0.get("precip_mm")) or 0.0)
-            
-            uv_model = float(h0.get("uv_index") or 0.0)
-            uv_live  = float(real_uvi or 0.0)
-            uv = uv_model if uv_model > 0 else uv_live
-            
-            models_strong_clear = (model_cld <= 40.0)
-            looks_like_high_only = (lowmid <= 20.0) and (prc <= 0.05)
-            owm_claims_cloudy = (real_clouds >= 70.0) and ((real_clouds - model_cld) >= 30.0)
-            
-            high_only_gate = (not hero_is_night) and looks_like_high_only and models_strong_clear
-            
-            if real_clouds >= 85 and uv > 1.2 and not hero_is_night:
-                real_clouds = 65.0
-            
-            if abs(real_clouds - model_cld) >= 25:
-                if high_only_gate and owm_claims_cloudy:
-                    print(f"[OWM-DAY] high-only gate: model={model_cld:.1f} lowmid={lowmid:.1f} owm={real_clouds:.1f} uv={uv:.2f}")
-                    real_clouds = min(real_clouds, 65.0)
-                    
-                if abs(real_clouds - model_cld) >= 25:
-                    label_live, icon_live = sky_from_clouds(real_clouds, hero_is_night)
-                    
-                    if label_live != label_model:
-                        has_precip = bool(day_hero and day_hero.get("precip_badge"))
-                        has_wind = ((max_gust or 0) >= 60) or (max_wind >= 45)
-                        
-                        if not has_precip and not has_wind:
-                            hero_icon = icon_live
-                            
-                        nowy_napis = f"Obecnie {label_live.lower()}"
-                        nowy_napis = nowy_napis[0].upper() + nowy_napis[1:]
-                        
-                        if "\n" in hero_summary_line:
-                            parts = hero_summary_line.split("\n", 1)
-                            hero_summary_line = f"{nowy_napis}\n{parts[1]}"
-                        else:
-                            hero_summary_line = nowy_napis
+        h_owm_model = find_model_hour_for_now(hp, now)
+        if h_owm_model:
+            is_now_night = _is_night_from_symbol_or_time(h_owm_model)
+            owm_cloud = classify_owm_cloud_correction(h_owm_model, owm, now, is_night=is_now_night)
+            if (os.environ.get("ENABLE_DAY_SNAPSHOT_LINE", "1") == "1"
+                    and owm_cloud.get("should_show_snapshot") and owm_cloud.get("label_live")):
+                label_live = str(owm_cloud["label_live"])
+                label_out = translate_weather_text(label_live, lang) if lang != "pl" else label_live
+                label_out = label_out[:1].lower() + label_out[1:] if label_out else ""
+                current_snapshot_line = f"{t(lang, 'now_prefix')}: {label_out}"
+
+    # --- REDUKCJA SZUMU W HERO: nie dubluj hPa ↗/↘ zwykłym "Wzrost/Spadek ciśnienia" ---
+    if final_context_line and ("hPa" in (hero_summary_line or "")):
+        trend_abs = abs(float(pressure_trend or 0.0)) if pressure_trend is not None else 0.0
+        is_rapid_pressure = trend_abs >= 8.0 or ("gwałtown" in final_context_line.lower())
+        if not is_rapid_pressure:
+            parts = [
+                p.strip()
+                for p in final_context_line.split("·")
+                if p.strip().lower() not in ("wzrost ciśnienia", "spadek ciśnienia")
+            ]
+            final_context_line = " · ".join(parts) if parts else None
 
     # --- AWARYJNY SENSOR MŻAWKI ---
     if not final_context_line:
@@ -1603,55 +1566,9 @@ def prepare_layout_data(payload, now=None):
     # HYBRYDOWY START BLOKÓW (ZASZCZEPIENIE OWM NA BIEŻĄCĄ GODZINĘ)
     # ══════════════════════════════════════════════════════════
     cld_overrides = {}
-    bd_now = next((bd for bd in block_defs if _hour_in_block(now.hour, bd["start"], bd["end"])), None)
-    
-    if bd_now and owm:
-        current_data = owm.get("data", [{}])[0] if "data" in owm else owm
-        
-        owm_dt = current_data.get("dt")
-        if owm_dt:
-            owm_dt = float(owm_dt)
-            if owm_dt > 1e12:
-                owm_dt /= 1000.0
-        is_fresh = abs(now.timestamp() - owm_dt) < 5400 if owm_dt else True
-        
-        real_clouds = current_data.get("clouds")
-        
-        if real_clouds is not None and is_fresh:
-            real_clouds = float(real_clouds)
-            
-            now_floored = now.replace(minute=0, second=0, microsecond=0)
-            h_target = None
-            
-            for h in hp:
-                tloc_str = h.get("time_local", "")
-                if tloc_str:
-                    try:
-                        dt_h = datetime.fromisoformat(tloc_str.replace("Z", "+00:00"))
-                        if tz:
-                            dt_h = dt_h.astimezone(tz)
-                        
-                        if dt_h.replace(minute=0, second=0, microsecond=0) == now_floored:
-                            h_target = h
-                            break
-                    except Exception:
-                        pass
-            
-            if h_target:
-                model_cld = _eff_cld_consensus(h_target)
-                
-                low = float(h_target.get("clouds_low_pct") or h_target.get("clouds_low_pct_yr") or 0.0)
-                mid = float(h_target.get("clouds_mid_pct") or h_target.get("clouds_mid_pct_yr") or 0.0)
-                prc = float(h_target.get("precip_eff_mm", h_target.get("precip_mm")) or 0.0)
-                
-                models_strong_clear = (model_cld <= 40.0)
-                looks_like_high_only = ((low + mid) <= 20.0) and (prc <= 0.05)
-                owm_claims_cloudy = (real_clouds >= 70.0) and ((real_clouds - model_cld) >= 30.0)
-                
-                high_only_gate = (not hero_is_night) and looks_like_high_only and models_strong_clear
-                
-                if abs(real_clouds - model_cld) >= 25 and not (high_only_gate and owm_claims_cloudy):
-                    cld_overrides[h_target["time_local"]] = real_clouds
+    if (os.environ.get("ENABLE_DAY_OWM_BLOCK_OVERRIDE", "1") == "1"
+            and owm_cloud and h_owm_model and owm_cloud.get("should_override_hour0")):
+        cld_overrides[h_owm_model["time_local"]] = float(owm_cloud["effective_live_clouds"])
 
     today_blocks = _build_time_blocks(
         hp, today_str, tomorrow_str, block_defs, 
@@ -1693,12 +1610,26 @@ def prepare_layout_data(payload, now=None):
     hero_text = hero_summary_line.replace("\n", " ").lower()
     wk_text = wk.get("text", "").lower() if isinstance(wk, dict) else (str(wk).lower() if wk else "")
 
+    def _drop_duplicate_wk_lead_keep_appended(wk_obj):
+        """Usuwa duplikujący Hero pierwszy akapit WK, ale zostawia dopiski doklejone na końcu (np. pełnię)."""
+        if isinstance(wk_obj, dict):
+            text = str(wk_obj.get("text") or "")
+            if "\n\n" in text:
+                _, tail = text.split("\n\n", 1)
+                tail = tail.strip()
+                if tail:
+                    wk_copy = dict(wk_obj)
+                    wk_copy["text"] = tail
+                    return wk_copy
+        return None
+
     if wk_text and hero_text:
-        if any(w in wk_text for w in ["wiatr", "poryw", "wichur"]):
-            if any(w in hero_text for w in ["wiatr", "wietrznie", "wichur", "poryw"]):
-                wk = None
-        elif ("deszcz" in wk_text or "ulew" in wk_text) and ("deszcz" in hero_text or "ulew" in hero_text):
-            wk = None
+        duplicate_wind = any(w in wk_text for w in ["wiatr", "poryw", "wichur"]) and any(
+            w in hero_text for w in ["wiatr", "wietrznie", "wichur", "poryw"]
+        )
+        duplicate_rain = ("deszcz" in wk_text or "ulew" in wk_text) and ("deszcz" in hero_text or "ulew" in hero_text)
+        if duplicate_wind or duplicate_rain:
+            wk = _drop_duplicate_wk_lead_keep_appended(wk)
             
     for d in nd:
         if d.get("precip_badge") and len(d["precip_badge"]) > 0:
@@ -1715,7 +1646,6 @@ def prepare_layout_data(payload, now=None):
             hero_summary_line = translate_weather_text(hero_summary_line, lang)
         if final_context_line:
             final_context_line = translate_weather_text(final_context_line, lang)
-        
         alerts = [translate_weather_text(a, lang) for a in alerts if a]
         
         if wk and isinstance(wk, dict) and wk.get("text"):
@@ -1764,6 +1694,7 @@ def prepare_layout_data(payload, now=None):
         "main_icon":           hero_icon,
         "temp_range":          _fmt_temp(bmin, bmax),
         "summary":             hero_summary_line,
+        "current_snapshot_line": current_snapshot_line,
         "context_line":        final_context_line,
         "worth_knowing":       wk,
         "pressure":            None,
