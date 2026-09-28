@@ -10,3 +10,12 @@ python-dotenv
 geopy
 Pillow
 tzdata
+
+# --- Moduł nadmorski (coast / marine_storm / beach) ---
+# Wymagane przez coast_detector.py. Import ma fallback, żeby lekkie workery
+# i testy dało się uruchomić bez tych paczek, ALE środowisko generujące karty
+# musi je mieć — inaczej alerty od morza nie pojawią się nigdy.
+# Diagnostyka: python dev_preview.py --doctor
+pyshp
+shapely
+pyproj

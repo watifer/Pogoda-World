@@ -110,6 +110,72 @@ def classify_from_api(symbol_code=None, weather_code=None):
     return None
 
 
+# ═══════════════════════════════════════
+# MARZNĄCE OPADY / GOŁOLEDŹ
+# ═══════════════════════════════════════
+# UWAGA: classify_precip() nigdy nie zwraca kindu "freezing_*" (nie ma takich
+# wpisów w KINDS), a kody WMO 56/57/66/67 są mapowane na "sleet" (family=mixed).
+# Dlatego detekcja gołoledzi MUSI iść osobnym torem — inaczej warunek
+# `fam == "rain" and temp <= 0.8` jest nieosiągalny (fam=="rain" wymaga temp > 2.0).
+FREEZING_WMO_CODES = {56, 57, 66, 67}   # freezing drizzle / freezing rain
+
+FREEZING_MM_MIN = 0.05
+FREEZING_TEMP_C = 0.8
+FREEZING_RH_MIN = 88
+FREEZING_DP_SPREAD_MAX = 1.5   # maks. depresja punktu rosy (temp - dewpoint)
+
+
+def is_freezing_precip(mm, temp_c, symbol_code=None, weather_code=None,
+                       rh_pct=None, dewpoint_c=None) -> bool:
+    """Jedno źródło prawdy dla radaru gołoledzi (/now i /day).
+
+    Zwraca True, gdy:
+      * API jawnie raportuje marznący opad (WMO 56/57/66/67), albo
+      * pada deszcz/deszcz ze śniegiem przy temperaturze <= 0.8 °C
+        i powietrze jest wysycone.
+
+    Wysycenie liczymy jako RH >= 88% albo małą depresję punktu rosy
+    (temp - dewpoint <= 1.5 °C). Poprzedni warunek "dewpoint <= 1.0 °C" był
+    przy temp <= 0.8 °C praktycznie zawsze spełniony (dewpoint <= temp),
+    więc degradował alert do "zimno + pada" i groził alert fatigue.
+    """
+    try:
+        mm = float(mm or 0.0)
+    except (TypeError, ValueError):
+        return False
+    if mm <= FREEZING_MM_MIN:
+        return False
+
+    try:
+        temp_c = float(temp_c) if temp_c is not None else 99.0
+    except (TypeError, ValueError):
+        return False
+
+    if weather_code in FREEZING_WMO_CODES and temp_c <= 2.0:
+        return True
+
+    kind = classify_precip(mm, temp_c, symbol_code=symbol_code, weather_code=weather_code)
+    fam = KINDS.get(kind, {}).get("family")
+    # "mixed" (sleet) jest tu celowo: przy <= 0.8 °C to realny scenariusz gołoledzi.
+    if fam not in ("rain", "mixed"):
+        return False
+    if temp_c > FREEZING_TEMP_C:
+        return False
+
+    try:
+        rh = float(rh_pct or 0.0)
+    except (TypeError, ValueError):
+        rh = 0.0
+    try:
+        dp = float(dewpoint_c) if dewpoint_c is not None else None
+    except (TypeError, ValueError):
+        dp = None
+
+    if rh >= FREEZING_RH_MIN:
+        return True
+    return dp is not None and (temp_c - dp) <= FREEZING_DP_SPREAD_MAX
+
+
 def classify_precip(mm, temp_c, symbol_code=None, weather_code=None):
     api = classify_from_api(symbol_code, weather_code)
     mm = float(mm or 0)

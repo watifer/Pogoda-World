@@ -29,6 +29,9 @@ STRINGS = {
     "now_prefix": "Teraz",
     "next_days": "Najbliższe dni",
     "tomorrow": "Jutro",
+    "freezing_alert": "⚠ Marznące opady: ryzyko gołoledzi ({when}).",
+    "currently": "Obecnie",
+    "later": "Później",
     "next_14d_trend": "Trend na kolejne 14 dni",
     "next_weekend": "Przyszły weekend",
     "blk_morning": "Rano",
@@ -82,7 +85,21 @@ STRINGS = {
     "alert_diag_event_sat": "Anomalia (sobota)",
     "alert_diag_event_sun": "Anomalia (niedz.)",
     "alert_diag_desc": "Modele są rozbieżne. Inne wyliczenia sugerują ok. {temp}°C {pora}.",
-    "trust_clouds": "Modele są rozbieżne co do zachmurzenia. Skorygowano kartę /now"
+    "trust_clouds": "Modele są rozbieżne co do zachmurzenia. Skorygowano kartę /now",
+
+    # --- WYBRZEŻE / MORZE ---
+    # marine_storm = globalne ostrzeżenie sztormowe (cały rok, wysokie progi)
+    "coast_marine_storm_day": "Sztorm od morza — od ok. {hh}:00 wiatr od wody do {wind} km/h, porywy do {gust} km/h. Unikaj plaży, mola i falochronów.",
+    "coast_marine_storm_now": "⚠ Sztorm od morza: wiatr od wody do {gust} km/h!",
+    "coast_marine_storm_soon": "⚠ Sztorm od morza w ciągu 1-2 h (do {gust} km/h)!",
+    "coast_marine_storm_from": "⚠ Sztorm od morza od ok. {hh}:00 (do {gust} km/h).",
+    # beach = lifestyle, tylko PL i tylko sezon 01.06–15.09
+    "coast_beach_day_point": "Wybrzeże — nad wodą możliwy wiatr od morza (ok. {start}:00). Sprawdź /now (radar taktyczny).",
+    "coast_beach_day_range": "Wybrzeże — nad wodą możliwy wiatr od morza (głównie {start}:00–{end}:00). Sprawdź /now (radar taktyczny).",
+    "coast_beach_now": "Wybrzeże: wiatr od wody {wind} km/h — na otwartym brzegu mocniej.",
+    "coast_beach_now_gust": "Wybrzeże: wiatr od wody {wind} km/h, porywy do {gust} km/h — na otwartym brzegu mocniej.",
+    "coast_beach_soon": "Wybrzeże: w ciągu 1-2 h wiatr od wody (do {gust} km/h) — na plaży mocniej.",
+    "coast_beach_from": "Wybrzeże: od ok. {hh}:00 wiatr od wody (do {gust} km/h)."
   },
   "en": {
     "report_morning": "morning report",
@@ -99,6 +116,9 @@ STRINGS = {
     "now_prefix": "Now",
     "next_days": "Next days",
     "tomorrow": "Tomorrow",
+    "freezing_alert": "⚠ Freezing precipitation: risk of black ice ({when}).",
+    "currently": "Currently",
+    "later": "Later",
     "next_14d_trend": "14-day trend",
     "next_weekend": "Next weekend",
     "blk_morning": "Morning",
@@ -156,7 +176,19 @@ STRINGS = {
     "alert_diag_event_sun": "Anomaly (Sunday)",
 
     "alert_diag_desc": "Models disagree. Other data suggests ~{temp}°C {pora}.",
-    "trust_clouds": "Forecast models disagree on cloud cover. The /now card has been corrected."
+    "trust_clouds": "Forecast models disagree on cloud cover. The /now card has been corrected.",
+
+    # --- COAST / SEA ---
+    "coast_marine_storm_day": "Marine storm — from around {hh}:00 onshore wind up to {wind} km/h, gusts up to {gust} km/h. Stay away from the beach, piers and breakwaters.",
+    "coast_marine_storm_now": "⚠ Marine storm: onshore wind up to {gust} km/h!",
+    "coast_marine_storm_soon": "⚠ Marine storm within 1-2 h (up to {gust} km/h)!",
+    "coast_marine_storm_from": "⚠ Marine storm from around {hh}:00 (up to {gust} km/h).",
+    "coast_beach_day_point": "Coast — onshore wind possible by the water (around {start}:00). Check /now (tactical radar).",
+    "coast_beach_day_range": "Coast — onshore wind possible by the water (mainly {start}:00–{end}:00). Check /now (tactical radar).",
+    "coast_beach_now": "Coast: onshore wind {wind} km/h — stronger on the open shore.",
+    "coast_beach_now_gust": "Coast: onshore wind {wind} km/h, gusts up to {gust} km/h — stronger on the open shore.",
+    "coast_beach_soon": "Coast: onshore wind in 1-2 h (up to {gust} km/h) — stronger on the beach.",
+    "coast_beach_from": "Coast: from around {hh}:00 onshore wind (up to {gust} km/h)."
   },
   "fr": {
     "report_morning": "rapport du matin",
@@ -173,6 +205,9 @@ STRINGS = {
     "now_prefix": "Maintenant",
     "next_days": "Prochains jours",
     "tomorrow": "Demain",
+    "freezing_alert": "⚠ Précipitations verglaçantes : risque de verglas ({when}).",
+    "currently": "Actuellement",
+    "later": "Plus tard",
     "next_14d_trend": "Tendance 14 jours",
     "next_weekend": "Week-end prochain",
     "blk_morning": "Matin",
@@ -230,7 +265,19 @@ STRINGS = {
     "alert_diag_event_sun": "Anomalie (dimanche)",
 
     "alert_diag_desc": "Les modèles divergent. D'autres données suggèrent ~{temp}°C {pora}.",
-    "trust_clouds": "Les modèles diffèrent sur la couverture nuageuse. La carte /now a été corrigée."
+    "trust_clouds": "Les modèles diffèrent sur la couverture nuageuse. La carte /now a été corrigée.",
+
+    # --- CÔTE / MER ---
+    "coast_marine_storm_day": "Tempête marine — à partir d'env. {hh}:00, vent de mer jusqu'à {wind} km/h, rafales jusqu'à {gust} km/h. Évitez la plage, les jetées et les digues.",
+    "coast_marine_storm_now": "⚠ Tempête marine : vent de mer jusqu'à {gust} km/h !",
+    "coast_marine_storm_soon": "⚠ Tempête marine d'ici 1-2 h (jusqu'à {gust} km/h) !",
+    "coast_marine_storm_from": "⚠ Tempête marine à partir d'env. {hh}:00 (jusqu'à {gust} km/h).",
+    "coast_beach_day_point": "Côte — vent de mer possible près de l'eau (vers {start}:00). Consultez /now (radar tactique).",
+    "coast_beach_day_range": "Côte — vent de mer possible près de l'eau (surtout {start}:00–{end}:00). Consultez /now (radar tactique).",
+    "coast_beach_now": "Côte : vent de mer {wind} km/h — plus fort sur le rivage ouvert.",
+    "coast_beach_now_gust": "Côte : vent de mer {wind} km/h, rafales jusqu'à {gust} km/h — plus fort sur le rivage ouvert.",
+    "coast_beach_soon": "Côte : vent de mer d'ici 1-2 h (jusqu'à {gust} km/h) — plus fort sur la plage.",
+    "coast_beach_from": "Côte : à partir d'env. {hh}:00, vent de mer (jusqu'à {gust} km/h)."
   },
   "de": {
     "report_morning": "Morgenbericht",
@@ -247,6 +294,9 @@ STRINGS = {
     "now_prefix": "Jetzt",
     "next_days": "Nächste Tage",
     "tomorrow": "Morgen",
+    "freezing_alert": "⚠ Gefrierender Niederschlag: Glatteisgefahr ({when}).",
+    "currently": "Aktuell",
+    "later": "Später",
     "next_14d_trend": "14-Tage-Trend",
     "next_weekend": "Nächstes Wochenende",
     "blk_morning": "Morgen",
@@ -304,7 +354,19 @@ STRINGS = {
     "alert_diag_event_sun": "Anomalie (Sonntag)",
 
     "alert_diag_desc": "Modelle weichen ab. Andere Daten zeigen ca. {temp}°C {pora}.",
-    "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig. Die /now-Karte wurde korrigiert."
+    "trust_clouds": "Prognosemodelle sind sich bei der Bewölkung uneinig. Die /now-Karte wurde korrigiert.",
+
+    # --- KÜSTE / MEER ---
+    "coast_marine_storm_day": "Sturm von See — ab ca. {hh}:00 Uhr auflandiger Wind bis {wind} km/h, Böen bis {gust} km/h. Strand, Molen und Wellenbrecher meiden.",
+    "coast_marine_storm_now": "⚠ Sturm von See: auflandiger Wind bis {gust} km/h!",
+    "coast_marine_storm_soon": "⚠ Sturm von See in 1-2 Std. (bis {gust} km/h)!",
+    "coast_marine_storm_from": "⚠ Sturm von See ab ca. {hh}:00 Uhr (bis {gust} km/h).",
+    "coast_beach_day_point": "Küste — auflandiger Wind am Wasser möglich (gegen {start}:00 Uhr). Siehe /now (taktisches Radar).",
+    "coast_beach_day_range": "Küste — auflandiger Wind am Wasser möglich (vor allem {start}:00–{end}:00 Uhr). Siehe /now (taktisches Radar).",
+    "coast_beach_now": "Küste: auflandiger Wind {wind} km/h — am offenen Ufer stärker.",
+    "coast_beach_now_gust": "Küste: auflandiger Wind {wind} km/h, Böen bis {gust} km/h — am offenen Ufer stärker.",
+    "coast_beach_soon": "Küste: auflandiger Wind in 1-2 Std. (bis {gust} km/h) — am Strand stärker.",
+    "coast_beach_from": "Küste: ab ca. {hh}:00 Uhr auflandiger Wind (bis {gust} km/h)."
 
   },
   "es": {
@@ -322,6 +384,9 @@ STRINGS = {
     "now_prefix": "Ahora",
     "next_days": "Próximos días",
     "tomorrow": "Mañana",
+    "freezing_alert": "⚠ Precipitación helada: riesgo de placas de hielo ({when}).",
+    "currently": "Actualmente",
+    "later": "Más tarde",
     "next_14d_trend": "Tendencia de 14 días",
     "next_weekend": "Próximo fin de semana",
     "blk_morning": "Mañana",
@@ -379,7 +444,19 @@ STRINGS = {
     "alert_diag_event_sun": "Anomalía (domingo)",
 
     "alert_diag_desc": "Los modelos difieren. Otros datos sugieren ~{temp}°C {pora}.",
-    "trust_clouds": "Los modelos difieren sobre la cobertura de nubes. La tarjeta /now ha sido corregida."
+    "trust_clouds": "Los modelos difieren sobre la cobertura de nubes. La tarjeta /now ha sido corregida.",
+
+    # --- COSTA / MAR ---
+    "coast_marine_storm_day": "Temporal marino — desde aprox. las {hh}:00, viento del mar hasta {wind} km/h, rachas de hasta {gust} km/h. Evita la playa, los muelles y los espigones.",
+    "coast_marine_storm_now": "⚠ Temporal marino: viento del mar hasta {gust} km/h.",
+    "coast_marine_storm_soon": "⚠ Temporal marino en 1-2 h (hasta {gust} km/h).",
+    "coast_marine_storm_from": "⚠ Temporal marino desde aprox. las {hh}:00 (hasta {gust} km/h).",
+    "coast_beach_day_point": "Costa — posible viento del mar junto al agua (hacia las {start}:00). Consulta /now (radar táctico).",
+    "coast_beach_day_range": "Costa — posible viento del mar junto al agua (sobre todo {start}:00–{end}:00). Consulta /now (radar táctico).",
+    "coast_beach_now": "Costa: viento del mar {wind} km/h — más fuerte en la orilla abierta.",
+    "coast_beach_now_gust": "Costa: viento del mar {wind} km/h, rachas de hasta {gust} km/h — más fuerte en la orilla abierta.",
+    "coast_beach_soon": "Costa: viento del mar en 1-2 h (hasta {gust} km/h) — más fuerte en la playa.",
+    "coast_beach_from": "Costa: desde aprox. las {hh}:00, viento del mar (hasta {gust} km/h)."
   },
   "no": {
     "report_morning": "morgenrapport",
@@ -396,6 +473,9 @@ STRINGS = {
     "now_prefix": "Nå",
     "next_days": "Neste dager",
     "tomorrow": "I morgen",
+    "freezing_alert": "⚠ Underkjølt nedbør: fare for isglatte veier ({when}).",
+    "currently": "Nå",
+    "later": "Senere",
     "next_14d_trend": "14-dagers trend",
     "next_weekend": "Neste helg",
     "blk_morning": "Morgen",
@@ -453,7 +533,19 @@ STRINGS = {
     "alert_diag_event_sun": "Anomali (søndag)",
 
     "alert_diag_desc": "Modellene spriker. Andre data antyder ~{temp}°C {pora}.",
-    "trust_clouds": "Varslingsmodellene er uenige om skydekket. /now-kortet har blitt korrigert."
+    "trust_clouds": "Varslingsmodellene er uenige om skydekket. /now-kortet har blitt korrigert.",
+
+    # --- KYST / HAV ---
+    "coast_marine_storm_day": "Storm fra havet — fra ca. {hh}:00 pålandsvind opptil {wind} km/h, vindkast opptil {gust} km/h. Hold deg unna stranden, brygger og moloer.",
+    "coast_marine_storm_now": "⚠ Storm fra havet: pålandsvind opptil {gust} km/h!",
+    "coast_marine_storm_soon": "⚠ Storm fra havet om 1-2 t (opptil {gust} km/h)!",
+    "coast_marine_storm_from": "⚠ Storm fra havet fra ca. {hh}:00 (opptil {gust} km/h).",
+    "coast_beach_day_point": "Kyst — pålandsvind mulig ved vannet (rundt {start}:00). Sjekk /now (taktisk radar).",
+    "coast_beach_day_range": "Kyst — pålandsvind mulig ved vannet (mest {start}:00–{end}:00). Sjekk /now (taktisk radar).",
+    "coast_beach_now": "Kyst: pålandsvind {wind} km/h — sterkere på åpen strand.",
+    "coast_beach_now_gust": "Kyst: pålandsvind {wind} km/h, vindkast opptil {gust} km/h — sterkere på åpen strand.",
+    "coast_beach_soon": "Kyst: pålandsvind om 1-2 t (opptil {gust} km/h) — sterkere på stranden.",
+    "coast_beach_from": "Kyst: fra ca. {hh}:00 pålandsvind (opptil {gust} km/h)."
   }
 }
 
