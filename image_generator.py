@@ -539,7 +539,25 @@ def draw_days_card(draw, ov, img, days, title, y, cx1, cx2, pal,
     return y + card_h
 
 
+def strip_vs16(value):
+    """Rekurencyjnie usuwa U+FE0F (variation selector-16) z każdego stringa.
+
+    Inter renderuje warianty emoji z VS16 jako [NO GLYPH]. Zamiast pilnować
+    tego w dziesiątkach miejsc źródłowych (i18n, prepare_layout, prepare_now_layout),
+    czyścimy CAŁY payload karty w jednym miejscu — tuż przed rysowaniem.
+    """
+    if isinstance(value, str):
+        return value.replace("\ufe0f", "")
+    if isinstance(value, dict):
+        return {k: strip_vs16(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        cleaned = [strip_vs16(v) for v in value]
+        return type(value)(cleaned) if isinstance(value, tuple) else cleaned
+    return value
+
+
 def generate_weather_card(data, palette_override=None):
+    data = strip_vs16(data)
     f_city = get_font("Inter-Bold.ttf", 78)
     f_date = get_font("Inter-Regular.ttf", 40)
     f_meta = get_font("Inter-Regular.ttf", 32)
@@ -554,8 +572,8 @@ def generate_weather_card(data, palette_override=None):
     blocks = data.get("today_blocks", [])
     days = data.get("next_days", [])
     wdays = data.get("weekend_detail_days", [])
-    # Usuwamy variation selector U+FE0F z emoji alertów — Inter potrafi go pokazać jako [NO GLYPH].
-    alerts = [str(a).replace("\ufe0f", "") for a in (data.get("alerts", []) or []) if a]
+    # VS16 zdjęty globalnie przez strip_vs16(data) na wejściu funkcji.
+    alerts = [str(a) for a in (data.get("alerts", []) or []) if a]
     mi = data.get("main_icon", "cloud")
     if palette_override:
         pal = palette_override

@@ -13,10 +13,14 @@ except ImportError:
 from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _drizzle_hint, _precip_consensus
 from i18n import t, DAYS_FULL
 from i18n import translate_weather_text
-from forecast_text import classify_precip, KINDS
+from forecast_text import classify_precip, KINDS, is_freezing_precip
 from forecast_text import sky_from_clouds
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
-from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _drizzle_hint
+
+# Neutralne tokeny na przyimki czasowe w Hero. Wstawiamy je przed tłumaczeniem
+# całego opisu i podmieniamy na t(lang, "from"/"until") już po nim.
+PREP_TOKENS = {"from": "\u2e24FROM\u2e25", "until": "\u2e24UNTIL\u2e25"}
+
 
 def _now_icon(clouds: float, precip: float, temp: float, hour: int, kind: str = None, symbol_code: str = "") -> str:
     """Logika ikon oparta na głównym klasyfikatorze z forecast_text."""
@@ -105,32 +109,22 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # NOWOŚĆ: INTELIGENTNA KOREKTA SATELITARNA (OWM) NA SAMYM STARCIE!
     # ══════════════════════════════════════════════════════════
     owm_note = None
-    should_call_owm = False
     forecast_source = payload.get("forecast_source", "OpenMeteo + Yr.no")
 
-    # Bramka logiki: czy uderzać do OWM?
-    if " + " not in forecast_source: 
-        should_call_owm = True
-    elif hours:
-        # Szybki skan pierwszej godziny na wypadek ukrytego opadu lub wysokiego zachmurzenia
-        first_h = ta_tuples[0][1]
-        rh = float(first_h.get("rh_pct") or 0)
-        mm_now = float(first_h.get("precip_eff_mm", first_h.get("precip_mm")) or 0)
-        cld = max(float(first_h.get("clouds_low_pct") or 0) + float(first_h.get("clouds_mid_pct") or 0), float(first_h.get("clouds_pct_yr") or 0))
-        if mm_now < 0.1 and rh >= 85 and cld >= 85:
-            should_call_owm = True
-        # Zawsze sprawdzamy chmury do fuzji dla /now!
-        should_call_owm = True  # Celowo wymuszamy call dla taktycznego radaru
+    # /now zawsze chce świeży radar satelitarny — ale najpierw konsumujemy snapshot,
+    # który weather_payload mógł już dołączyć (payload["owm_current"]).
+    # Dopiero jego brak uzasadnia blokujący HTTP w ścieżce użytkownika.
+    owm = payload.get("owm_current")
+    if not owm:
+        try:
+            owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=8)
+        except Exception:
+            owm = None
 
-    if should_call_owm:
-        from owm_nowcast import get_current_weather, nowcast_note
-        
-        # Pobieramy PRAWDZIWE dane z satelity na żywo:
-        owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=8)
-        
-        if owm:
-            # Tworzymy tylko notatkę ratunkową, zjawiska pogodowe nadpisze lokalny override
-            owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm, lang=lang)
+    if owm:
+        # Tworzymy tylko notatkę ratunkową, zjawiska pogodowe nadpisze lokalny override.
+        # nowcast_note() ma własny fresh-gate (owm_is_fresh) — stare dane zwrócą None.
+        owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm, lang=lang)
 
     # --- CIŚNIENIE I TREND DLA HERO ---
     def _hour(h_dict):
@@ -190,7 +184,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     radar_changed_label = False
     
     h0_is_current_hour = h0 and find_model_hour_for_now([h for _, h in ta_tuples[:1]], now) is h0
-    if should_call_owm and 'owm' in locals() and owm and h0 and h0_is_current_hour:
+    if owm and h0 and h0_is_current_hour:
         owm_cloud = classify_owm_cloud_correction(h0, owm, now, is_night=hero_is_night)
         if owm_cloud.get("should_override_hour0"):
             cld_now = float(owm_cloud["effective_live_clouds"])
@@ -347,7 +341,12 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         if is_sunny_target and (change_hour >= 20 or change_hour <= 4):
             pass 
         else:
-            prep_word = t(lang, change_type)  
+            # Placeholder zamiast gotowego słowa: sky_desc jest tłumaczony w całości
+            # dokładnie raz (niżej), więc fragment już przetłumaczony przeszedłby przez
+            # tłumacza po raz drugi (ES: "a" -> "y"). Z kolei polskie "do"/"od" zostałyby
+            # zdegradowane przez REPLACEMENTS ("do" -> "to"/"a" zamiast "until"/"hasta").
+            # Token jest neutralny dla tłumacza i podmieniamy go na t(lang, ...) na końcu.
+            prep_word = PREP_TOKENS[change_type]
             
             if change_type == "from":
                 if max_precip_4h > 0.0:
@@ -366,6 +365,10 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # ==================================================================
     # 3. LATE WARNING (Zagrożenia poza oknem 4h, ale w tabeli 12h)
     # ==================================================================
+    # Linia "Później: ..." powstaje od razu w języku docelowym (t(lang, ...)),
+    # więc NIE wolno jej wkleić do sky_desc przed tłumaczeniem — doklejamy ją
+    # dopiero za ostatnim przebiegiem tłumacza.
+    later_line = None
     if max_precip_4h < 1.0:
         for dt_late, h_late in ta_tuples[4:12]:
             prc_late = get_prc(h_late)
@@ -390,36 +393,39 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                 else: 
                     late_key = "rain"
                 
-                # Tłumaczymy typ opadu oraz słowo "od" ("from") w locie
-                late_name = t(lang, late_key).lower()
+                # Tłumaczymy typ opadu, słowo "od" ("from") oraz "Później" w locie.
+                # Nazwa opadu z wielkiej litery: po dwukropku wymaga tego niemiecki
+                # (rzeczowniki), a wcześniej robił to za nas tłumacz (reguła dwukropka).
+                late_name = t(lang, late_key)
+                late_name = late_name[:1].upper() + late_name[1:]
                 prep_from = t(lang, "from")
-                
-                # Słownik ratunkowy dla samego słowa "Później"
-                later_dict = {
-                    "pl": "Później", "en": "Later", "de": "Später", 
-                    "fr": "Plus tard", "es": "Más tarde", "no": "Senere", "nb": "Senere"
-                }
-                later_str = later_dict.get(lang, "Later")
+                later_str = t(lang, "later")
                 
                 # Gotowa, w 100% przetłumaczona linijka
-                sky_desc += f"\n{later_str}: {late_name} {prep_from} {dt_late.hour:02d}:00"
+                later_line = f"{later_str}: {late_name} {prep_from} {dt_late.hour:02d}:00"
                 break
 
     # ==================================================================
     # ZAKOTWICZENIE CZASOWE DLA HERO W /NOW ("OBECNIE")
     # ==================================================================
     if sky_desc:
-        # 1. Tłumaczymy czystą bazę (np. "Bezchmurnie, pogoda jak kryształ"),
-        # aby słownik EXACT_MAPS mógł to idealnie dopasować!
+        # 1. JEDYNE tłumaczenie Hero. sky_desc jest tu w całości po polsku,
+        # więc EXACT_MAPS ma szansę trafić w pełne zdanie, a REPLACEMENTS
+        # nie dostaje tekstu, który już raz przez nie przeszedł.
         if lang != "pl":
             sky_desc = translate_weather_text(sky_desc, lang)
-            
+
+        # Tokeny przyimków -> właściwe słowa z i18n (po tłumaczeniu, więc bez ryzyka
+        # drugiego przebiegu i bez degradacji "until" do "to").
+        for tok_key, tok in PREP_TOKENS.items():
+            if tok in sky_desc:
+                sky_desc = sky_desc.replace(tok, t(lang, tok_key))
+
         sky_desc_low = sky_desc[:1].lower() + sky_desc[1:]
         
-        # 2. Tłumaczymy samo słowo wprowadzające
-        obecnie_str = "Obecnie"
-        if lang != "pl":
-            obecnie_str = translate_weather_text("obecnie", lang)
+        # 2. Słowo wprowadzające bierzemy ze słownika UI, nie z tłumacza tekstów
+        # pogodowych (REPLACEMENTS["fr"] mapował "obecnie" -> "Currently").
+        obecnie_str = t(lang, "currently")
         
         # 3. Sklejamy z TWARDĄ spacją w kodzie (strip() usuwa ewentualne spacje ze słownika)
         sky_desc = f"{obecnie_str.strip()} {sky_desc_low}"
@@ -427,10 +433,16 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         # 4. Podniesienie pierwszej litery całego zdania
         sky_desc = sky_desc[:1].upper() + sky_desc[1:]
 
+    # Linia "Później: ..." jest już w języku docelowym — dopinamy po tłumaczeniu.
+    if later_line:
+        sky_desc = f"{sky_desc}\n{later_line}" if sky_desc else later_line
+
     # Bezpieczne klejenie drugiej linii Hero (Wiatr + Ciśnienie)
     hero_line2_parts = []
     if hero_wind: 
-        hero_line2_parts.append(hero_wind)
+        # hero_wind powstaje po polsku ("silny wiatr"/"wichura") i nigdy nie
+        # przechodził przez tłumacza po zmianie na hero_prelocalized.
+        hero_line2_parts.append(translate_weather_text(hero_wind, lang) if lang != "pl" else hero_wind)
         
     if pressure_hpa:
         arr = "→"
@@ -441,6 +453,8 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         
     hero_line2 = " · ".join(hero_line2_parts)
     hero_summary = f"{sky_desc}\n{hero_line2}" if hero_line2 else sky_desc
+    # Hero jest już w 100% w języku docelowym — ostatnia mila go NIE dotyka.
+    hero_summary_prelocalized = True
 
     # --- BUDOWA 12 BLOKÓW GODZINOWYCH ---
     today_blocks = []
@@ -659,29 +673,18 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # ==================================================================
     # RADAR GOŁOLEDZI (/now) - ze stałymi i ciągłością czasu
     # ==================================================================
-    FREEZING_MM_MIN = 0.05
-    FREEZING_TEMP_C = 0.8
-    FREEZING_RH_MIN = 88
-    FREEZING_DP_MAX = 1.0
-
     def _freezing_risk_now(h_dict):
-        t_val = float(h_dict.get("temp_c") if h_dict.get("temp_c") is not None else 99)
-        rh = float(h_dict.get("rh_pct") or 0)
-        dp = h_dict.get("dewpoint_c")
-        dp = float(dp) if dp is not None else None
-        mm = float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0)
-        
-        if mm <= FREEZING_MM_MIN: return False
-        kind_val = classify_precip(
-            mm, t_val,
+        # Detekcja żyje w forecast_text.is_freezing_precip() — wspólnie z /day.
+        # Poprzedni warunek lokalny był nieosiągalny: classify_precip() nie zwraca
+        # kindów "freezing_*", a family=="rain" wymaga temp > 2.0 °C.
+        return is_freezing_precip(
+            float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0),
+            h_dict.get("temp_c"),
             symbol_code=h_dict.get("symbol_code_eff", h_dict.get("symbol_code")),
-            weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code"))
+            weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code")),
+            rh_pct=h_dict.get("rh_pct"),
+            dewpoint_c=h_dict.get("dewpoint_c"),
         )
-        if kind_val in {"freezing_drizzle", "freezing_rain"}: return True
-        fam = KINDS.get(kind_val, {}).get("family")
-        if fam == "rain" and t_val <= FREEZING_TEMP_C:
-            if (dp is not None and dp <= FREEZING_DP_MAX) or (rh >= FREEZING_RH_MIN): return True
-        return False
 
     risk_dts_now = []
     for dt_val, h_dict in ta_tuples:
@@ -713,14 +716,16 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             
         rng = group_hourly_datetimes(risk_dts_now)
         when = ", ".join(fmt_rng(a, b) for a, b in rng[:2])
-        freezing_note = f"⚠️ Uwaga: ryzyko gołoledzi i marznących opadów ({when})."
+        # Treść z i18n: dynamiczne "({when})" rozbijało EXACT_MAPS, więc
+        # translate_weather_text() zostawiał ten alert po polsku we WSZYSTKICH językach.
+        freezing_note = t(lang, "freezing_alert", when=when)
 
     # 3. Kaskada priorytetów (Gołoledź najwyżej!)
     context_line = freezing_note or now_context_line or coastal_note or owm_note or hint
-    # Notka nadmorska jest już zbudowana w docelowym języku (t(lang, ...)),
-    # więc nie wolno jej przepuścić przez translate_weather_text.
+    # Notki zbudowane przez t(lang, ...) są już w języku docelowym,
+    # więc nie wolno ich przepuścić przez translate_weather_text.
     context_line_prelocalized = bool(
-        coastal_note and not freezing_note and not now_context_line and context_line == coastal_note
+        context_line and context_line in (freezing_note, coastal_note)
     )
     
     
@@ -728,7 +733,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # OSTATNIA MILA: TŁUMACZENIE DLA KOMENDY /now (TYLKO RAZ!)
     # ══════════════════════════════════════════════════════════
     if lang != "pl":
-        if hero_summary:
+        if hero_summary and not hero_summary_prelocalized:
             hero_summary = translate_weather_text(hero_summary, lang)
         if context_line and not context_line_prelocalized:
             context_line = translate_weather_text(context_line, lang)

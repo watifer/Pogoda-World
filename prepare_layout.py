@@ -16,7 +16,8 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo
 
-from forecast_text import WxEvent, BlockForecast, build_block_copy, classify_precip, sky_from_clouds, SKY_RANK, KINDS
+from forecast_text import (WxEvent, BlockForecast, build_block_copy, classify_precip,
+                           sky_from_clouds, SKY_RANK, KINDS, is_freezing_precip)
 from worth_knowing import build_worth_knowing
 from confidence_gate import compute_trust_report
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
@@ -1002,29 +1003,20 @@ def prepare_layout_data(payload, now=None):
             alerts.append("Zła jakość powietrza — normy zanieczyszczeń są przekroczone")
 
     # === DETEKTOR GOŁOLEDZI I MARZNĄCYCH OPADÓW (24h) ===
-    FREEZING_MM_MIN = 0.05
-    FREEZING_TEMP_C = 0.8
-    FREEZING_RH_MIN = 88
-    FREEZING_DP_MAX = 1.0
+    # Alerty nadmorskie i gołoledź powstają od razu w języku docelowym,
+    # więc muszą ominąć "ostatnią milę" tłumacza.
+    prelocalized_alerts = set()
 
     def _freezing_risk(h_dict):
-        t_val = float(h_dict.get("temp_c") if h_dict.get("temp_c") is not None else 99)
-        rh = float(h_dict.get("rh_pct") or 0)
-        dp = h_dict.get("dewpoint_c")
-        dp = float(dp) if dp is not None else None
-        mm = float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0)
-        
-        if mm <= FREEZING_MM_MIN: return False
-        kind_val = classify_precip(
-            mm, t_val,
+        # Wspólna detekcja z /now — patrz forecast_text.is_freezing_precip().
+        return is_freezing_precip(
+            float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0),
+            h_dict.get("temp_c"),
             symbol_code=h_dict.get("symbol_code_eff", h_dict.get("symbol_code")),
-            weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code"))
+            weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code")),
+            rh_pct=h_dict.get("rh_pct"),
+            dewpoint_c=h_dict.get("dewpoint_c"),
         )
-        if kind_val in {"freezing_drizzle", "freezing_rain"}: return True
-        fam = KINDS.get(kind_val, {}).get("family")
-        if fam == "rain" and t_val <= FREEZING_TEMP_C:
-            if (dp is not None and dp <= FREEZING_DP_MAX) or (rh >= FREEZING_RH_MIN): return True
-        return False
 
     all_hours = payload.get("hours", [])
     scan_limit = now + timedelta(hours=24)
@@ -1045,7 +1037,7 @@ def prepare_layout_data(payload, now=None):
             end_h = end.hour
             if end_h == 0 and end.date() != a.date():
                 end_h = 24
-            prefix = "jutro " if a.date() > now.date() else ""
+            prefix = f"{t(lang, 'tomorrow').lower()} " if a.date() > now.date() else ""
             return f"{prefix}{a.hour:02d}–{end_h:02d}"
 
         def group_hourly_datetimes(dts):
@@ -1060,8 +1052,9 @@ def prepare_layout_data(payload, now=None):
             
         rng = group_hourly_datetimes(risk_dts)
         when = ", ".join(fmt_rng(a, b) for a, b in rng[:2])
-        alert_msg = t(lang, "freezing_alert") if t(lang, "freezing_alert") != "freezing_alert" else "⚠️ Marznące opady: ryzyko gołoledzi"
-        alerts.insert(0, f"{alert_msg} ({when}).")
+        freezing_alert = t(lang, "freezing_alert", when=when)
+        alerts.insert(0, freezing_alert)
+        prelocalized_alerts.add(freezing_alert)
 
     section_title, block_defs = _get_time_blocks(now.hour)
     section_title = t(lang, {
@@ -1429,7 +1422,7 @@ def prepare_layout_data(payload, now=None):
         print(f"[SYSTEM] Błąd modułu nadmorskiego (prepare_layout): {e}")
 
     # Alerty nadmorskie są już w docelowym języku — chronimy je przed "ostatnią milą".
-    prelocalized_alerts = set()
+    # (prelocalized_alerts jest inicjowany wyżej, przy detektorze gołoledzi.)
     for a in coastal_alerts:
         if a and a not in alerts:
             alerts.append(a)
