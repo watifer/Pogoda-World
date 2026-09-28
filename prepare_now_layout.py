@@ -577,61 +577,81 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     hint = _drizzle_hint(ta=ta_now, hp_all=hours, start_hour=start_dt.hour)
 
     # ==================================================================
-    # NOWY KOD: Radar wiatru od morza na żywo (/now)
+    # Radar wiatru od morza na żywo (/now)
+    # ------------------------------------------------------------------
+    # Dwa niezależne tryby:
+    #  - marine_storm: globalnie, cały rok, tylko naprawdę groźny wiatr od wody
+    #  - beach: lifestyle, tylko PL i tylko sezon 01.06–15.09
+    # Teksty budujemy od razu przez t(lang, ...) — bez surowych PL stringów.
     # ==================================================================
     coastal_note = None
     try:
         from coast_runtime import GLOBAL_COAST_STORE, ensure_coast_index
         if GLOBAL_COAST_STORE and ensure_coast_index:
-            from coast_detector import get_or_compute_coast_signature_lazy, get_coastal_alert_mode
-            
-            loc_lat = payload.get("location", {}).get("lat")
-            loc_lon = payload.get("location", {}).get("lon")
-            tz_str = payload.get("location", {}).get("tz", "UTC")
-            
+            from coast_detector import (
+                get_or_compute_coast_signature_lazy,
+                get_coastal_alert_mode,
+                MODE_MARINE_STORM,
+                MODE_BEACH,
+            )
+
+            loc = payload.get("location", {}) or {}
+            loc_lat = loc.get("lat")
+            loc_lon = loc.get("lon")
+            tz_str = loc.get("tz", "UTC")
+
             if loc_lat is not None and loc_lon is not None:
                 sig = get_or_compute_coast_signature_lazy(
                     store=GLOBAL_COAST_STORE, lat=loc_lat, lon=loc_lon, idx_factory=ensure_coast_index
                 )
-                
+
                 first_beach = None
                 first_storm = None
-                
-                for idx_h, h in enumerate(ta_now):
-                    wdir = float(h.get("wind_dir_deg", 0))
-                    wspd = float(h.get("wind_kmh", 0))
-                    gust = float(h.get("gust_kmh", h.get("wind_gust_kmh", 0)))
-                    eff_wind = max(wspd, gust)
-                    
-                    dt_local = datetime.fromisoformat(h.get("time_local", "").replace("Z", "+00:00"))
-                    hh = dt_local.hour
-                    
-                    mode = get_coastal_alert_mode(sig, wspd, gust, wdir, tz_str, dt_local)
-                    
-                    if mode == "storm" and not first_storm:
-                        first_storm = (idx_h, hh, wspd, eff_wind)
-                    elif mode == "beach" and (8 <= hh <= 18) and not first_beach:
-                        first_beach = (idx_h, hh, wspd, eff_wind)
-                        
+                storm_max_eff = 0.0
+
+                for idx_h, (dt_local, h) in enumerate(ta_tuples):
+                    try:
+                        wdir = float(h.get("wind_dir_deg") or 0)
+                        wspd = float(h.get("wind_kmh") or 0)
+                        gust = float(h.get("gust_kmh", h.get("wind_gust_kmh")) or 0)
+                        eff_wind = max(wspd, gust)
+                        hh = dt_local.hour
+
+                        mode = get_coastal_alert_mode(sig, wspd, gust, wdir, tz_str, dt_local)
+
+                        if mode == MODE_MARINE_STORM:
+                            if first_storm is None:
+                                first_storm = (idx_h, hh, wspd, eff_wind)
+                            storm_max_eff = max(storm_max_eff, eff_wind)
+                        elif mode == MODE_BEACH and (8 <= hh <= 18) and first_beach is None:
+                            first_beach = (idx_h, hh, wspd, eff_wind)
+                    except Exception:
+                        continue
+
                 if first_storm:
+                    # Sztorm ma pierwszeństwo przed lifestyle'owym alertem plażowym.
                     idx_h, hh, wind_spd, eff_wind = first_storm
+                    gust_txt = round(max(storm_max_eff, eff_wind))
                     if idx_h == 0:
-                        coastal_note = f"⚠️ Wybrzeże: sztormowy wiatr od wody (do {round(eff_wind)} km/h)!"
+                        coastal_note = t(lang, "coast_marine_storm_now", gust=gust_txt)
                     elif idx_h <= 2:
-                        coastal_note = f"⚠️ Wybrzeże: w ciągu 1-2h sztorm od strony wody (do {round(eff_wind)} km/h)!"
+                        coastal_note = t(lang, "coast_marine_storm_soon", gust=gust_txt)
                     else:
-                        coastal_note = f"⚠️ Wybrzeże: od ok. {hh:02d}:00 sztormowy wiatr od wody (do {round(eff_wind)} km/h)."
-                
+                        coastal_note = t(lang, "coast_marine_storm_from", hh=f"{hh:02d}", gust=gust_txt)
+
                 elif first_beach:
                     idx_h, hh, wind_spd, eff_wind = first_beach
-                    g_txt = f", porywy do {round(eff_wind)} km/h" if eff_wind > wind_spd else ""
                     if idx_h == 0:
-                        coastal_note = f"🌬️ Wybrzeże: wiatr od wody {round(wind_spd)} km/h{g_txt} — na otwartym brzegu mocniej."
+                        if eff_wind > wind_spd:
+                            coastal_note = t(lang, "coast_beach_now_gust",
+                                             wind=round(wind_spd), gust=round(eff_wind))
+                        else:
+                            coastal_note = t(lang, "coast_beach_now", wind=round(wind_spd))
                     elif idx_h <= 2:
-                        coastal_note = f"🌬️ Wybrzeże: w ciągu 1-2h wiatr od wody (do {round(eff_wind)} km/h) — na plaży mocniej."
+                        coastal_note = t(lang, "coast_beach_soon", gust=round(eff_wind))
                     else:
-                        coastal_note = f"🌬️ Wybrzeże: od ok. {hh:02d}:00 wiatr od wody (do {round(eff_wind)} km/h)."
-                        
+                        coastal_note = t(lang, "coast_beach_from", hh=f"{hh:02d}", gust=round(eff_wind))
+
     except Exception as e:
         print(f"[SYSTEM] Błąd modułu nadmorskiego w /now: {e}")
     # ==================================================================
@@ -697,6 +717,11 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
 
     # 3. Kaskada priorytetów (Gołoledź najwyżej!)
     context_line = freezing_note or now_context_line or coastal_note or owm_note or hint
+    # Notka nadmorska jest już zbudowana w docelowym języku (t(lang, ...)),
+    # więc nie wolno jej przepuścić przez translate_weather_text.
+    context_line_prelocalized = bool(
+        coastal_note and not freezing_note and not now_context_line and context_line == coastal_note
+    )
     
     
     # ══════════════════════════════════════════════════════════
@@ -705,7 +730,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     if lang != "pl":
         if hero_summary:
             hero_summary = translate_weather_text(hero_summary, lang)
-        if context_line:
+        if context_line and not context_line_prelocalized:
             context_line = translate_weather_text(context_line, lang)
         
         # --- PANCERNY HELPER DO WIELKICH LITER (Odporny na spacje, "·" i "•") ---
