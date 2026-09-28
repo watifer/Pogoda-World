@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime
@@ -54,6 +55,44 @@ except Exception as _geo_err:  # pragma: no cover - zależne od środowiska
 
     GEO_STACK_AVAILABLE = False
     GEO_STACK_ERROR = _geo_err
+
+GEO_STACK_PACKAGES = ("pyshp", "shapely", "pyproj")
+COAST_DISABLED_MSG = (
+    "[SYSTEM] Moduł nadmorski WYŁĄCZONY (coast / marine_storm / beach): brak stosu geo "
+    f"({', '.join(GEO_STACK_PACKAGES)}). Karty wygenerują się normalnie, ale alerty od morza "
+    "NIE pojawią się nigdy. Napraw: pip install -r requirements.txt"
+)
+
+_COAST_WARNED = False
+
+
+def coast_stack_status() -> dict:
+    """Stan stosu geo w jednym miejscu — dla diagnostyki i ostrzeżeń runtime."""
+    return {
+        "available": GEO_STACK_AVAILABLE,
+        "error": None if GEO_STACK_AVAILABLE else repr(GEO_STACK_ERROR),
+        "packages": list(GEO_STACK_PACKAGES),
+        "message": None if GEO_STACK_AVAILABLE else COAST_DISABLED_MSG,
+    }
+
+
+def warn_coast_disabled(context: str = "") -> bool:
+    """Ostrzega RAZ na proces, że alerty nadmorskie są wyłączone.
+
+    Fallback importu zostaje (lekkie workery i testy muszą móc zaimportować moduł),
+    ale cicha awaria jest gorsza od braku funkcji — bez tego komunikatu brak alertów
+    wygląda w logach identycznie jak spokojna pogoda.
+    """
+    global _COAST_WARNED
+    if GEO_STACK_AVAILABLE or _COAST_WARNED:
+        return False
+    _COAST_WARNED = True
+    suffix = f" | kontekst: {context}" if context else ""
+    print(f"{COAST_DISABLED_MSG}{suffix}", file=sys.stderr)
+    if GEO_STACK_ERROR is not None:
+        print(f"[SYSTEM] Powód importu: {GEO_STACK_ERROR!r}", file=sys.stderr)
+    return True
+
 
 _WGS84_GEOD = None
 

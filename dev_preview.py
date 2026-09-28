@@ -169,15 +169,16 @@ def render(scen_name, lang, card, save):
 
 def doctor(lat, lon, tz_str):
     print("═══ DIAGNOSTYKA ═══\n")
-    from coast_detector import (GEO_STACK_AVAILABLE, GEO_STACK_ERROR, in_beach_season,
+    from coast_detector import (GEO_STACK_AVAILABLE, in_beach_season,
                                 is_poland_tz, get_coastal_alert_mode,
-                                get_or_compute_coast_signature_lazy)
+                                get_or_compute_coast_signature_lazy, coast_stack_status)
 
-    print(f"1. Stack geo (pyshp/shapely/pyproj): {'OK' if GEO_STACK_AVAILABLE else 'BRAK'}")
-    if not GEO_STACK_AVAILABLE:
-        print(f"   └─ powód: {GEO_STACK_ERROR}")
-        print("   └─ BEZ TEGO CAŁY MODUŁ NADMORSKI MILCZY (wyjątek łapany w try/except)")
-        print("   └─ pip install pyshp shapely pyproj")
+    status = coast_stack_status()
+    print(f"1. Stack geo ({'/'.join(status['packages'])}): {'OK' if status['available'] else 'BRAK'}")
+    if not status["available"]:
+        print(f"   └─ powód importu: {status['error']}")
+        print("   └─ coast / marine_storm / beach są WYŁĄCZONE — alerty od morza nie pojawią się nigdy")
+        print("   └─ napraw: pip install -r requirements.txt")
 
     print(f"\n2. Klucz OWM: {'jest' if os.environ.get('OWM_API_KEY') else 'BRAK (nowcast/korekta chmur off)'}")
 

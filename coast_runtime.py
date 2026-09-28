@@ -5,7 +5,12 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 
 try:
-    from coast_detector import JsonCoastSigStore, CoastIndex
+    from coast_detector import (JsonCoastSigStore, CoastIndex, GEO_STACK_AVAILABLE,
+                                warn_coast_disabled)
+    if not GEO_STACK_AVAILABLE:
+        # Fallback importu zostaje, ale nie milczymy: bez stosu geo alerty od morza
+        # nie pojawią się nigdy, a w logach wygląda to jak spokojna pogoda.
+        warn_coast_disabled("coast_runtime")
     GLOBAL_COAST_STORE = JsonCoastSigStore(str(BASE_DIR / "coast_cache.json"))
     
     _COAST_INDEX = None

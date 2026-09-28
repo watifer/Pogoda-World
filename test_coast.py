@@ -510,3 +510,56 @@ class TestNowLayout:
         line = layout.get("context_line") or ""
         assert "Marine storm" not in line
         assert "Wybrzeże" not in line
+
+
+# ═══════════════════════════════════════════════════════════════════
+# STOS GEO: fallback importu zostaje, ale awaria nie może być cicha
+# ═══════════════════════════════════════════════════════════════════
+
+class TestGeoStackVisibility:
+    def test_status_reports_available_stack(self):
+        import coast_detector
+        status = coast_detector.coast_stack_status()
+        assert set(status) == {"available", "error", "packages", "message"}
+        assert status["packages"] == ["pyshp", "shapely", "pyproj"]
+        if coast_detector.GEO_STACK_AVAILABLE:
+            assert status["error"] is None and status["message"] is None
+
+    def test_status_reports_missing_stack(self, monkeypatch):
+        import coast_detector
+        monkeypatch.setattr(coast_detector, "GEO_STACK_AVAILABLE", False)
+        monkeypatch.setattr(coast_detector, "GEO_STACK_ERROR", ImportError("No module named 'shapely'"))
+        status = coast_detector.coast_stack_status()
+        assert status["available"] is False
+        assert "shapely" in status["error"]
+        assert "WYŁĄCZONY" in status["message"]
+        for pkg in ("pyshp", "shapely", "pyproj"):
+            assert pkg in status["message"]
+
+    def test_warning_is_emitted_once_per_process(self, monkeypatch, capsys):
+        import coast_detector
+        monkeypatch.setattr(coast_detector, "GEO_STACK_AVAILABLE", False)
+        monkeypatch.setattr(coast_detector, "GEO_STACK_ERROR", ImportError("brak pyproj"))
+        monkeypatch.setattr(coast_detector, "_COAST_WARNED", False)
+
+        assert coast_detector.warn_coast_disabled("/now") is True
+        first = capsys.readouterr().err
+        assert "WYŁĄCZONY" in first and "/now" in first
+        assert "pip install -r requirements.txt" in first
+
+        # drugie wywołanie milczy — inaczej zalałoby logi przy każdym renderze
+        assert coast_detector.warn_coast_disabled("/day") is False
+        assert capsys.readouterr().err == ""
+
+    def test_no_warning_when_stack_is_available(self, monkeypatch, capsys):
+        import coast_detector
+        monkeypatch.setattr(coast_detector, "GEO_STACK_AVAILABLE", True)
+        monkeypatch.setattr(coast_detector, "_COAST_WARNED", False)
+        assert coast_detector.warn_coast_disabled("/now") is False
+        assert capsys.readouterr().err == ""
+
+    def test_requirements_pin_the_geo_stack(self):
+        from pathlib import Path
+        req = Path(__file__).with_name("requirements.txt").read_text(encoding="utf-8").lower()
+        for pkg in ("pyshp", "shapely", "pyproj"):
+            assert pkg in req, f"{pkg} musi być w requirements.txt — bez niego coast milczy"

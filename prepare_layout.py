@@ -1348,8 +1348,12 @@ def prepare_layout_data(payload, now=None):
     # ==================================================================
     coastal_alerts = []
     try:
+        from coast_detector import GEO_STACK_AVAILABLE, warn_coast_disabled
         from coast_runtime import GLOBAL_COAST_STORE, ensure_coast_index
-        if GLOBAL_COAST_STORE and ensure_coast_index:
+        if not GEO_STACK_AVAILABLE:
+            # Ostrzegamy raz na proces i pomijamy blok (patrz komentarz w /now).
+            warn_coast_disabled("/day")
+        elif GLOBAL_COAST_STORE and ensure_coast_index:
             from coast_detector import (
                 get_or_compute_coast_signature_lazy,
                 get_coastal_alert_mode,

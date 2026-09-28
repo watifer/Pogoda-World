@@ -600,8 +600,13 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # ==================================================================
     coastal_note = None
     try:
+        from coast_detector import GEO_STACK_AVAILABLE, warn_coast_disabled
         from coast_runtime import GLOBAL_COAST_STORE, ensure_coast_index
-        if GLOBAL_COAST_STORE and ensure_coast_index:
+        if not GEO_STACK_AVAILABLE:
+            # Ostrzegamy raz na proces i pomijamy blok. Wcześniej lądowało to
+            # w except jako mylące "Błąd modułu nadmorskiego" przy każdym renderze.
+            warn_coast_disabled("/now")
+        elif GLOBAL_COAST_STORE and ensure_coast_index:
             from coast_detector import (
                 get_or_compute_coast_signature_lazy,
                 get_coastal_alert_mode,
