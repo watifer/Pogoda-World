@@ -236,10 +236,16 @@ def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optiona
         if r.status_code != 200:
             return None
         data = r.json()
-        # --- TYMCZASOWY DEBUG OWM 4.0 ---
-        with open("debug_owm.json", "w", encoding="utf-8") as df:
-            json.dump(data, df, indent=2, ensure_ascii=False)
-        # --------------------------------
+        # --- DEBUG OWM 4.0 (tylko na żądanie) ---
+        # Odpowiedź zawiera współrzędne użytkownika, więc w produkcji nie zapisujemy
+        # jej na dysk. Włącz przez OWM_DEBUG=1.
+        if os.environ.get("OWM_DEBUG") == "1":
+            try:
+                with open("debug_owm.json", "w", encoding="utf-8") as df:
+                    json.dump(data, df, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+        # ----------------------------------------
         _CACHE[k] = (now, data)
         return data
     except Exception:

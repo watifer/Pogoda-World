@@ -16,7 +16,8 @@ try:
 except ImportError:
     from backports.zoneinfo import ZoneInfo
 
-from forecast_text import WxEvent, BlockForecast, build_block_copy, classify_precip, sky_from_clouds, SKY_RANK, KINDS
+from forecast_text import (WxEvent, BlockForecast, build_block_copy, classify_precip,
+                           sky_from_clouds, SKY_RANK, KINDS, is_freezing_precip)
 from worth_knowing import build_worth_knowing
 from confidence_gate import compute_trust_report
 from ui_softening import strip_mm_pct_parens, soften_possible_prefix
@@ -286,6 +287,19 @@ def _hour_safe(t_loc: str) -> Optional[int]:
 
 def _hour(h: dict) -> int:
     return datetime.fromisoformat(h["time_local"].replace("Z", "+00:00")).hour
+
+
+def _parse_local_dt(t_loc: str, tz) -> Optional[datetime]:
+    """Parsuje time_local do daty świadomej strefy (naive traktujemy jako czas lokalny)."""
+    if not t_loc:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(t_loc).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=tz)
+    return dt.astimezone(tz)
 
 
 def _format_single_hours(text: str) -> str:
@@ -989,29 +1003,20 @@ def prepare_layout_data(payload, now=None):
             alerts.append("Zła jakość powietrza — normy zanieczyszczeń są przekroczone")
 
     # === DETEKTOR GOŁOLEDZI I MARZNĄCYCH OPADÓW (24h) ===
-    FREEZING_MM_MIN = 0.05
-    FREEZING_TEMP_C = 0.8
-    FREEZING_RH_MIN = 88
-    FREEZING_DP_MAX = 1.0
+    # Alerty nadmorskie i gołoledź powstają od razu w języku docelowym,
+    # więc muszą ominąć "ostatnią milę" tłumacza.
+    prelocalized_alerts = set()
 
     def _freezing_risk(h_dict):
-        t_val = float(h_dict.get("temp_c") if h_dict.get("temp_c") is not None else 99)
-        rh = float(h_dict.get("rh_pct") or 0)
-        dp = h_dict.get("dewpoint_c")
-        dp = float(dp) if dp is not None else None
-        mm = float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0)
-        
-        if mm <= FREEZING_MM_MIN: return False
-        kind_val = classify_precip(
-            mm, t_val,
+        # Wspólna detekcja z /now — patrz forecast_text.is_freezing_precip().
+        return is_freezing_precip(
+            float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0),
+            h_dict.get("temp_c"),
             symbol_code=h_dict.get("symbol_code_eff", h_dict.get("symbol_code")),
-            weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code"))
+            weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code")),
+            rh_pct=h_dict.get("rh_pct"),
+            dewpoint_c=h_dict.get("dewpoint_c"),
         )
-        if kind_val in {"freezing_drizzle", "freezing_rain"}: return True
-        fam = KINDS.get(kind_val, {}).get("family")
-        if fam == "rain" and t_val <= FREEZING_TEMP_C:
-            if (dp is not None and dp <= FREEZING_DP_MAX) or (rh >= FREEZING_RH_MIN): return True
-        return False
 
     all_hours = payload.get("hours", [])
     scan_limit = now + timedelta(hours=24)
@@ -1032,7 +1037,7 @@ def prepare_layout_data(payload, now=None):
             end_h = end.hour
             if end_h == 0 and end.date() != a.date():
                 end_h = 24
-            prefix = "jutro " if a.date() > now.date() else ""
+            prefix = f"{t(lang, 'tomorrow').lower()} " if a.date() > now.date() else ""
             return f"{prefix}{a.hour:02d}–{end_h:02d}"
 
         def group_hourly_datetimes(dts):
@@ -1047,8 +1052,9 @@ def prepare_layout_data(payload, now=None):
             
         rng = group_hourly_datetimes(risk_dts)
         when = ", ".join(fmt_rng(a, b) for a, b in rng[:2])
-        alert_msg = t(lang, "freezing_alert") if t(lang, "freezing_alert") != "freezing_alert" else "⚠️ Marznące opady: ryzyko gołoledzi"
-        alerts.insert(0, f"{alert_msg} ({when}).")
+        freezing_alert = t(lang, "freezing_alert", when=when)
+        alerts.insert(0, freezing_alert)
+        prelocalized_alerts.add(freezing_alert)
 
     section_title, block_defs = _get_time_blocks(now.hour)
     section_title = t(lang, {
@@ -1333,54 +1339,98 @@ def prepare_layout_data(payload, now=None):
     alerts = list(dict.fromkeys(alerts))
 
     # ==================================================================
-    # Wiatr od morza (Tryb Sztorm vs Plaża)
+    # Wiatr od morza: marine_storm (globalnie) vs beach (tylko PL + sezon)
+    # ------------------------------------------------------------------
+    # Skanujemy WYŁĄCZNIE godziny od bieżącej pełnej godziny w przód —
+    # popołudniowy raport nie może odgrzewać porannego epizodu.
+    # Teksty budujemy od razu przez t(lang, ...), więc NIE przepuszczamy
+    # ich później przez translate_weather_text (stąd prelokalizowany set).
     # ==================================================================
+    coastal_alerts = []
     try:
+        from coast_detector import GEO_STACK_AVAILABLE, warn_coast_disabled
         from coast_runtime import GLOBAL_COAST_STORE, ensure_coast_index
-        if GLOBAL_COAST_STORE and ensure_coast_index:
-            from coast_detector import get_or_compute_coast_signature_lazy, get_coastal_alert_mode
-            
-            loc_lat = payload.get("location", {}).get("lat")
-            loc_lon = payload.get("location", {}).get("lon")
-            tz_str = payload.get("location", {}).get("tz", "UTC")
-            
+        if not GEO_STACK_AVAILABLE:
+            # Ostrzegamy raz na proces i pomijamy blok (patrz komentarz w /now).
+            warn_coast_disabled("/day")
+        elif GLOBAL_COAST_STORE and ensure_coast_index:
+            from coast_detector import (
+                get_or_compute_coast_signature_lazy,
+                get_coastal_alert_mode,
+                MODE_MARINE_STORM,
+                MODE_BEACH,
+            )
+
+            loc = payload.get("location", {}) or {}
+            loc_lat = loc.get("lat")
+            loc_lon = loc.get("lon")
+            tz_str = loc.get("tz", "UTC")
+
             if loc_lat is not None and loc_lon is not None:
                 sig = get_or_compute_coast_signature_lazy(
                     store=GLOBAL_COAST_STORE, lat=loc_lat, lon=loc_lon, idx_factory=ensure_coast_index
                 )
-                
+
+                now_floored = now.replace(minute=0, second=0, microsecond=0)
+
                 beach_hours = []
-                has_storm = False
-                
+                storm_first_hh = None
+                storm_max_wind = 0.0
+                storm_max_gust = 0.0
+
                 for h in ta:
                     try:
-                        dt_local = datetime.fromisoformat(h.get("time_local", "").replace("Z", "+00:00"))
+                        dt_local = _parse_local_dt(h.get("time_local", ""), tz)
+                        if dt_local is None or dt_local < now_floored:
+                            continue  # przeszłość dzisiejszego dnia nas nie interesuje
+
                         hh = dt_local.hour
-                        
-                        wdir = float(h.get("wind_dir_deg", 0))
-                        wspd = float(h.get("wind_kmh", 0))
-                        wgst = float(h.get("gust_kmh", h.get("wind_gust_kmh", 0)))
-                        
+                        wdir = float(h.get("wind_dir_deg") or 0)
+                        wspd = float(h.get("wind_kmh") or 0)
+                        wgst = float(h.get("gust_kmh", h.get("wind_gust_kmh")) or 0)
+                        eff_wind = max(wspd, wgst)
+
                         mode = get_coastal_alert_mode(sig, wspd, wgst, wdir, tz_str, dt_local)
-                        
-                        if mode == "storm":
-                            has_storm = True
-                        elif mode == "beach" and 8 <= hh <= 18:
+
+                        if mode == MODE_MARINE_STORM:
+                            if storm_first_hh is None:
+                                storm_first_hh = hh
+                            storm_max_wind = max(storm_max_wind, wspd)
+                            storm_max_gust = max(storm_max_gust, eff_wind)
+                        elif mode == MODE_BEACH and 8 <= hh <= 18:
                             beach_hours.append(hh)
-                                
+
                     except Exception:
                         pass
-                
-                if has_storm:
-                    alerts.append("Wybrzeże — Sztormowy wiatr od wody! Trudne warunki na morzu.")
+
+                if storm_first_hh is not None:
+                    # Sztorm wyklucza lifestyle'owy alert plażowy — jeden komunikat, ten ważniejszy.
+                    coastal_alerts.append(t(
+                        lang, "coast_marine_storm_day",
+                        hh=f"{storm_first_hh:02d}",
+                        wind=round(storm_max_wind),
+                        gust=round(storm_max_gust),
+                    ))
                 elif beach_hours:
                     start_h = min(beach_hours)
                     end_h = max(beach_hours)
-                    time_str = f"ok. {start_h:02d}:00" if start_h == end_h else f"głównie {start_h:02d}:00–{end_h:02d}:00"
-                    alerts.append(f"Wybrzeże — Nad wodą możliwy wiatr od morza ({time_str}). Sprawdź /now (radar taktyczny).")
+                    if start_h == end_h:
+                        coastal_alerts.append(t(lang, "coast_beach_day_point", start=f"{start_h:02d}"))
+                    else:
+                        coastal_alerts.append(t(
+                            lang, "coast_beach_day_range",
+                            start=f"{start_h:02d}", end=f"{end_h:02d}",
+                        ))
 
     except Exception as e:
         print(f"[SYSTEM] Błąd modułu nadmorskiego (prepare_layout): {e}")
+
+    # Alerty nadmorskie są już w docelowym języku — chronimy je przed "ostatnią milą".
+    # (prelocalized_alerts jest inicjowany wyżej, przy detektorze gołoledzi.)
+    for a in coastal_alerts:
+        if a and a not in alerts:
+            alerts.append(a)
+            prelocalized_alerts.add(a)
 
     if os.environ.get("ENABLE_VOLATILITY_UI", "1") == "1":
         daily_diag = payload.get("daily_diag", {})
@@ -1646,7 +1696,10 @@ def prepare_layout_data(payload, now=None):
             hero_summary_line = translate_weather_text(hero_summary_line, lang)
         if final_context_line:
             final_context_line = translate_weather_text(final_context_line, lang)
-        alerts = [translate_weather_text(a, lang) for a in alerts if a]
+        alerts = [
+            a if a in prelocalized_alerts else translate_weather_text(a, lang)
+            for a in alerts if a
+        ]
         
         if wk and isinstance(wk, dict) and wk.get("text"):
             wk["text"] = translate_weather_text(wk["text"], lang)
