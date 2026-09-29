@@ -86,6 +86,13 @@ GHOST_FREEZING = {"temp_c": 0.3, "precip_mm": 0.6, "precip_eff_mm": 0.6, "precip
 GHOST_FREEZING_ALT = {"temp_c": 0.3, "precip_mm": 0.0, "precip_eff_mm": 0.0, "precip_prob_pct": 5,
                       "rh_pct": 96, "dewpoint_c": -0.1, "clouds_pct": 95.0, "clouds_low_pct": 85.0,
                       "clouds_mid_pct": 10.0, "symbol_code": "cloudy", "weather_code": 3}
+# Kontrola pozytywna do GHOST_*: te same warunki termiczne i te same 0.6 mm,
+# ale WIDZĄ JE OBA modele przy wysokim POP. Konsensus musi zwrócić 0.6 mm,
+# więc alert gołoledzi, tekst "(0.6 mm)" i ikona opadowa mają ZOSTAĆ.
+# Bez tego scenariusza "naprawą" rozjazdu #1 byłoby wyciszenie alertu w ogóle.
+CONSENSUS_FREEZING = {"temp_c": 0.3, "precip_mm": 0.6, "precip_eff_mm": 0.6, "precip_prob_pct": 85,
+                      "rh_pct": 96, "dewpoint_c": -0.1, "clouds_pct": 95.0, "clouds_low_pct": 85.0,
+                      "clouds_mid_pct": 10.0, "symbol_code": "lightrain", "weather_code": 66}
 # Wiatr średni WYŻSZY od porywu (realne w danych modelowych po uśrednieniu porywów).
 GUST_BELOW_WIND = {"wind_kmh": 85.0, "gust_kmh": 70.0, "wind_dir_deg": 180, "clouds_pct": 90.0,
                    "clouds_low_pct": 80.0, "clouds_mid_pct": 10.0, "symbol_code": "cloudy",
@@ -133,6 +140,11 @@ SCENARIOS = {
         loc=LOC_INLAND, date="2026-01-15 12:00",
         hours=lambda i: GHOST_FREEZING if i < 4 else {"temp_c": 0.5},
         alt_hours=lambda i: GHOST_FREEZING_ALT if i < 4 else {"temp_c": 0.5}),
+    "consensus_precip": dict(
+        desc="realny opad: 0.6 mm w OBU modelach @ POP 85% — alert, mm i ikona muszą zostać",
+        loc=LOC_INLAND, date="2026-01-15 12:00",
+        hours=lambda i: CONSENSUS_FREEZING if i < 4 else {"temp_c": 0.5},
+        alt_hours=lambda i: CONSENSUS_FREEZING if i < 4 else {"temp_c": 0.5}),
     "gust_below_wind": dict(
         desc="wiatr 85 km/h, porywy 70 km/h — poryw NIE jest maksimum",
         loc=LOC_INLAND, date="2026-09-28 12:00",

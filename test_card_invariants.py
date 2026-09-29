@@ -146,6 +146,54 @@ def test_freezing_alert_implies_precipitation(rendered, scen, lang, card):
     )
 
 
+def test_consensus_precip_keeps_alert_mm_and_icon():
+    """KONTROLA POZYTYWNA do ghost_precip: te same 0.6 mm, ale widzą je OBA modele.
+
+    Unifikacja mm miała usunąć sprzeczność, a nie opad. Gdyby ktoś "naprawił"
+    rozjazd #1 wyciszając detektor gołoledzi albo zerując mm, ten test padnie.
+    """
+    for lang in LANGS:
+        for card in CARDS:
+            data, payload, _ = _render("consensus_precip", lang, card)
+
+            texts = [data.get("context_line") or ""] + list(data.get("alerts") or [])
+            assert any(_freezing_marker(lang) in x for x in texts), \
+                f"consensus_precip/{lang}//{card}: realny marznący opad bez alertu gołoledzi"
+
+            assert _payload_max_mm(payload) == pytest.approx(0.6), \
+                "konsensus dwóch modeli po 0.6 mm musi dać 0.6 mm"
+
+            precip_blocks = [b for b in (data.get("today_blocks") or [])
+                             if b.get("icon") in PRECIP_ICONS]
+            assert precip_blocks, \
+                f"consensus_precip/{lang}//{card}: zniknęła ikona opadowa"
+
+
+def test_consensus_precip_now_shows_mm_next_to_precip_icon():
+    """W /now tekst godzinowy ma nadal podawać mm — i to przy ikonie opadowej."""
+    data, _, _ = _render("consensus_precip", "pl", "now")
+    with_mm = [b for b in data["today_blocks"] if MM_RE.search(b.get("primary_desc") or "")]
+    assert with_mm, "/now: zniknął tekst '(X mm)' mimo realnego opadu w obu modelach"
+    for b in with_mm:
+        assert b["icon"] in PRECIP_ICONS
+        assert float(MM_RE.search(b["primary_desc"]).group(1)) == pytest.approx(0.6)
+
+
+def test_ghost_and_consensus_differ_only_by_second_model():
+    """Dwa scenariusze, ta sama surowa wartość 0.6 mm — decyduje zgodność modeli."""
+    ghost, _, _ = _render("ghost_precip", "pl", "now")
+    real, _, _ = _render("consensus_precip", "pl", "now")
+    marker = _freezing_marker("pl")
+
+    def fired(card):
+        return any(marker in x for x in [card.get("context_line") or ""] + list(card.get("alerts") or []))
+
+    assert not fired(ghost) and fired(real), \
+        "detektor gołoledzi przestał rozróżniać ducha opadu od opadu potwierdzonego"
+    assert not any(MM_RE.search(b.get("primary_desc") or "") for b in ghost["today_blocks"])
+    assert any(MM_RE.search(b.get("primary_desc") or "") for b in real["today_blocks"])
+
+
 def test_ghost_precip_has_no_freezing_alert():
     """Regresja rozjazdu #1: 0.6 mm w jednym modelu przy POP 20% to duch."""
     for card in CARDS:
