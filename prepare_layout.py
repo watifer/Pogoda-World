@@ -96,7 +96,7 @@ def _drizzle_hint(ta: list, hp_all: list, start_hour: int) -> Optional[str]:
             continue
 
         # modele nie widzą twardego opadu
-        mm = _precip_consensus(h, hp_all)
+        mm = precip_mm_for_ui(h, hp_all)
         if mm >= 0.1:
             continue
 
@@ -119,10 +119,7 @@ def _drizzle_hint(ta: list, hp_all: list, start_hour: int) -> Optional[str]:
             continue
 
         # spokojny wiatr (żeby nie łapać byle pochmurnego dnia z wiatrem)
-        wind = max(
-            float(h.get("wind_kmh") or 0),
-            float(h.get("gust_kmh") or h.get("wind_gust_kmh") or 0),
-        )
+        wind = _eff_wind_kmh(h)
         if wind > 15:
             continue
 
@@ -149,7 +146,7 @@ def _drizzle_hint(ta: list, hp_all: list, start_hour: int) -> Optional[str]:
             continue
         if hh < (start_hour or 6):
             continue
-        if _precip_consensus(h, hp_all) >= 0.2:
+        if precip_mm_for_ui(h, hp_all) >= 0.2:
             main_rain_hours.append(hh)
 
     has_main_rain_later = bool(main_rain_hours)
@@ -183,6 +180,60 @@ def _precip_consensus(h: dict, hp_all: list) -> float:
     if p_alt > 0 and p_base == 0: return p_alt if pop_alt > 30 else 0
         
     return 0.0
+
+
+def precip_mm_for_ui(h: dict, hp_all: list = None) -> float:
+    """JEDYNE źródło milimetrów dla warstwy UI (/now i /day).
+
+    Wszystko, co użytkownik widzi jako opad — ikona, tekst "(X mm)", styl
+    alertowy bloku, UI softening i radar gołoledzi — musi czytać tę funkcję.
+    Wcześniej część konsumentów brała surowe `precip_eff_mm`, a część
+    `_precip_consensus()`; przy "duchu opadu" (jeden model, POP < 30%) dawało to
+    kartę sprzeczną wewnętrznie: alert gołoledzi + suche hero + "(0.6 mm)" przy
+    bezopadowej ikonie.
+
+    Gdy nie ma z czym robić konsensusu (brak `hp_all`, np. payload z jednego
+    modelu), degradujemy się do wartości bazowej godziny — nigdy do zera.
+    """
+    if hp_all:
+        return _precip_consensus(h, hp_all)
+    return float(h.get("precip_eff_mm", h.get("precip_mm")) or 0.0)
+
+
+RAW_DRY_MM_MAX = 0.1
+
+
+def _models_raw_dry(h: dict, hp_all: list, limit: float = RAW_DRY_MM_MAX) -> bool:
+    """Czy WSZYSTKIE modele raportują dla tej godziny surowo sucho (< limit mm)?
+
+    WYJĄTEK OPERACYJNY, nie źródło tekstu UI. Służy wyłącznie bramce kosztowej
+    "hidden drizzle" w /day: dociągamy płatny snapshot OWM tylko wtedy, gdy
+    żaden model nie widzi opadu. Sam konsensus nie wystarcza — "duch opadu"
+    (OM 0.6 mm @ POP 20%, Yr 0.0) daje konsensus 0.0 i wyglądałby jak sucho,
+    a to właśnie sytuacja, w której jeden model coś widzi i płacenie za radar
+    nie jest uzasadnione tą regułą.
+
+    Do ikon, tekstów, alertów i softeningu nadal służy WYŁĄCZNIE
+    precip_mm_for_ui().
+    """
+    t_loc = h.get("time_local")
+    same_hour = [x for x in (hp_all or []) if x.get("time_local") == t_loc] or [h]
+    for x in same_hour:
+        if float(x.get("precip_eff_mm", x.get("precip_mm")) or 0.0) >= limit:
+            return False
+    return True
+
+
+def _eff_wind_kmh(h: dict) -> float:
+    """Efektywny wiatr godziny = max(średni, poryw).
+
+    Poryw bywa NIŻSZY od średniej (uśrednianie modeli, różne okna czasowe),
+    więc `gust_kmh or wind_kmh` potrafiło zaniżyć hero względem bloku
+    godzinowego, który już liczył max — stąd "silny wiatr" w hero i "wichura"
+    w bloku dla tej samej godziny. Progi Złotej Skali Wiatru (40/60/80/100)
+    są wspólne, więc wejście też musi być jedno.
+    """
+    return max(float(h.get("wind_kmh") or 0), float(h.get("gust_kmh") or 0))
 
 
 def _eff_cld(h: dict) -> float:
@@ -382,7 +433,7 @@ def _coerce_drizzle(kind: Optional[str], mm: float) -> Optional[str]:
 def _build_wx_events(block_hours: list, hp_all: list = None) -> list:
     events = []
     for h in block_hours:
-        mm = _precip_consensus(h, hp_all)
+        mm = precip_mm_for_ui(h, hp_all)
         temp = h.get("temp_c", 10)
         hr = _hour(h)
         kind = classify_precip(
@@ -440,10 +491,10 @@ def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: 
         
 
         # --- OPADY: spójnie z _build_day_summary (prawdziwy konsensus z hp_all) ---
-        p_vals = [_precip_consensus(h, hp_all or hp) for h in bh]
+        p_vals = [precip_mm_for_ui(h, hp_all or hp) for h in bh]
         tot_p = sum(p_vals) if p_vals else 0.0
         max_p = max(p_vals + [0.0])
-        max_w = max([float(h.get("wind_gust_kmh") or h.get("gust_kmh") or 0) for h in bh] + [0])
+        max_w = max([_eff_wind_kmh(h) for h in bh] + [0])
         
         evs = _build_wx_events(bh, hp_all=hp_all)
         
@@ -474,7 +525,7 @@ def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: 
         copy = build_block_copy(bf, lang=lang, inline_max_chars=48, meta_max_chars=32)
 
         # NOWOŚĆ: Twarde wymuszenie wiatru w bloku (zgodność z /now)
-        max_eff_w = max([max(float(h.get("wind_kmh") or 0), float(h.get("gust_kmh") or h.get("wind_gust_kmh") or 0)) for h in bh], default=0)
+        max_eff_w = max([_eff_wind_kmh(h) for h in bh], default=0)
         
         if max_eff_w >= 40:
             if max_eff_w >= 100: wind_label = "potężna wichura"
@@ -532,7 +583,12 @@ def _build_time_blocks(hp: list, date_str: str, next_date_str: str, block_defs: 
 # KRÓTKIE OPISY DNI (sekcja next_days)
 # ═══════════════════════════════════════
 
-def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> Optional[dict]:
+def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False,
+                       hp_all: list = None) -> Optional[dict]:
+    # hp bywa pulą JEDNEGO modelu (pick.hp, ho, hp_hero) — wtedy konsensus nie ma
+    # z czym porównywać i precip_mm_for_ui() degraduje się do surowych mm.
+    # Dlatego pełną pulę godzin przekazujemy osobno jako hp_all.
+    pool = hp_all or hp
     dh = [h for h in hp if h.get("time_local", "").startswith(date_str)]
     if not dh: return None
 
@@ -578,14 +634,14 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
 
         if 6 <= hour < 22:
             is_morning = hour < 14
-            max_wind = max(max_wind, float(h.get("wind_gust_kmh") or h.get("gust_kmh") or 0))
+            max_wind = max(max_wind, _eff_wind_kmh(h))
 
             cld_eff = _eff_cld_consensus(h)
             cld_eff_list.append(cld_eff)
             label_pl, _ = sky_from_clouds(cld_eff, is_night=False)
             sky_labels_pl.append(label_pl)
 
-            precip = _precip_consensus(h, hp)
+            precip = precip_mm_for_ui(h, pool)
             code = str(h.get("symbol_code_eff", h.get("symbol_code")) or "").lower()
             w_code = h.get("weather_code_eff", h.get("weather_code"))
             temp_opadu = h.get("temp_c") if h.get("temp_c") is not None else 10
@@ -594,7 +650,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
                 has_fog = True
 
             # === PANCERNY BEZPIECZNIK OPADÓW ===
-            precip = _precip_consensus(h, hp) 
+            precip = precip_mm_for_ui(h, pool)
             
             is_snow = False
             is_rain = False
@@ -701,7 +757,7 @@ def _build_day_summary(hp: list, date_str: str, is_night_mode: bool = False) -> 
         for h in dh:
             hh = _hour_safe(h.get("time_local", ""))
             if hh in drizzle_hours:
-                mm = float(h.get("precip_eff_mm", h.get("precip_mm")) or 0.0)
+                mm = precip_mm_for_ui(h, pool)
                 total_mm += mm
                 if mm > max_mm: max_mm = mm
                 
@@ -860,7 +916,7 @@ def _build_weekend_day_teaser(hp: list, day_short: str, payload: dict = None) ->
     
     date_short_formatted = f"{date_str[8:10]}.{date_str[5:7]}"
     
-    summary = _build_day_summary(hp, date_str)
+    summary = _build_day_summary(hp, date_str, hp_all=(payload or {}).get("hours"))
     if not summary:
         return None
 
@@ -989,7 +1045,7 @@ def prepare_layout_data(payload, now=None):
 
     ta = [h for h in hp if h.get("time_local", "").startswith(today_str)]
     tc = [_eff_cld_consensus(h) for h in ta]
-    tp = sum(_precip_consensus(h, hours) for h in ta)
+    tp = sum(precip_mm_for_ui(h, hours) for h in ta)
     ac = sum(tc) / len(tc) if tc else 0
 
     max_wind = max((float(h.get("wind_kmh") or 0) for h in ta), default=0)
@@ -1006,11 +1062,12 @@ def prepare_layout_data(payload, now=None):
     # Alerty nadmorskie i gołoledź powstają od razu w języku docelowym,
     # więc muszą ominąć "ostatnią milę" tłumacza.
     prelocalized_alerts = set()
+    all_hours = payload.get("hours", [])
 
     def _freezing_risk(h_dict):
         # Wspólna detekcja z /now — patrz forecast_text.is_freezing_precip().
         return is_freezing_precip(
-            float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0),
+            precip_mm_for_ui(h_dict, all_hours),
             h_dict.get("temp_c"),
             symbol_code=h_dict.get("symbol_code_eff", h_dict.get("symbol_code")),
             weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code")),
@@ -1018,7 +1075,6 @@ def prepare_layout_data(payload, now=None):
             dewpoint_c=h_dict.get("dewpoint_c"),
         )
 
-    all_hours = payload.get("hours", [])
     scan_limit = now + timedelta(hours=24)
     risk_dts = []
 
@@ -1124,9 +1180,9 @@ def prepare_layout_data(payload, now=None):
         ts  = tgt.strftime("%Y-%m-%d")
         
         pick = pick_hours_for_daily_summary(hours, daily_diag_dict, ts)
-        base = _build_day_summary(pick.hp, ts, is_night_mode=False)
+        base = _build_day_summary(pick.hp, ts, is_night_mode=False, hp_all=hours)
             
-        haz = _build_day_summary(ho, ts, is_night_mode=False) if ho else None
+        haz = _build_day_summary(ho, ts, is_night_mode=False, hp_all=hours) if ho else None
         
         extra_note = None
         if base and haz:
@@ -1211,9 +1267,9 @@ def prepare_layout_data(payload, now=None):
     else:
         hero_is_night = now.hour >= 20 or now.hour < 6
 
-    day_hero = _build_day_summary(hp_hero, today_str, is_night_mode=hero_is_night)
+    day_hero = _build_day_summary(hp_hero, today_str, is_night_mode=hero_is_night, hp_all=hours)
     if not day_hero:
-        day_hero = _build_day_summary(hp_hero, tomorrow_str, is_night_mode=False)
+        day_hero = _build_day_summary(hp_hero, tomorrow_str, is_night_mode=False, hp_all=hours)
         
     if day_hero:
         hero_icon = day_hero["icon"]
@@ -1268,7 +1324,7 @@ def prepare_layout_data(payload, now=None):
     
     future_ta_hero = [h for h in ta if int(h.get("time_local", "T00:")[11:13]) >= hero_start_hour]
     
-    eff_winds_hero = [max(float(h.get("wind_kmh") or 0), float(h.get("gust_kmh") or h.get("wind_gust_kmh") or 0)) for h in future_ta_hero]
+    eff_winds_hero = [_eff_wind_kmh(h) for h in future_ta_hero]
     max_eff_wind = max(eff_winds_hero, default=0)
     
     if "wiatr" not in line1.lower() and "wichur" not in line1.lower():
@@ -1387,8 +1443,8 @@ def prepare_layout_data(payload, now=None):
                         hh = dt_local.hour
                         wdir = float(h.get("wind_dir_deg") or 0)
                         wspd = float(h.get("wind_kmh") or 0)
-                        wgst = float(h.get("gust_kmh", h.get("wind_gust_kmh")) or 0)
-                        eff_wind = max(wspd, wgst)
+                        wgst = float(h.get("gust_kmh") or 0)
+                        eff_wind = _eff_wind_kmh(h)
 
                         mode = get_coastal_alert_mode(sig, wspd, wgst, wdir, tz_str, dt_local)
 
@@ -1463,7 +1519,7 @@ def prepare_layout_data(payload, now=None):
                 continue
             
             pick = pick_hours_for_daily_summary(all_hours, daily_diag, date_str)
-            base_summary = _build_day_summary(pick.hp, date_str, is_night_mode=False)
+            base_summary = _build_day_summary(pick.hp, date_str, is_night_mode=False, hp_all=all_hours)
             
             if not base_summary:
                 continue
@@ -1544,10 +1600,15 @@ def prepare_layout_data(payload, now=None):
         
         if current_h:
             rh = float(current_h.get("rh_pct") or 0)
-            mm_now = float(current_h.get("precip_eff_mm", current_h.get("precip_mm")) or 0)
+            mm_now = precip_mm_for_ui(current_h, hours)
             cld = max(float(current_h.get("clouds_low_pct") or 0) + float(current_h.get("clouds_mid_pct") or 0), float(current_h.get("clouds_pct_yr") or 0))
             
-            if mm_now < 0.1 and rh >= 85 and cld >= 85:
+            # Bramka "hidden drizzle": mokro za oknem, choć modele milczą.
+            # Dwa warunki na mm, bo pełnią różne role:
+            #  - konsensus UI (mm_now) mówi, czy karta deklaruje sucho,
+            #  - _models_raw_dry() pilnuje kosztu: jeśli KTÓRYKOLWIEK model widzi
+            #    opad (choćby "duch" OM 0.6 mm @ POP 20%), nie płacimy za OWM.
+            if mm_now < RAW_DRY_MM_MAX and _models_raw_dry(current_h, hours) and rh >= 85 and cld >= 85:
                 should_call_owm = True
             # Poranny /day jest najczęściej porównywany z widokiem za oknem.
             # Jeśli model widzi dużo chmur, dociągamy świeży snapshot OWM dla linii "Teraz: ...".
