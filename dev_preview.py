@@ -34,10 +34,10 @@ LOC_COAST = ("Hel", 54.608, 18.801, "Europe/Warsaw")
 LOC_INLAND = ("Warszawa", 52.23, 21.01, "Europe/Warsaw")
 
 
-def _base_hour(dt, **over):
+def _base_hour(dt, source="openmeteo", **over):
     h = {
         "time_local": dt.strftime("%Y-%m-%dT%H:%M:%S"),
-        "source": "openmeteo",
+        "source": source,
         "temp_c": 8.0,
         "precip_mm": 0.0,
         "precip_eff_mm": 0.0,
@@ -78,6 +78,25 @@ STORM_WIND = {"wind_kmh": 82.0, "gust_kmh": 105.0, "wind_dir_deg": 0, "clouds_pc
               "weather_code": 3}
 BEACH_WIND = {"wind_kmh": 38.0, "gust_kmh": 52.0, "wind_dir_deg": 0, "temp_c": 24.0,
               "clouds_pct": 20.0, "clouds_low_pct": 10.0, "clouds_mid_pct": 10.0}
+# "Duch opadu": TYLKO openmeteo widzi 0.6 mm i to przy POP 20% (<30), więc
+# _precip_consensus() kasuje ten opad do zera. Warunki termiczne są gołoledziowe.
+GHOST_FREEZING = {"temp_c": 0.3, "precip_mm": 0.6, "precip_eff_mm": 0.6, "precip_prob_pct": 20,
+                  "rh_pct": 96, "dewpoint_c": -0.1, "clouds_pct": 95.0, "clouds_low_pct": 85.0,
+                  "clouds_mid_pct": 10.0, "symbol_code": "lightrain", "weather_code": 66}
+GHOST_FREEZING_ALT = {"temp_c": 0.3, "precip_mm": 0.0, "precip_eff_mm": 0.0, "precip_prob_pct": 5,
+                      "rh_pct": 96, "dewpoint_c": -0.1, "clouds_pct": 95.0, "clouds_low_pct": 85.0,
+                      "clouds_mid_pct": 10.0, "symbol_code": "cloudy", "weather_code": 3}
+# Kontrola pozytywna do GHOST_*: te same warunki termiczne i te same 0.6 mm,
+# ale WIDZĄ JE OBA modele przy wysokim POP. Konsensus musi zwrócić 0.6 mm,
+# więc alert gołoledzi, tekst "(0.6 mm)" i ikona opadowa mają ZOSTAĆ.
+# Bez tego scenariusza "naprawą" rozjazdu #1 byłoby wyciszenie alertu w ogóle.
+CONSENSUS_FREEZING = {"temp_c": 0.3, "precip_mm": 0.6, "precip_eff_mm": 0.6, "precip_prob_pct": 85,
+                      "rh_pct": 96, "dewpoint_c": -0.1, "clouds_pct": 95.0, "clouds_low_pct": 85.0,
+                      "clouds_mid_pct": 10.0, "symbol_code": "lightrain", "weather_code": 66}
+# Wiatr średni WYŻSZY od porywu (realne w danych modelowych po uśrednieniu porywów).
+GUST_BELOW_WIND = {"wind_kmh": 85.0, "gust_kmh": 70.0, "wind_dir_deg": 180, "clouds_pct": 90.0,
+                   "clouds_low_pct": 80.0, "clouds_mid_pct": 10.0, "symbol_code": "cloudy",
+                   "weather_code": 3}
 
 SCENARIOS = {
     "clear": dict(
@@ -116,6 +135,20 @@ SCENARIOS = {
         desc="wiatr od morza w sezonie plażowym (wymaga daty 01.06–15.09 i PL)",
         loc=LOC_COAST, date="2026-07-15 12:00",
         hours=lambda i: BEACH_WIND),
+    "ghost_precip": dict(
+        desc="duch opadu: 0.6 mm tylko w jednym modelu przy POP 20% + warunki gołoledzi",
+        loc=LOC_INLAND, date="2026-01-15 12:00",
+        hours=lambda i: GHOST_FREEZING if i < 4 else {"temp_c": 0.5},
+        alt_hours=lambda i: GHOST_FREEZING_ALT if i < 4 else {"temp_c": 0.5}),
+    "consensus_precip": dict(
+        desc="realny opad: 0.6 mm w OBU modelach @ POP 85% — alert, mm i ikona muszą zostać",
+        loc=LOC_INLAND, date="2026-01-15 12:00",
+        hours=lambda i: CONSENSUS_FREEZING if i < 4 else {"temp_c": 0.5},
+        alt_hours=lambda i: CONSENSUS_FREEZING if i < 4 else {"temp_c": 0.5}),
+    "gust_below_wind": dict(
+        desc="wiatr 85 km/h, porywy 70 km/h — poryw NIE jest maksimum",
+        loc=LOC_INLAND, date="2026-09-28 12:00",
+        hours=lambda i: GUST_BELOW_WIND),
 }
 
 
@@ -124,11 +157,17 @@ def build_payload(scen, lang, now, span_hours):
     start = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=12)
     hours = [_base_hour(start + timedelta(hours=i), **scen["hours"](max(0, i - 12)))
              for i in range(span_hours + 12)]
+    # Drugi model (yrno) budujemy TYLKO tam, gdzie scenariusz go potrzebuje —
+    # bez niego _precip_consensus() nie ma z czym porównywać i zwraca wartość bazową.
+    alt = scen.get("alt_hours")
+    if alt:
+        hours += [_base_hour(start + timedelta(hours=i), source="yrno", **alt(max(0, i - 12)))
+                  for i in range(span_hours + 12)]
     return {
         "location": {"name": name, "lat": lat, "lon": lon, "tz": tz},
         "lang": lang,
         "hours": hours,
-        "forecast_source": "OpenMeteo + Yr.no (PODGLĄD)",
+        "forecast_source": "OpenMeteo + Yr.no (preview)",
         "model_updated_at_local": now.strftime("%Y-%m-%dT03:00:00"),
         "alerts": [],
     }

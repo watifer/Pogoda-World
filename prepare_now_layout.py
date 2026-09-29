@@ -10,7 +10,8 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 # Importujemy sprawdzoną logikę z głównego skryptu (w tym efektywne chmury)
-from prepare_layout import _fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus, _drizzle_hint, _precip_consensus
+from prepare_layout import (_fmt_temp, _feels_like, DNI_PL, _hour_safe, _eff_cld_consensus,
+                            _drizzle_hint, precip_mm_for_ui, _eff_wind_kmh)
 from i18n import t, DAYS_FULL
 from i18n import translate_weather_text
 from forecast_text import classify_precip, KINDS, is_freezing_precip
@@ -117,7 +118,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     owm = payload.get("owm_current")
     if not owm:
         try:
-            owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=8)
+            owm = get_current_weather(payload["location"]["lat"], payload["location"]["lon"], timeout_sec=3)
         except Exception:
             owm = None
 
@@ -127,10 +128,6 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         owm_note = nowcast_note(payload_hours=payload.get("hours", []), now_local=now, owm=owm, lang=lang)
 
     # --- CIŚNIENIE I TREND DLA HERO ---
-    def _hour(h_dict):
-        try: return datetime.fromisoformat(h_dict["time_local"].replace("Z", "+00:00")).hour
-        except: return 0
-
     current_h = next((h for h in hp if _hour_safe(h.get("time_local", "")) == now.hour and h.get("pressure_hpa") is not None), None)
     pressure_hpa = current_h["pressure_hpa"] if current_h else None
     
@@ -148,7 +145,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     bmax = max(temps) if temps else 0
 
     # POPRAWKA WIATRU DLA HERO: Tutaj skanujemy całe 12h, żeby ostrzec przed nadciągającą wichurą
-    max_wind_12h = max((float(h.get("gust_kmh") or h.get("wind_kmh") or 0) for dt, h in ta_tuples), default=0)
+    max_wind_12h = max((_eff_wind_kmh(h) for dt, h in ta_tuples), default=0)
 
     # Ujednolicona Złota Skala Wiatru (Hero odzywa się dopiero przy zagrożeniach)
     if max_wind_12h >= 100: hero_wind = "potężna wichura"
@@ -159,8 +156,8 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # 1. HORYZONT HERO: Odcinamy daleką przyszłość.
     # Bierzemy tylko 4 najbliższe godziny, żeby deszcz o 03:00 nie psuł słońca o 16:00!
     hero_ta_tuples = ta_tuples[:4]
-    
-    avg_clouds = sum(_eff_cld_consensus(h) for dt, h in hero_ta_tuples) / len(hero_ta_tuples) if hero_ta_tuples else 0
+
+    # avg_clouds liczymy DOPIERO po korekcie OWM (niżej, po ustaleniu _cld_override).
 
     # Odpytujemy Norwegów, czy w tej chwili na tych współrzędnych słońce jest pod horyzontem
     current_sym = (ta_tuples[0][1].get("symbol_code") or "").lower()
@@ -198,13 +195,21 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
     # Wygenerowanie bazy z uwzględnieniem ewentualnej korekty
     base_sky, hero_icon_bg = sky_from_clouds(cld_now, hero_is_night)
 
+    # Średnie zachmurzenie okna Hero — PO korekcie satelitarnej.
+    # `_cld_override` jest wpisywany do h0 dopiero powyżej, więc licząc avg_clouds
+    # wcześniej dostawaliśmy wartość modelową: radar mógł zdjąć chmury z godziny 0
+    # (base_sky = "Słonecznie"), a avg_clouds >= 70 nadal degradowało "przelotny
+    # deszcz" do "deszcz" i ikonę wk_showers do wk_rain.
+    avg_clouds = (sum(h.get("_cld_override", _eff_cld_consensus(h)) for _, h in hero_ta_tuples)
+                  / len(hero_ta_tuples)) if hero_ta_tuples else 0
+
 
 
     # ==================================================================
     # 2. Łączenie chmur z opadami (TYLKO okno 4 godzin Hero)
     # ==================================================================
     def get_prc(h_dict):
-        return _precip_consensus(h_dict, hours) if hours else float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0)
+        return precip_mm_for_ui(h_dict, hours)
 
     def get_pop(h_dict):
         v = h_dict.get("precip_prob_pct", h_dict.get("pop_pct", h_dict.get("pop")))
@@ -245,7 +250,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             w_code = h.get("weather_code_eff", h.get("weather_code"))
             cld = h.get("_cld_override", _eff_cld_consensus(h))
             
-            kind = classify_precip(prc, tmp, sym, w_code)
+            kind = classify_precip(prc, tmp, symbol_code=sym, weather_code=w_code)
             icon = _now_icon(cld, prc, tmp, dt.hour, kind=kind, symbol_code=sym)
             
             if icon in ["wk_storm", "wk_sun_storm"]: has_storm = True
@@ -329,7 +334,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                         break
 
     if sky_desc == "Bezchmurnie" and 6 <= now.hour < 20:
-        if avg_clouds <= 3.0 and max(float(h.get("gust_kmh") or h.get("wind_kmh") or 0) for _, h in hero) < 30:
+        if avg_clouds <= 3.0 and max(_eff_wind_kmh(h) for _, h in hero) < 30:
             sky_desc = "Bezchmurnie, pogoda jak kryształ"
 
     # ==================================================================
@@ -379,7 +384,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                 sym_late = h_late.get("symbol_code_eff", h_late.get("symbol_code")) or ""
                 w_code_late = h_late.get("weather_code_eff", h_late.get("weather_code"))
                 
-                kind_late = classify_precip(prc_late, tmp_late, sym_late, w_code_late)
+                kind_late = classify_precip(prc_late, tmp_late, symbol_code=sym_late, weather_code=w_code_late)
                 
                 # Zamiast twardego polskiego tekstu, przypisujemy klucze systemowe
                 if kind_late in ["storm"]: 
@@ -464,11 +469,11 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         # Pobranie chmur z uwzględnieniem ewentualnego nadpisania
         cld = h.get("_cld_override", _eff_cld_consensus(h))
         temp = h.get("temp_c", 0)
-        prc = float(h.get("precip_eff_mm", h.get("precip_mm")) or 0)
+        # Jedno mm na cały blok: ikona, tekst, styl alertowy i softening.
+        prc = precip_mm_for_ui(h, hours)
         
         wind_avg = float(h.get("wind_kmh") or 0)
-        wind_gust = float(h.get("gust_kmh") or h.get("wind_gust_kmh") or 0)
-        eff_wind = max(wind_avg, wind_gust)
+        eff_wind = _eff_wind_kmh(h)
         
         rh = h.get("rh_pct")
         
@@ -476,13 +481,11 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         if feels is None: feels = temp
         
         kind = None
-        hours_all = payload.get("hours", [])
-        prc_consensus = _precip_consensus(h, hours_all) if hours_all else prc
-        
-        if prc_consensus > 0:
-            kind = classify_precip(prc_consensus, temp, h.get("symbol_code"), h.get("weather_code"))
+        if prc > 0:
+            kind = classify_precip(prc, temp, symbol_code=h.get("symbol_code"),
+                                   weather_code=h.get("weather_code"))
             
-        icon = _now_icon(cld, prc_consensus, temp, dt.hour, kind=kind, symbol_code=h.get("symbol_code", ""))   
+        icon = _now_icon(cld, prc, temp, dt.hour, kind=kind, symbol_code=h.get("symbol_code", ""))   
         
         if prc > 0:
             if icon == "wk_drizzle": base_desc = "Mżawka"
@@ -495,7 +498,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
             else:
                 base_desc = t("pl", KINDS[kind]["full_key"]).capitalize() if kind and kind in KINDS else "Opad"
                 
-            desc = f"{base_desc} ({prc} mm)"
+            desc = f"{base_desc} ({round(prc, 1)} mm)"
         else:
             sym_code = h.get("symbol_code", "") or ""
             if "_night" in sym_code.lower():
@@ -632,8 +635,8 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
                     try:
                         wdir = float(h.get("wind_dir_deg") or 0)
                         wspd = float(h.get("wind_kmh") or 0)
-                        gust = float(h.get("gust_kmh", h.get("wind_gust_kmh")) or 0)
-                        eff_wind = max(wspd, gust)
+                        gust = float(h.get("gust_kmh") or 0)
+                        eff_wind = _eff_wind_kmh(h)
                         hh = dt_local.hour
 
                         mode = get_coastal_alert_mode(sig, wspd, gust, wdir, tz_str, dt_local)
@@ -683,7 +686,7 @@ def prepare_now_layout_data(payload: dict, now: datetime = None) -> dict:
         # Poprzedni warunek lokalny był nieosiągalny: classify_precip() nie zwraca
         # kindów "freezing_*", a family=="rain" wymaga temp > 2.0 °C.
         return is_freezing_precip(
-            float(h_dict.get("precip_eff_mm", h_dict.get("precip_mm")) or 0.0),
+            precip_mm_for_ui(h_dict, hours),
             h_dict.get("temp_c"),
             symbol_code=h_dict.get("symbol_code_eff", h_dict.get("symbol_code")),
             weather_code=h_dict.get("weather_code_eff", h_dict.get("weather_code")),
