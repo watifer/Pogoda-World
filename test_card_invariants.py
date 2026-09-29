@@ -223,3 +223,54 @@ def test_no_polish_diacritics_in_foreign_langs(rendered, scen, lang, card):
     checked = {k: v for k, v in data.items() if k not in ("city", "location", "location_name")}
     bad = [s for s in _iter_strings(checked) if PL_DIACRITICS.search(s)]
     assert not bad, f"{scen}/{lang}//{card}: nieprzetłumaczone PL w {bad[:3]}"
+
+
+# ───────────── 6. bramka kosztowa OWM (wyjątek operacyjny) ─────────────
+# OWM to płatny call w ścieżce użytkownika. Reguła "hidden drizzle" ma prawo go
+# odpalić tylko wtedy, gdy ŻADEN model nie widzi opadu — sam konsensus UI nie
+# wystarcza, bo "duch opadu" też daje 0.0 mm. To wyjątek operacyjny: surowe mm
+# NIE trafiają stąd do żadnego tekstu, ikony ani alertu.
+
+def test_models_raw_dry_sees_single_model_precip():
+    from prepare_layout import _models_raw_dry
+    om = {"time_local": "2026-01-15T12:00:00", "source": "openmeteo", "precip_eff_mm": 0.6}
+    yr = {"time_local": "2026-01-15T12:00:00", "source": "yrno", "precip_eff_mm": 0.0}
+    assert _models_raw_dry(om, [om, yr]) is False, "duch opadu to nie jest 'sucho'"
+    assert _models_raw_dry(yr, [om, yr]) is False, "liczy się godzina, nie model wejściowy"
+
+    dry_om = dict(om, precip_eff_mm=0.0)
+    assert _models_raw_dry(dry_om, [dry_om, yr]) is True
+    wet_edge = dict(om, precip_eff_mm=0.09)
+    assert _models_raw_dry(wet_edge, [wet_edge, yr]) is True
+
+
+def test_ghost_precip_does_not_trigger_owm_call(monkeypatch):
+    """OM 0.6 mm @ POP 20% + Yr 0.0: konsensus 0.0, ale nie ma za co płacić za radar."""
+    import prepare_layout
+
+    calls = []
+    monkeypatch.setattr(prepare_layout, "get_current_weather",
+                        lambda *a, **kw: calls.append((a, kw)))
+    _render("ghost_precip", "pl", "day")
+    assert not calls, f"bramka 'hidden drizzle' odpaliła OWM na duchu opadu ({len(calls)}x)"
+
+
+def test_genuinely_dry_and_damp_hour_still_triggers_owm(monkeypatch):
+    """Kontrola czułości: gdy OBA modele są suche, a jest mokro i pochmurno — OWM leci."""
+    import prepare_layout
+
+    calls = []
+    monkeypatch.setattr(prepare_layout, "get_current_weather",
+                        lambda *a, **kw: calls.append((a, kw)))
+
+    scen = dict(SCENARIOS["ghost_precip"])
+    dry = {"temp_c": 0.3, "precip_mm": 0.0, "precip_eff_mm": 0.0, "precip_prob_pct": 20,
+           "rh_pct": 96, "dewpoint_c": -0.1, "clouds_pct": 95.0, "clouds_low_pct": 85.0,
+           "clouds_mid_pct": 10.0, "symbol_code": "cloudy", "weather_code": 3}
+    scen["hours"] = lambda i: dry
+    scen["alt_hours"] = lambda i: dry
+
+    tz = ZoneInfo(scen["loc"][3])
+    now = datetime.strptime(scen["date"], "%Y-%m-%d %H:%M").replace(tzinfo=tz)
+    prepare_layout.prepare_layout_data(build_payload(scen, "pl", now, 60), now=now)
+    assert calls, "bramka 'hidden drizzle' przestała działać dla realnie suchej godziny"

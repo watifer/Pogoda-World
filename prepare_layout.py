@@ -200,6 +200,30 @@ def precip_mm_for_ui(h: dict, hp_all: list = None) -> float:
     return float(h.get("precip_eff_mm", h.get("precip_mm")) or 0.0)
 
 
+RAW_DRY_MM_MAX = 0.1
+
+
+def _models_raw_dry(h: dict, hp_all: list, limit: float = RAW_DRY_MM_MAX) -> bool:
+    """Czy WSZYSTKIE modele raportują dla tej godziny surowo sucho (< limit mm)?
+
+    WYJĄTEK OPERACYJNY, nie źródło tekstu UI. Służy wyłącznie bramce kosztowej
+    "hidden drizzle" w /day: dociągamy płatny snapshot OWM tylko wtedy, gdy
+    żaden model nie widzi opadu. Sam konsensus nie wystarcza — "duch opadu"
+    (OM 0.6 mm @ POP 20%, Yr 0.0) daje konsensus 0.0 i wyglądałby jak sucho,
+    a to właśnie sytuacja, w której jeden model coś widzi i płacenie za radar
+    nie jest uzasadnione tą regułą.
+
+    Do ikon, tekstów, alertów i softeningu nadal służy WYŁĄCZNIE
+    precip_mm_for_ui().
+    """
+    t_loc = h.get("time_local")
+    same_hour = [x for x in (hp_all or []) if x.get("time_local") == t_loc] or [h]
+    for x in same_hour:
+        if float(x.get("precip_eff_mm", x.get("precip_mm")) or 0.0) >= limit:
+            return False
+    return True
+
+
 def _eff_wind_kmh(h: dict) -> float:
     """Efektywny wiatr godziny = max(średni, poryw).
 
@@ -1579,7 +1603,12 @@ def prepare_layout_data(payload, now=None):
             mm_now = precip_mm_for_ui(current_h, hours)
             cld = max(float(current_h.get("clouds_low_pct") or 0) + float(current_h.get("clouds_mid_pct") or 0), float(current_h.get("clouds_pct_yr") or 0))
             
-            if mm_now < 0.1 and rh >= 85 and cld >= 85:
+            # Bramka "hidden drizzle": mokro za oknem, choć modele milczą.
+            # Dwa warunki na mm, bo pełnią różne role:
+            #  - konsensus UI (mm_now) mówi, czy karta deklaruje sucho,
+            #  - _models_raw_dry() pilnuje kosztu: jeśli KTÓRYKOLWIEK model widzi
+            #    opad (choćby "duch" OM 0.6 mm @ POP 20%), nie płacimy za OWM.
+            if mm_now < RAW_DRY_MM_MAX and _models_raw_dry(current_h, hours) and rh >= 85 and cld >= 85:
                 should_call_owm = True
             # Poranny /day jest najczęściej porównywany z widokiem za oknem.
             # Jeśli model widzi dużo chmur, dociągamy świeży snapshot OWM dla linii "Teraz: ...".
