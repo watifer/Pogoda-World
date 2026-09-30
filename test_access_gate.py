@@ -23,7 +23,9 @@ import os
 import pytest
 import requests
 
-os.environ.setdefault("PUBLIC_BETA_CODES", "BETAX1")
+# UWAGA: celowo NIE ustawiamy tu PUBLIC_BETA_CODES. Kody beta ustawia BotHarness
+# przez monkeypatch.setenv (odporne na kolejność importów modułów testowych
+# oraz na .env użytkownika, który load_dotenv() mógł już wczytać).
 
 import location_bot as lb
 import users_store
@@ -31,6 +33,28 @@ import users_store
 FORM_HEADERS = ["Sygnatura czasowa", "Chat ID", "Imię", "Miasto", "Lat", "Lon",
                 "Raport poranny", "Aktualizacja", "Lang"]
 USERS_HEADERS = users_store.CANONICAL_HEADERS
+
+
+def freeze_local_hour(monkeypatch, hour, minute=0):
+    """
+    Deterministycznie zamraża datetime.now() na ustaloną godzinę.
+
+    Konieczne dla testów /day: karta dzienna ma w produkcji (zachowanie
+    ISTNIEJĄCE NA STAGING, sprzed PR1) okno dostępności 05:00–15:59 czasu
+    lokalnego użytkownika. Bez zamrożenia test /day jest nie-deterministyczny
+    — failuje, gdy suite odpalany jest poza oknem. Handler /day importuje
+    datetime na czas wywołania (`from datetime import datetime`), więc
+    podmiana atrybutu modułu `datetime` jest w nim widoczna.
+    """
+    import datetime as _dt
+    real = _dt.datetime
+
+    class _FrozenDateTime(real):
+        @classmethod
+        def now(cls, tz=None):
+            return real(2026, 9, 30, hour, minute, tzinfo=tz)
+
+    monkeypatch.setattr(_dt, "datetime", _FrozenDateTime)
 
 
 # ============================================================================
@@ -163,6 +187,13 @@ class BotHarness:
         self.sent = []        # (chat_id, text)
         self.guest_calls = []  # teksty przekazane do handle_guest_now
         self.cards = []       # chat_id z _send_card_to_user
+
+        # Kody beta ustawiane PER-TEST przez monkeypatch (auto-undo po teście):
+        # 1) działa niezależnie od kolejności importu modułów testowych,
+        # 2) nadpisuje PUBLIC_BETA_CODES z .env wczytanego przez load_dotenv(),
+        # 3) _public_codes() czyta env na czas WYWOŁANIA, nie importu.
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETAX1")
+        monkeypatch.delenv("PUBLIC_BETA_CODE", raising=False)
 
         updates = []
 
@@ -347,10 +378,23 @@ class TestAccessWithoutProfile:
 
 
 class TestLegacyUserUnchanged:
-    def test_legacy_day_generates_card(self, bot):
+    def test_legacy_day_generates_card(self, bot, monkeypatch):
+        # Zamrożenie godziny na 10:00 (wewnątrz okna 05:00–15:59) — inaczej
+        # test zależałby od pory odpalenia suite'u (zachowanie pre-existing).
+        freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(700, "/day"))
         assert not bot.has_reply(700, "Brak dostępu")
         assert bot.cards == ["700"]
+
+    def test_legacy_day_time_limit_is_preexisting(self, bot, monkeypatch):
+        # Dokumentuje ISTNIEJĄCE (pre-PR1, obecne też na staging) okno /day:
+        # poza 05:00–15:59 legacy user z dostępem dostaje time_limit zamiast
+        # karty — to nie jest regresja PR1, ścieżka legacy jest nietknięta.
+        freeze_local_hour(monkeypatch, 22, 0)
+        bot.run(bot.msg(700, "/day"))
+        assert not bot.has_reply(700, "Brak dostępu")  # dostęp nadal jest
+        assert bot.cards == []                          # ale karta wstrzymana
+        assert bot.has_reply(700, "05:00")              # komunikat okna czasowego
 
     def test_blocked_legacy_refused(self, bot):
         bot.run(bot.msg(701, "/day"))
