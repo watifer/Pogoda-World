@@ -13,7 +13,7 @@ import users_store
 from users_store import (
     norm_chat_id, now_iso, get_ws, find_row_by_chat_id, get_user,
     load_users_map, has_access, has_access_in_map, get_lang,
-    upsert_access, set_blocked, clear_profile, delete_user_row,
+    upsert_access, set_profile, set_blocked, clear_profile, delete_user_row,
 )
 
 # Dokładnie te nagłówki, które powstały w pkt 0 planu (zakładka Users)
@@ -148,6 +148,7 @@ def test_functions_safe_with_none_ws():
     assert load_users_map(None) == {}
     assert has_access(None, 1) is False
     assert upsert_access(None, 1, "pl", "referral", now_iso(), "v1") is False
+    assert set_profile(None, 1, 1, 2, "X", "city", "pl", "v1", now_iso()) is False
     assert set_blocked(None, 1, "unknown", now_iso()) is False
     assert clear_profile(None, 1, now_iso()) is False
     assert delete_user_row(None, 1) is False
@@ -205,6 +206,43 @@ class TestUpsertAccess:
         ws = FakeWorksheet()
         upsert_access(ws, 6, "it", "referral", "2026-09-30 10:00:00", "v1")
         assert ws.record(6)["lang"] == "en"
+
+
+# ============================================================================
+# set_profile — wyłącznie po /save_location, dane z PENDING_SAVE
+# ============================================================================
+def test_set_profile_writes_active_profile_and_consent_in_one_batch():
+    ws = FakeWorksheet()
+    upsert_access(ws, 123, "pl", "referral", "2026-09-30 10:00:00", "v1")
+
+    ok = set_profile(
+        ws, 123, 52.22972, 21.01223, "Warszawa", "city", "pl",
+        "2026-09-v1", "2026-09-30 10:05:00",
+    )
+
+    assert ok is True
+    assert ws.calls["update_cells"] == 1  # profil aktualizowany batchowo
+    rec = ws.record(123)
+    assert rec["access_status"] == "granted"
+    assert rec["profile_status"] == "active"
+    assert rec["lat_round"] == "52.23"
+    assert rec["lon_round"] == "21.01"
+    assert rec["location_label"] == "Warszawa"
+    assert rec["location_source"] == "city"
+    assert rec["lang"] == "pl"
+    assert rec["location_consent_at"] == "2026-09-30 10:05:00"
+    assert rec["location_consent_version"] == "2026-09-v1"
+    assert rec["profile_updated_at"] == "2026-09-30 10:05:00"
+
+
+def test_set_profile_never_creates_access_row_or_accepts_bad_source():
+    ws = FakeWorksheet()
+    assert set_profile(ws, 999, 1, 2, "X", "city", "pl", "v1", "2026-09-30 10:00:00") is False
+    assert ws.record(999) is None
+
+    upsert_access(ws, 999, "pl", "referral", "2026-09-30 10:00:00", "v1")
+    assert set_profile(ws, 999, 1, 2, "X", "unknown", "pl", "v1", "2026-09-30 10:01:00") is False
+    assert ws.record(999)["profile_status"] == "none"
 
 
 # ============================================================================
@@ -439,14 +477,24 @@ class TestLocationBotHelpers:
         assert f("") is None
         assert f(None) is None
 
-    def test_delete_me_clears_pending_city_ram(self, monkeypatch):
-        # /delete_me czyści także stan RAM (PENDING_CITY); send_reply mockujemy,
-        # żeby test nie próbował realnie wołać Telegrama.
+    def test_pending_save_ttl_expires_and_does_not_return_location(self):
+        lb.PENDING_SAVE.clear()
+        pending = lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city", now_ts=1000)
+        assert pending["expires_ts"] == 1000 + lb.PENDING_SAVE_TTL_SEC
+        assert lb._get_pending_save(123456, now_ts=1001)["city"] == "Warszawa"
+        assert lb._get_pending_save(123456, now_ts=1000 + lb.PENDING_SAVE_TTL_SEC) is None
+        assert "123456" not in lb.PENDING_SAVE
+
+    def test_delete_me_clears_pending_city_and_save_ram(self, monkeypatch):
+        # /delete_me czyści oba stany RAM; send_reply mockujemy, żeby test nie
+        # próbował realnie wołać Telegrama.
         sent = []
         monkeypatch.setattr(lb, "send_reply", lambda cid, txt, **kw: sent.append((cid, txt)))
         lb.PENDING_CITY["123456"] = 9999999999.0
+        lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city")
         lb._handle_delete_me(123456, "pl", None, _LegacySheetStub())
         assert "123456" not in lb.PENDING_CITY
+        assert "123456" not in lb.PENDING_SAVE
         assert sent and "usunięte" in sent[0][1].lower()
 
 

@@ -60,6 +60,7 @@ PROFILE_COLS = (
 )
 
 SUPPORTED_LANGS = ("pl", "en", "de", "fr", "es", "no")
+LOCATION_SOURCES = ("gps", "city", "webapp")
 
 
 def now_iso() -> str:
@@ -267,6 +268,66 @@ def upsert_access(ws, chat_id, lang, source, now_iso_str, privacy_ver) -> bool:
 
     except Exception as e:
         print(f"  ❌ [users_store] upsert_access({chat_id}): {e}")
+        return False
+
+
+def set_profile(
+    ws,
+    chat_id,
+    lat,
+    lon,
+    location_label,
+    location_source,
+    lang,
+    consent_version,
+    now_iso_str,
+) -> bool:
+    """Zapisuje profil lokalizacji wyłącznie po wyraźnej zgodzie użytkownika.
+
+    Funkcja nie tworzy rekordu access i nie zapisuje niczego do legacy ``Formularz``.
+    Wywołujący musi wcześniej przejść bramkę access oraz potwierdzić lokalizację
+    komendą ``/save_location``.  Współrzędne są zaokrąglane do dwóch miejsc
+    po przecinku przed trwałym zapisem; dokładniejsze wartości żyją tylko w RAM
+    w ``PENDING_SAVE`` location_bota.
+    """
+    if ws is None:
+        return False
+    try:
+        existing = get_user(ws, chat_id)
+        if existing is None:
+            return False
+
+        try:
+            lat_round = str(round(float(lat), 2))
+            lon_round = str(round(float(lon), 2))
+        except (TypeError, ValueError):
+            return False
+
+        clean_lang = str(lang or "").strip().lower()
+        if clean_lang in ("nb", "no"):
+            clean_lang = "no"
+        if clean_lang not in SUPPORTED_LANGS:
+            clean_lang = "en"
+
+        source = str(location_source or "").strip().lower()
+        if source not in LOCATION_SOURCES:
+            return False
+
+        updates = {
+            "profile_status": "active",
+            "lat_round": lat_round,
+            "lon_round": lon_round,
+            "location_label": str(location_label or "").strip(),
+            "location_source": source,
+            "lang": clean_lang,
+            "location_consent_at": now_iso_str,
+            "location_consent_version": str(consent_version or "").strip(),
+            "profile_updated_at": now_iso_str,
+            "last_seen_at": now_iso_str,
+        }
+        return _update_cells_batch(ws, existing["_row"], updates)
+    except Exception as e:
+        print(f"  ❌ [users_store] set_profile({chat_id}): {e}")
         return False
 
 

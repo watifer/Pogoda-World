@@ -30,6 +30,12 @@ import time
 PENDING_CITY = {}       # Format: { str(chat_id): expires_timestamp }
 PENDING_TTL_SEC = 300   # 5 minut (300 sekund) na wpisanie miasta
 
+# PR2: lokalizacja wykorzystana do jednorazowego raportu NIE jest profilem.
+# Przechowujemy ją wyłącznie w RAM przez 10 minut, aby użytkownik mógł świadomie
+# potwierdzić jej trwały zapis komendą /save_location.
+PENDING_SAVE = {}       # { str(chat_id): {lat, lon, city, lang, source, expires_ts} }
+PENDING_SAVE_TTL_SEC = 600
+
 
 
 
@@ -98,6 +104,224 @@ def _chat_has_access(users_map, clean_users, chat_id) -> bool:
     if u:
         return str(u.get("access_status", "")).strip().lower() == users_store.ACCESS_GRANTED
     return any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in clean_users)
+
+
+# ==============================================================
+# PR2 — RAPORTY JEDNORAZOWE I ŚWIADOMY ZAPIS PROFILU
+# ==============================================================
+def _is_legacy_only_user(users_map, clean_users, chat_id) -> bool:
+    """True tylko dla starego użytkownika z Formularz, bez rekordu w Users.
+
+    To rozróżnienie jest ważne: PR2 nie migruje legacy ani nie zmienia jego
+    istniejącego przepływu. Nowy przepływ one-off/PENDING_SAVE dotyczy rekordów
+    zarządzanych przez Users.
+    """
+    cid = users_store.norm_chat_id(chat_id)
+    has_users_record = cid in (users_map or {})
+    has_legacy_record = any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in clean_users)
+    return has_legacy_record and not has_users_record
+
+
+def _split_command(text, commands):
+    """Zwraca argument komendy albo None, gdy tekst nie jest jedną z komend.
+
+    Obsługuje też telegramowy wariant ``/day@NazwaBota Warszawa`` i nie myli
+    ``/daybreak`` z ``/day``.
+    """
+    raw = (text or "").strip()
+    if not raw.startswith("/"):
+        return None
+    head, _, tail = raw.partition(" ")
+    command = head.split("@", 1)[0].lower()
+    if command not in commands:
+        return None
+    return tail.strip()
+
+
+def _put_pending_save(chat_id, lat, lon, city, lang, source, now_ts=None):
+    """Umieszcza dokładną lokalizację wyłącznie w efemerycznym RAM (10 min)."""
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except (TypeError, ValueError):
+        return None
+    if source not in users_store.LOCATION_SOURCES:
+        return None
+    now_ts = time.time() if now_ts is None else float(now_ts)
+    pending = {
+        "lat": lat,
+        "lon": lon,
+        "city": str(city or "Twoja okolica").strip() or "Twoja okolica",
+        "lang": _norm_lang(lang) or "en",
+        "source": source,
+        "expires_ts": now_ts + PENDING_SAVE_TTL_SEC,
+    }
+    PENDING_SAVE[str(chat_id)] = pending
+    return pending
+
+
+def _prune_expired_pending_saves(now_ts=None):
+    """Usuwa wygasłe wpisy, żeby efemeryczny RAM nie rósł bez końca."""
+    now_ts = time.time() if now_ts is None else float(now_ts)
+    expired = [
+        cid for cid, pending in PENDING_SAVE.items()
+        if now_ts >= float(pending.get("expires_ts", 0) or 0)
+    ]
+    for cid in expired:
+        PENDING_SAVE.pop(cid, None)
+    return len(expired)
+
+
+def _get_pending_save(chat_id, now_ts=None, consume=False):
+    """Pobiera bieżący pending lub usuwa go, jeśli upłynął TTL.
+
+    ``consume=True`` usuwa prawidłowy pending (używane przez /oneoff); /save_location
+    najpierw odczytuje, zapisuje w Users, a dopiero po sukcesie usuwa wpis.
+    """
+    key = str(chat_id)
+    pending = PENDING_SAVE.get(key)
+    if not pending:
+        return None
+    now_ts = time.time() if now_ts is None else float(now_ts)
+    if now_ts >= float(pending.get("expires_ts", 0) or 0):
+        PENDING_SAVE.pop(key, None)
+        return None
+    if consume:
+        PENDING_SAVE.pop(key, None)
+    return pending
+
+
+def _saved_users_profile(users_map, chat_id):
+    """Zwraca aktywny profil Users do manualnego raportu bez argumentu."""
+    user = (users_map or {}).get(users_store.norm_chat_id(chat_id)) or {}
+    if str(user.get("profile_status", "")).strip().lower() != "active":
+        return None
+    try:
+        return {
+            "lat": float(str(user.get("lat_round", "")).replace(",", ".")),
+            "lon": float(str(user.get("lon_round", "")).replace(",", ".")),
+            "city": str(user.get("location_label", "")).strip() or "Twoja okolica",
+        }
+    except (TypeError, ValueError):
+        return None
+
+
+def _pending_save_markup():
+    # Teksty przycisków są świadomie dokładnymi komendami — nie zależą od i18n.
+    return {
+        "keyboard": [[{"text": "/save_location"}, {"text": "/oneoff"}]],
+        "resize_keyboard": True,
+        "one_time_keyboard": True,
+    }
+
+
+def _oneoff_message(lang, key, **kwargs):
+    """Niewielki zestaw tekstów PR2; komendy pozostają identyczne w każdym języku."""
+    en = (lang or "").lower() != "pl"
+    messages = {
+        "offer": (
+            "To był raport jednorazowy dla *{city}*.\n\n"
+            "Chcesz zapisać tę lokalizację na przyszłość?\n"
+            "`/save_location` — zapisz lokalizację\n"
+            "`/oneoff` — nie zapisuj"
+            if not en else
+            "This was a one-off report for *{city}*.\n\n"
+            "Would you like to save this location for later?\n"
+            "`/save_location` — save location\n"
+            "`/oneoff` — do not save"
+        ),
+        "saved": (
+            "✅ Lokalizacja została zapisana na przyszłość." if not en
+            else "✅ The location has been saved for future reports."
+        ),
+        "discarded": (
+            "✅ Lokalizacja nie została zapisana." if not en
+            else "✅ The location was not saved."
+        ),
+        "no_pending": (
+            "ℹ️ Nie ma lokalizacji do zapisania. Najpierw poproś o raport jednorazowy lub wyślij lokalizację."
+            if not en else
+            "ℹ️ There is no location to save. First request a one-off report or send a location."
+        ),
+        "need_location": (
+            "📍 Podaj miasto, np. `/day Warszawa`, `/now Hel` lub `/future Berlin`."
+            if not en else
+            "📍 Enter a city, e.g. `/day Warsaw`, `/now Hel`, or `/future Berlin`."
+        ),
+        "generation_error": (
+            "⚠️ Nie udało się wygenerować raportu jednorazowego. Spróbuj ponownie za chwilę."
+            if not en else
+            "⚠️ The one-off report could not be generated. Please try again shortly."
+        ),
+    }
+    return messages[key].format(**kwargs)
+
+
+def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
+    """Generuje kartę bez odczytu lub zapisu Formularz/Users."""
+    try:
+        payload = build_payload_for_location(
+            lat=float(lat),
+            lon=float(lon),
+            tz_name=_resolve_tz(float(lat), float(lon)),
+            location_name=city,
+            lang=lang,
+        )
+        layout = (
+            prepare_now_layout_data(payload) if card_type == "now"
+            else prepare_future_layout_data(payload) if card_type == "future"
+            else prepare_layout_data(payload)
+        )
+        image_path = image_generator.generate_weather_card(layout)
+        if not image_path:
+            return False
+        safe_city = str(city).replace("<", "").replace(">", "")
+        send_photo(chat_id, image_path, caption=f"<b>{safe_city}</b>", parse_mode="HTML")
+        return True
+    except Exception as e:
+        print(f"  ❌ [oneoff] Błąd generowania dla {chat_id}: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+
+def _run_oneoff_and_offer_save(chat_id, lat, lon, city, lang, source, card_type):
+    """Raport jednorazowy + propozycja jawnego, późniejszego zapisu profilu."""
+    pending = _put_pending_save(chat_id, lat, lon, city, lang, source)
+    if not pending:
+        send_reply(chat_id, _oneoff_message(lang, "generation_error"))
+        return False
+    if not _send_oneoff_report(chat_id, lat, lon, pending["city"], pending["lang"], card_type):
+        PENDING_SAVE.pop(str(chat_id), None)
+        send_reply(chat_id, _oneoff_message(lang, "generation_error"))
+        return False
+    send_reply(
+        chat_id,
+        _oneoff_message(pending["lang"], "offer", city=pending["city"]),
+        reply_markup=_pending_save_markup(),
+    )
+    return True
+
+
+def _run_saved_profile_report(chat_id, profile, lang, card_type):
+    """Raport dla wcześniej zapisanego profilu — bez tworzenia nowego pending."""
+    if not _send_oneoff_report(chat_id, profile["lat"], profile["lon"], profile["city"], lang, card_type):
+        send_reply(chat_id, _oneoff_message(lang, "generation_error"))
+        return False
+    return True
+
+
+def _run_city_oneoff(chat_id, city_query, lang, card_type):
+    """Geokoduje nazwę miasta i generuje raport bez żadnego trwałego zapisu."""
+    send_reply(chat_id, t_ui(lang, "search_loc"))
+    lat, lon, _full_address = get_coords_from_city(city_query, lang)
+    if lat is None or lon is None:
+        send_reply(chat_id, t_ui(lang, "search_fail"))
+        return False
+    city = get_city_from_coords(lat, lon, lang)
+    if city in ("Lokalizacja w terenie", "", None, "Nieznana miejscowość"):
+        city = str(city_query).strip()
+    return _run_oneoff_and_offer_save(chat_id, lat, lon, city, lang, "city", card_type)
 
 
 # ==============================================================
@@ -188,6 +412,9 @@ def _handle_my_data(chat_id, lang, users_map, clean_users):
 
 def _handle_forget_location(chat_id, lang, users_ws, main_sheet):
     """/forget_location — czyści TYLKO pola profilu (Users + legacy Formularz). Access zostaje."""
+    # Nie pozwalamy, aby lokalizacja właśnie zapomniana wciąż czekała w RAM
+    # na późniejsze /save_location.
+    PENDING_SAVE.pop(str(chat_id), None)
     cleared_users = users_store.clear_profile(users_ws, chat_id, users_store.now_iso())
     cleared_legacy = _clear_legacy_location(main_sheet, chat_id)
 
@@ -202,8 +429,9 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
     users_deleted = users_store.delete_user_row(users_ws, chat_id)
     legacy_deleted = _delete_legacy_rows(main_sheet, chat_id)
 
-    # Czyszczenie stanów RAM (PENDING_SAVE dojdzie w PR2)
+    # Czyszczenie stanów RAM — pending nigdy nie może przetrwać /delete_me.
     PENDING_CITY.pop(str(chat_id), None)
+    PENDING_SAVE.pop(str(chat_id), None)
 
     if users_deleted or legacy_deleted:
         send_reply(chat_id, t_ui(lang, "delete_me_done", url=INVITE_URL))
@@ -479,6 +707,10 @@ def main_bot():
             
             if not chat_id: 
                 continue
+
+            # TTL jest egzekwowany również wtedy, gdy właściciel pending nie
+            # wyśle ponownie /save_location (wpis nadal pozostaje tylko w RAM).
+            _prune_expired_pending_saves()
             
             # --- DODAJ TO TUTAJ: Błyskawiczne pobranie języka dla Gościa ---
             raw_guest = message.get("from", {}).get("language_code", "en")[:2].lower()
@@ -564,53 +796,52 @@ def main_bot():
                     if data.get("type") == "set_location":
                         lat = float(data.get("lat"))
                         lon = float(data.get("lon"))
-                        
                         print(f"  📍 Odebrano współrzędne GPS od {chat_id}: {lat}, {lon}")
-                        
-                        # Znajdujemy wszystkie wiersze użytkownika
+
+                        # WebApp także podlega gate accessu. Bez dostępu nie generuje
+                        # raportu i nie pozostawia lokalizacji nawet w RAM.
+                        if not _chat_has_access(users_map, clean_users, chat_id):
+                            send_reply(chat_id, t_ui(user_lang, "no_access", url=INVITE_URL))
+                            continue
+
+                        city = get_city_from_coords(lat, lon, user_lang)
+                        if city == "Lokalizacja w terenie" or not city:
+                            city = "Twoja okolica"
+
+                        # PR2: konta Users dostają tylko raport jednorazowy oraz RAM
+                        # pending. Nie dotykamy Formularz przed /save_location.
+                        # Stary użytkownik bez wiersza Users zostaje na poprzednim,
+                        # legacy przepływie — bez migracji i bez zmiany schedulera.
+                        if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                            _run_oneoff_and_offer_save(
+                                chat_id, lat, lon, city, user_lang, "webapp", "day"
+                            )
+                            continue
+
+                        # --- niezmieniony legacy zapis do Formularz ---
                         rows_to_update = []
                         for idx, r in enumerate(users_records):
                             if str(r.get("Chat ID", "")).strip() == str(chat_id):
                                 rows_to_update.append(idx + 2)
-                        
                         if not rows_to_update:
                             try:
-                                komorka = main_sheet.find(str(chat_id), in_column=2)
-                                rows_to_update.append(komorka.row)
+                                rows_to_update.append(main_sheet.find(str(chat_id), in_column=2).row)
                             except Exception:
-                                print("  [DEBUG-WEBAPP] Nie znalazłem usera w bazie!")
+                                print("  [DEBUG-WEBAPP] Nie znalazłem usera legacy w bazie!")
 
-                        # PR1: brak wiersza w Formularz = użytkownik z samym access-em
-                        # (rejestracja od PR1 nie tworzy profilu) albo czat bez dostępu.
-                        if not rows_to_update:
-                            if _chat_has_access(users_map, clean_users, chat_id):
-                                send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
-                            else:
-                                send_reply(chat_id, t_ui(user_lang, "no_access", url=INVITE_URL))
-                            continue
-
-                        # Geolokalizacja w języku użytkownika
-                        city = get_city_from_coords(lat, lon, user_lang) 
-                        if city == "Lokalizacja w terenie" or not city:
-                            city = "Twoja okolica"
-                            
-                        # Aktualizacja Google Sheets
                         if rows_to_update:
                             col_lat = headers.index("Lat") + 1
                             col_lon = headers.index("Lon") + 1
                             col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
-                            
                             for r_idx in rows_to_update:
                                 main_sheet.update_cell(r_idx, col_lat, lat)
                                 main_sheet.update_cell(r_idx, col_lon, lon)
                                 if col_miasto:
                                     main_sheet.update_cell(r_idx, col_miasto, city)
-                                    
-                        # Wysłanie przetłumaczonej wiadomości
+
                         ukryj_klawiature = {"remove_keyboard": True}
-                        sukces_msg = t_ui(user_lang, "loc_updated", city=city)
-                        send_reply(chat_id, sukces_msg, reply_markup=ukryj_klawiature)
-                        
+                        send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city), reply_markup=ukryj_klawiature)
+
                     elif data.get("type") == "set_settings":
                         rano = (data.get("rano") or "").strip()
                         wieczor = (data.get("wieczor") or "").strip()
@@ -853,6 +1084,57 @@ def main_bot():
                     "Lang": user_lang,
                 }
 
+            # PR2: tylko jawne potwierdzenie /save_location zapisuje profil Users.
+            # /oneoff wyłącznie wyrzuca stan z RAM. Obie komendy są już za gate
+            # accessu, więc nie można nimi zapisać danych użytkownika bez dostępu.
+            command_text = (message.get("text") or "").strip()
+            if _split_command(command_text, {"/save_location"}) is not None:
+                pending = _get_pending_save(chat_id)
+                if not pending:
+                    send_reply(chat_id, _oneoff_message(user_lang, "no_pending"))
+                    continue
+
+                saved_at = users_store.now_iso()
+                saved = users_store.set_profile(
+                    users_ws,
+                    chat_id,
+                    pending["lat"],
+                    pending["lon"],
+                    pending["city"],
+                    pending["source"],
+                    pending["lang"],
+                    PRIVACY_VERSION,
+                    saved_at,
+                )
+                if not saved:
+                    # Pending zostaje — użytkownik może ponowić po przejściowym
+                    # błędzie Sheets, bez konieczności ponownego wysyłania GPS.
+                    send_reply(chat_id, _oneoff_message(user_lang, "generation_error"))
+                    continue
+
+                PENDING_SAVE.pop(str(chat_id), None)
+                user_entry = users_map.setdefault(users_store.norm_chat_id(chat_id), {})
+                user_entry.update({
+                    "profile_status": "active",
+                    "lat_round": str(round(float(pending["lat"]), 2)),
+                    "lon_round": str(round(float(pending["lon"]), 2)),
+                    "location_label": pending["city"],
+                    "location_source": pending["source"],
+                    "lang": pending["lang"],
+                    "location_consent_at": saved_at,
+                    "location_consent_version": PRIVACY_VERSION,
+                })
+                send_reply(chat_id, _oneoff_message(pending["lang"], "saved"), reply_markup={"remove_keyboard": True})
+                continue
+
+            if _split_command(command_text, {"/oneoff"}) is not None:
+                pending = _get_pending_save(chat_id, consume=True)
+                if pending:
+                    send_reply(chat_id, _oneoff_message(pending["lang"], "discarded"), reply_markup={"remove_keyboard": True})
+                else:
+                    send_reply(chat_id, _oneoff_message(user_lang, "no_pending"), reply_markup={"remove_keyboard": True})
+                continue
+
             # 1. PINEZKA
             if "location" in message:
                 if not message.get("reply_to_message"):
@@ -862,10 +1144,14 @@ def main_bot():
                 lon = message["location"]["longitude"]
                 print(f"  📍 Odebrano współrzędne od [{user_data.get('Imię', chat_id)}]: {lat}, {lon}")
 
-                # PR1: użytkownik z samym access-em nie ma jeszcze profilu — zapis
-                # lokalizacji przyjdzie w PR2 (/save_location).
-                if not has_legacy_row:
-                    send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
+                # PR2: konto Users nie zapisuje pinezki automatycznie. Dostaje
+                # raport jednorazowy i może osobno potwierdzić zapis. Legacy-only
+                # zachowuje historyczne działanie Formularz bez migracji.
+                if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                    city = get_city_from_coords(lat, lon, user_lang)
+                    if city == "Lokalizacja w terenie" or not city:
+                        city = "Twoja okolica"
+                    _run_oneoff_and_offer_save(chat_id, lat, lon, city, user_lang, "gps", "day")
                     continue
 
                 try:
@@ -999,9 +1285,19 @@ def main_bot():
             elif message.get("text", "").startswith("/now") or message.get("text", "").startswith("/teraz"):
                 print(f"  ⚡ Odebrano żądanie radaru taktycznego od [{user_data.get('Imię', chat_id)}]")
 
-                # PR1: gate po access obsłużony wyżej; tu brak profilu = brak lokalizacji
-                if not has_legacy_row:
-                    send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
+                # PR2: rekord Users bez legacy może podać miasto do jednorazowej
+                # karty albo użyć wcześniej świadomie zapisanego profilu. Żaden z
+                # tych wariantów nie zapisuje Formularz.
+                if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                    city_query = _split_command(message.get("text", ""), {"/now", "/teraz"})
+                    if city_query:
+                        _run_city_oneoff(chat_id, city_query, user_lang, "now")
+                    else:
+                        profile = _saved_users_profile(users_map, chat_id)
+                        if profile:
+                            _run_saved_profile_report(chat_id, profile, user_lang, "now")
+                        else:
+                            send_reply(chat_id, _oneoff_message(user_lang, "need_location"))
                     continue
 
                 try:
@@ -1025,9 +1321,16 @@ def main_bot():
             elif message.get("text", "").startswith(("/day", "/dzis", "/dzien")):
                 print(f"  ☀️ Odebrano żądanie karty dziennej od [{user_data.get('Imię', chat_id)}]")
 
-                # PR1: gate po access obsłużony wyżej; tu brak profilu = brak lokalizacji
-                if not has_legacy_row:
-                    send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
+                if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                    city_query = _split_command(message.get("text", ""), {"/day", "/dzis", "/dzien"})
+                    if city_query:
+                        _run_city_oneoff(chat_id, city_query, user_lang, "day")
+                    else:
+                        profile = _saved_users_profile(users_map, chat_id)
+                        if profile:
+                            _run_saved_profile_report(chat_id, profile, user_lang, "day")
+                        else:
+                            send_reply(chat_id, _oneoff_message(user_lang, "need_location"))
                     continue
 
                 try:
@@ -1078,9 +1381,16 @@ def main_bot():
             elif message.get("text", "").startswith(("/future", "/trend", "/14dni")):
                 print(f"  🔮 [DEBUG] Otrzymano komendę /future od {chat_id}")
 
-                # PR1: gate po access obsłużony wyżej; tu brak profilu = brak lokalizacji
-                if not has_legacy_row:
-                    send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
+                if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                    city_query = _split_command(message.get("text", ""), {"/future", "/trend", "/14dni"})
+                    if city_query:
+                        _run_city_oneoff(chat_id, city_query, user_lang, "future")
+                    else:
+                        profile = _saved_users_profile(users_map, chat_id)
+                        if profile:
+                            _run_saved_profile_report(chat_id, profile, user_lang, "future")
+                        else:
+                            send_reply(chat_id, _oneoff_message(user_lang, "need_location"))
                     continue
 
                 send_reply(chat_id, t_ui(user_lang, "prep_future"))
@@ -1134,12 +1444,8 @@ def main_bot():
             # 8A. Komenda /miasto BEZ argumentu -> Ustawiamy stan w RAM
             # =====================================================================
             if text_low.startswith(("/miasto", "/city", "/loc")):
-                # PR1: użytkownik z samym access-em nie ma jeszcze jak zapisać
-                # profilu (dopiero /save_location w PR2) — nie aktywujemy stanu RAM.
-                if not has_legacy_row:
-                    send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
-                    continue
-
+                # PR2: także konto Users bez profilu może podać miasto. Wynik
+                # trafia do PENDING_SAVE, a nie do Formularz/Users automatycznie.
                 text_parts = text.split(" ", 1)
                 
                 # Użytkownik wpisał samo "/miasto" (lub kliknął opcję z menu, która to wywołała)
@@ -1208,8 +1514,18 @@ def main_bot():
             
             lat, lon, full_address = get_coords_from_city(city_query, user_lang)
             
-            if lat and lon:
+            if lat is not None and lon is not None:
                 print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
+
+                # PR2: dla konta Users wynik to raport jednorazowy + pending
+                # w RAM. Nie ma update_cell/insert_row i nie ma migracji legacy.
+                if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                    krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
+                    if krotka_nazwa in ("Lokalizacja w terenie", "", None, "Nieznana miejscowość"):
+                        krotka_nazwa = city_query.capitalize()
+                    _run_oneoff_and_offer_save(chat_id, lat, lon, krotka_nazwa, user_lang, "city", "day")
+                    continue
+
                 try:
                     # Znalezienie właściwego wiersza w Arkuszu
                     real_row_index = None
