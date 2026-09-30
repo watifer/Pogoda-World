@@ -14,7 +14,11 @@ commands_en = [
     {"command": "invite", "description": "💌 Invite or add to group"},
     {"command": "info", "description": "ℹ️ Brief bot manual"},
     {"command": "tips", "description": "💡 Useful tricks and features"},
-    {"command": "city", "description": "🌍 Change location by text"}
+    {"command": "city", "description": "🌍 Change location by text"},
+    {"command": "privacy", "description": "📜 Privacy & your data"},
+    {"command": "my_data", "description": "📦 See your stored data"},
+    {"command": "forget_location", "description": "🧹 Delete saved location"},
+    {"command": "delete_me", "description": "🗑 Delete all my data"}
 ]
 
 commands_pl = [
@@ -25,7 +29,11 @@ commands_pl = [
     {"command": "zapros", "description": "💌 Zaproś lub dodaj do grupy"},
     {"command": "info", "description": "ℹ️ Krótka instrukcja obsługi"},
     {"command": "porady", "description": "💡 Przydatne triki i funkcje"},
-    {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury"}
+    {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury"},
+    {"command": "privacy", "description": "📜 Prywatność i Twoje dane"},
+    {"command": "my_data", "description": "📦 Podgląd Twoich danych"},
+    {"command": "forget_location", "description": "🧹 Usuń zapisaną lokalizację"},
+    {"command": "delete_me", "description": "🗑 Usuń wszystkie moje dane"}
 ]
 
 print("🧹 1. Kasowanie starych ustawień z serwerów Telegrama...")
