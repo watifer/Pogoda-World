@@ -29,7 +29,11 @@ COMMANDS_BY_LANG = {
         {"command": "city", "description": "🌍 Change your location"},
         {"command": "invite", "description": "💌 Invite or add to group"},
         {"command": "info", "description": "ℹ️ Brief bot manual"},
-        {"command": "tips", "description": "💡 Useful tricks & features"}
+        {"command": "tips", "description": "💡 Useful tricks & features"},
+        {"command": "privacy", "description": "📜 Privacy & your data"},
+        {"command": "my_data", "description": "📦 See your stored data"},
+        {"command": "forget_location", "description": "🧹 Delete saved location"},
+        {"command": "delete_me", "description": "🗑 Delete all my data"}
     ],
     
     # 2. POLSKI (pl) - Wskazany wprost dla telefonów z językiem PL
@@ -41,7 +45,11 @@ COMMANDS_BY_LANG = {
         {"command": "miasto", "description": "🌍 Zmień swoją lokalizację"},
         {"command": "zapros", "description": "💌 Zaproś lub dodaj do grupy"},
         {"command": "info", "description": "ℹ️ Krótka instrukcja obsługi"},
-        {"command": "porady", "description": "💡 Przydatne triki i funkcje"}
+        {"command": "porady", "description": "💡 Przydatne triki i funkcje"},
+        {"command": "privacy", "description": "📜 Prywatność i Twoje dane"},
+        {"command": "my_data", "description": "📦 Podgląd Twoich danych"},
+        {"command": "forget_location", "description": "🧹 Usuń zapisaną lokalizację"},
+        {"command": "delete_me", "description": "🗑 Usuń wszystkie moje dane"}
     ],
 
     # 3. ANGIELSKI (en)
@@ -53,7 +61,11 @@ COMMANDS_BY_LANG = {
         {"command": "city", "description": "🌍 Change your location"},
         {"command": "invite", "description": "💌 Invite or add to group"},
         {"command": "info", "description": "ℹ️ Brief bot manual"},
-        {"command": "tips", "description": "💡 Useful tricks & features"}
+        {"command": "tips", "description": "💡 Useful tricks & features"},
+        {"command": "privacy", "description": "📜 Privacy & your data"},
+        {"command": "my_data", "description": "📦 See your stored data"},
+        {"command": "forget_location", "description": "🧹 Delete saved location"},
+        {"command": "delete_me", "description": "🗑 Delete all my data"}
     ],
 
     # 4. NIEMIECKI (de)
@@ -65,7 +77,11 @@ COMMANDS_BY_LANG = {
         {"command": "city", "description": "🌍 Standort ändern"},
         {"command": "invite", "description": "💌 In Gruppe einladen"},
         {"command": "info", "description": "ℹ️ Kurzes Bot-Handbuch"},
-        {"command": "tips", "description": "💡 Nützliche Tipps"}
+        {"command": "tips", "description": "💡 Nützliche Tipps"},
+        {"command": "privacy", "description": "📜 Datenschutz & deine Daten"},
+        {"command": "my_data", "description": "📦 Deine Daten ansehen"},
+        {"command": "forget_location", "description": "🧹 Gespeicherten Standort löschen"},
+        {"command": "delete_me", "description": "🗑 Alle meine Daten löschen"}
     ],
 
     # 5. HISZPAŃSKI (es)
@@ -77,7 +93,11 @@ COMMANDS_BY_LANG = {
         {"command": "city", "description": "🌍 Cambiar ubicación"},
         {"command": "invite", "description": "💌 Invitar al grupo"},
         {"command": "info", "description": "ℹ️ Breve manual del bot"},
-        {"command": "tips", "description": "💡 Trucos y funciones"}
+        {"command": "tips", "description": "💡 Trucos y funciones"},
+        {"command": "privacy", "description": "📜 Privacidad y tus datos"},
+        {"command": "my_data", "description": "📦 Ver tus datos guardados"},
+        {"command": "forget_location", "description": "🧹 Borrar ubicación guardada"},
+        {"command": "delete_me", "description": "🗑 Borrar todos mis datos"}
     ],
 
     # 6. FRANCUSKI (fr)
@@ -89,7 +109,11 @@ COMMANDS_BY_LANG = {
         {"command": "city", "description": "🌍 Changer de position"},
         {"command": "invite", "description": "💌 Inviter au groupe"},
         {"command": "info", "description": "ℹ️ Bref manuel du bot"},
-        {"command": "tips", "description": "💡 Astuces et fonctions"}
+        {"command": "tips", "description": "💡 Astuces et fonctions"},
+        {"command": "privacy", "description": "📜 Confidentialité et vos données"},
+        {"command": "my_data", "description": "📦 Vos données enregistrées"},
+        {"command": "forget_location", "description": "🧹 Supprimer la position enregistrée"},
+        {"command": "delete_me", "description": "🗑 Supprimer toutes mes données"}
     ]
 }
 

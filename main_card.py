@@ -186,7 +186,8 @@ def send_telegram_photo(chat_id: str, image_path: str,
         
         if error_code in [400, 403] and any(word in error_msg for word in trigger_words):
             print(f"⚠️ [AUTO-CLEANUP] Wykryto trwałą blokadę dla {chat_id}. Rozpoczynam procedurę Soft-Delete...")
-            _soft_delete_user(chat_id)
+            from db_cleanup import classify_block_reason
+            _soft_delete_user(chat_id, reason=classify_block_reason(error_msg))
             
         return False
 
@@ -271,10 +272,13 @@ def _load_users_from_sheet() -> list[dict]:
         
     return out
 
-def _soft_delete_user(chat_id: str):
+def _soft_delete_user(chat_id: str, reason: str = "unknown"):
     """
-    Inteligentny Grabarz: Oznacza użytkownika jako BLOCKED w Google Sheets.
-    Operacja hurtowa (1 zapytanie do API), bezpieczna dla limitów Google.
+    Inteligentny Grabarz: deleguje do db_cleanup.mark_user_as_blocked, które
+    1) oznacza access_status=blocked w zakładce Users (nowy rejestr dostępu)
+       wraz z wyczyszczeniem profilu, a następnie
+    2) dodaje prefix BLOCKED_ w Formularz (legacy — dopóki scheduler czyta Formularz).
+    Odczyt użytkowników przez scheduler pozostaje BEZ ZMIAN (nadal Formularz).
     """
     import gspread
     from google.oauth2.service_account import Credentials
@@ -286,27 +290,10 @@ def _soft_delete_user(chat_id: str):
             creds = Credentials.from_service_account_info(json.loads(creds_env), scopes=scopes)
         else:
             creds = Credentials.from_service_account_file(creds_env or "credentials.json", scopes=scopes)
-        
+
         client = gspread.authorize(creds)
-        sheet = client.open_by_key(SHEET_ID) if SHEET_ID else client.open(SHEET_NAME)
-        worksheet = sheet.worksheet("Formularz")
-        
-        # 1. Pobieramy całą kolumnę Chat ID jednym strzałem
-        col_values = worksheet.col_values(2) 
-        
-        # 2. Szukamy wszystkich wystąpień tego ID
-        cells_to_update = []
-        for i, val in enumerate(col_values):
-            if str(val).strip() == str(chat_id):
-                # row index w gspread jest od 1, więc i+1
-                cells_to_update.append(gspread.Cell(row=i+1, col=2, value=f"BLOCKED_{chat_id}"))
-        
-        # 3. Jeśli znaleziono, aktualizujemy hurtowo (Batch Update)
-        if cells_to_update:
-            worksheet.update_cells(cells_to_update)
-            print(f"✅ [AUTO-CLEANUP] Oznaczono {len(cells_to_update)} rekordów jako BLOCKED dla ID: {chat_id}. Miejsce zwolnione.")
-        else:
-            print(f"❓ [AUTO-CLEANUP] Nie znaleziono ID {chat_id} w arkuszu do oznaczenia.")
+        from db_cleanup import mark_user_as_blocked
+        mark_user_as_blocked(client, chat_id, reason=reason)
 
     except Exception as e:
         print(f"❌ [AUTO-CLEANUP] Błąd podczas czyszczenia bazy dla {chat_id}: {e}")
