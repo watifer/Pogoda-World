@@ -3,8 +3,9 @@ users_store.py — Rejestr dostępu i profilu użytkownika (zakładka `Users` w 
 
  Architektura migracji RODO/access (PR1):
 - NOWA zakładka `Users` = jedno miejsce na access_* (granted/revoked/blocked)
-  oraz profile_* (lokalizacja; w PR1 tylko czyszczona — zapis profilu (/save_location)
-  pojawi się w PR2 razem z PENDING_SAVE).
+  oraz profile_* (lokalizacja; w PR1 tylko czyszczona — zapis profilu pojawił się
+  w PR2 razem z PENDING_SAVE, a od PR2-UX-cleanup świadomym flow jest `/miasto`;
+  `/save_location` działa dalej, ale wyłącznie jako ukryty alias techniczny).
 - STARA zakładka `Formularz` pozostaje BEZ ZMIAN jako źródło danych dla schedulera
   (main_card.py) — scheduler NIE jest tu przełączany na Users.
 - Użytkownicy legacy (wiersz w Formularz, brak wiersza w Users) mają domniemany
@@ -286,9 +287,10 @@ def set_profile(
 
     Funkcja nie tworzy rekordu access i nie zapisuje niczego do legacy ``Formularz``.
     Wywołujący musi wcześniej przejść bramkę access oraz potwierdzić lokalizację
-    komendą ``/save_location``.  Współrzędne są zaokrąglane do dwóch miejsc
-    po przecinku przed trwałym zapisem; dokładniejsze wartości żyją tylko w RAM
-    w ``PENDING_SAVE`` location_bota.
+    świadomym flow ``/miasto`` (PL alias ``/city``; ``/save_location`` pozostał
+    wyłącznie ukrytym aliasem technicznym).  Współrzędne są zaokrąglane do
+    TRZECH miejsc po przecinku przed trwałym zapisem; dokładniejsze wartości
+    żyją tylko w RAM w ``PENDING_SAVE`` location_bota.
     """
     if ws is None:
         return False
@@ -298,8 +300,8 @@ def set_profile(
             return False
 
         try:
-            lat_round = str(round(float(lat), 2))
-            lon_round = str(round(float(lon), 2))
+            lat_round = str(round(float(lat), 3))
+            lon_round = str(round(float(lon), 3))
         except (TypeError, ValueError):
             return False
 

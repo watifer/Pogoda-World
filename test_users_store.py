@@ -209,7 +209,7 @@ class TestUpsertAccess:
 
 
 # ============================================================================
-# set_profile — wyłącznie po /save_location, dane z PENDING_SAVE
+# set_profile — wyłącznie po świadomym flow /miasto (ukryty alias: /save_location)
 # ============================================================================
 def test_set_profile_writes_active_profile_and_consent_in_one_batch():
     ws = FakeWorksheet()
@@ -225,8 +225,9 @@ def test_set_profile_writes_active_profile_and_consent_in_one_batch():
     rec = ws.record(123)
     assert rec["access_status"] == "granted"
     assert rec["profile_status"] == "active"
-    assert rec["lat_round"] == "52.23"
-    assert rec["lon_round"] == "21.01"
+    # PR2 UX cleanup: współrzędne zapisujemy do 3 miejsc po przecinku
+    assert rec["lat_round"] == "52.23"      # 52.22972 -> 52.23
+    assert rec["lon_round"] == "21.012"     # 21.01223 -> 21.012
     assert rec["location_label"] == "Warszawa"
     assert rec["location_source"] == "city"
     assert rec["lang"] == "pl"
@@ -486,16 +487,21 @@ class TestLocationBotHelpers:
         assert "123456" not in lb.PENDING_SAVE
 
     def test_delete_me_clears_pending_city_and_save_ram(self, monkeypatch):
-        # /delete_me czyści oba stany RAM; send_reply mockujemy, żeby test nie
-        # próbował realnie wołać Telegrama.
+        # /delete_me czyści wszystkie stany RAM (także PENDING_DELETE z flow
+        # potwierdzenia); send_reply mockujemy, żeby test nie próbował realnie
+        # wołać Telegrama.
         sent = []
         monkeypatch.setattr(lb, "send_reply", lambda cid, txt, **kw: sent.append((cid, txt)))
-        lb.PENDING_CITY["123456"] = 9999999999.0
+        lb._set_pending_city("123456", lb.CTX_ONEOFF_DAY)
+        lb._set_pending_delete("123456")
         lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city")
         lb._handle_delete_me(123456, "pl", None, _LegacySheetStub())
         assert "123456" not in lb.PENDING_CITY
         assert "123456" not in lb.PENDING_SAVE
-        assert sent and "usunięte" in sent[0][1].lower()
+        assert "123456" not in lb.PENDING_DELETE
+        # PR2 UX cleanup: bez linku zaproszenia po kasacji danych
+        assert sent and "usunąłem twoje dane" in sent[0][1].lower()
+        assert "http" not in sent[0][1]
 
 
 class _LegacySheetStub:
