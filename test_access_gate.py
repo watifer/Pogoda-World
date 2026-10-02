@@ -12,12 +12,19 @@ Pokrywane scenariusze:
 - /start <token>: access TYLKO w Users (bez lat/lon, bez wiersza w Formularz),
 - użytkownik z access-em bez profilu: /day Warszawa, /now Hel, /future Berlin
   generują one-off + PENDING_SAVE, bez automatycznego zapisu,
-- /save_location zapisuje profil i consent, /oneoff/TTL tylko odrzucają pending,
+- PR2 UX cleanup: /dzien, /teraz, /trend bez profilu pytają o SAMĄ miejscowość,
+  wpisane miasto generuje kartę jednorazową i NIC nie zapisuje, a po karcie nie
+  pokazujemy już /save_location ani /oneoff (tylko użytą lokalizację),
+- /miasto to jedyny widoczny flow zapisu lokalizacji (zapis bez karty),
+- aliasy PL są case-insensitive (/bezGPS, /BEZGPS, /usunDane, /USUNDANE),
+- /usunDane i /delete_me wymagają potwierdzenia przyciskiem (bez callbacków),
 - użytkownik legacy (Formularz): pełna funkcjonalność bez zmian,
 - Users blocked wygrywa z legacy; BLOCKED_ legacy traci dostęp,
-- /delete_me: hard delete Users + delete_rows Formularz + czyszczenie RAM,
-- /forget_location: czyści profil legacy, dostęp zostaje,
-- /privacy i /my_data działają bez accessu.
+- kasacja danych: hard delete Users + delete_rows Formularz + czyszczenie RAM,
+- /forget_location (/bezGPS): czyści profil, dostęp zostaje, rozróżnia brak
+  zapisanej lokalizacji,
+- /privacy i /my_data działają bez accessu,
+- komendy w tekstach UI nie są w backtickach (klikalność na telefonie).
 """
 
 import os
@@ -187,6 +194,7 @@ class BotHarness:
     def __init__(self, monkeypatch, formularz_rows=None):
         self.gc = FakeGC(formularz_rows)
         self.sent = []        # (chat_id, text)
+        self.markups = []     # reply_markup każdej wysłanej wiadomości (index = sent)
         self.guest_calls = []  # teksty przekazane do handle_guest_now
         self.cards = []       # chat_id z _send_card_to_user (legacy)
         self.oneoffs = []     # (chat_id, lat, lon, city, lang, card_type)
@@ -210,6 +218,7 @@ class BotHarness:
         def fake_post(url, json=None, data=None, files=None, timeout=None, **kw):
             if "sendMessage" in url and json:
                 self.sent.append((json["chat_id"], json["text"]))
+                self.markups.append(json.get("reply_markup"))
             return _Resp({"ok": True, "result": {}})
 
         def fake_guest_now(**kw):
@@ -283,6 +292,14 @@ class BotHarness:
 
     def replies(self, cid):
         return [t for (c, t) in self.sent if c == cid]
+
+    def markups_for(self, cid):
+        """reply_markup wiadomości wysłanych do danego czatu (None = brak)."""
+        return [m for (c, _t), m in zip(self.sent, self.markups) if c == cid]
+
+    def keyboards_for(self, cid):
+        """Tylko klawiatury (reply/inline) — bez remove_keyboard."""
+        return [m for m in self.markups_for(cid) if m and "keyboard" in m]
 
     @property
     def users(self):
@@ -365,10 +382,20 @@ class TestStartRegistersAccessOnly:
         # RODO: brak wiersza w legacy Formularz
         assert "100" not in bot.gc.formularz.chat_ids()
 
-    def test_onboarding_is_privacy_first(self, bot):
+    def test_onboarding_is_short_and_points_to_city_and_data(self, bot):
+        # PR2 UX cleanup: krótki onboarding, bez obietnicy automatycznych raportów
+        # (te pojawią się dopiero w PR3) i bez technicznych komend /save_location.
         bot.run(bot.msg(100, "/start BETAX1"))
         assert bot.has_reply(100, "Dostęp aktywowany")
-        assert bot.has_reply(100, "/privacy")
+        assert bot.has_reply(100, "/dzien")
+        assert bot.has_reply(100, "/teraz")
+        assert bot.has_reply(100, "/trend")
+        assert bot.has_reply(100, "/miasto")
+        assert bot.has_reply(100, "/dane")
+        assert not bot.has_reply(100, "/save_location")
+        assert not bot.has_reply(100, "/oneoff")
+        assert not bot.has_reply(100, "automatyczne raporty")
+        assert not bot.has_reply(100, "`")  # komendy klikalne => bez backticków
 
     def test_start_without_code_hint(self, bot):
         bot.run(bot.msg(100, "/start"))
@@ -384,9 +411,11 @@ class TestStartRegistersAccessOnly:
 
 
 class TestAccessWithoutProfile:
-    def test_day_city_generates_oneoff_without_saving_profile(self, bot):
+    def test_day_city_generates_oneoff_without_saving_profile(self, bot, monkeypatch):
         # PR2-a: Users(access=granted, profile=none) może dostać kartę dla
-        # miasta, lecz arkusz Users pozostaje bez profilu do /save_location.
+        # miasta, lecz arkusz Users pozostaje bez profilu. Zapis lokalizacji jest
+        # świadomą akcją wyłącznie przez /miasto.
+        freeze_local_hour(monkeypatch, 10, 0)  # okno karty dziennej 05:00-15:59
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/day Warszawa"))
 
@@ -396,8 +425,11 @@ class TestAccessWithoutProfile:
         assert rec["lat_round"] == "" and rec["lon_round"] == ""
         assert "100" not in bot.gc.formularz.chat_ids(), "one-off nie może tworzyć legacy profilu"
         assert lb.PENDING_SAVE["100"]["source"] == "city"
-        assert bot.has_reply(100, "/save_location")
-        assert bot.has_reply(100, "/oneoff")
+        # PR2 UX cleanup: po karcie pokazujemy TYLKO użytą lokalizację
+        assert bot.has_reply(100, "Użyta lokalizacja")
+        assert bot.has_reply(100, "Warszawa, Polska")
+        assert not bot.has_reply(100, "/save_location")
+        assert not bot.has_reply(100, "/oneoff")
 
     def test_now_and_future_city_generate_the_requested_oneoffs(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -408,22 +440,31 @@ class TestAccessWithoutProfile:
         assert bot.users.record(100)["profile_status"] == "none"
 
     def test_no_city_and_no_saved_profile_asks_for_location_not_access(self, bot):
+        # PR2 UX cleanup: bez profilu nie ma suchego "profil nieaktywny" — bot pyta
+        # o SAMĄ nazwę miejscowości i zapamiętuje kontekst jednorazowej karty.
         bot.run(bot.msg(100, "/start BETAX1"))
-        for cmd in ("/day", "/now", "/future"):
+        for cmd, ctx in (("/day", lb.CTX_ONEOFF_DAY),
+                         ("/now", lb.CTX_ONEOFF_NOW),
+                         ("/future", lb.CTX_ONEOFF_FUTURE)):
             bot.run(bot.msg(100, cmd))
-            assert bot.has_reply(100, "Podaj miasto"), cmd
+            assert bot.has_reply(100, "Wpisz poniżej samą nazwę miejscowości"), cmd
             assert not bot.has_reply(100, "Brak dostępu"), cmd
+            assert not bot.has_reply(100, "Profil nie jest"), cmd
+            assert lb.PENDING_CITY["100"]["ctx"] == ctx, cmd
         assert bot.oneoffs == []
 
-    def test_save_location_persists_profile_and_consent(self, bot):
-        # PR2-b: tylko kliknięcie /save_location przenosi pending RAM do Users.
+    def test_save_location_persists_profile_and_consent(self, bot, monkeypatch):
+        # PR2-b: ukryty alias techniczny /save_location nadal przenosi pending RAM
+        # do Users (kompatybilność wsteczna), choć nie pokazujemy go już w UX.
+        freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/day Warszawa"))
         bot.run(bot.msg(100, "/save_location"))
 
         rec = bot.users.record(100)
         assert rec["profile_status"] == "active"
-        assert rec["lat_round"] == "52.23" and rec["lon_round"] == "21.01"
+        # współrzędne do 3 miejsc po przecinku
+        assert rec["lat_round"] == "52.23" and rec["lon_round"] == "21.012"
         assert rec["location_label"] == "Warszawa"
         assert rec["location_source"] == "city"
         assert rec["lang"] == "pl"
@@ -433,7 +474,8 @@ class TestAccessWithoutProfile:
         assert "100" not in lb.PENDING_SAVE
 
     def test_oneoff_discards_pending_without_saving_profile(self, bot):
-        # PR2-c
+        # PR2-c: /oneoff jest ukryty (nie ma go w menu ani w komunikatach), ale
+        # kliknięcie starej klawiatury nie może zostać bez odpowiedzi (D1).
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/now Hel"))
         bot.run(bot.msg(100, "/oneoff"))
@@ -442,7 +484,22 @@ class TestAccessWithoutProfile:
         assert rec["profile_status"] == "none"
         assert rec["lat_round"] == "" and rec["location_consent_at"] == ""
         assert "100" not in lb.PENDING_SAVE
-        assert bot.has_reply(100, "nie została zapisana")
+        assert bot.has_reply(100, "OK, nic nie zapisuję")
+
+    def test_hidden_oneoff_and_save_location_are_not_advertised(self, bot, monkeypatch):
+        # Po żadnej karcie jednorazowej nie pokazujemy /save_location ani /oneoff,
+        # nie wysyłamy też klawiatury z tymi przyciskami.
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        for cmd in ("/day Warszawa", "/now Hel", "/future Berlin"):
+            bot.run(bot.msg(100, cmd))
+        bot.run(bot.pin(100, reply=True))
+
+        assert len(bot.oneoffs) == 4
+        for _cid, text in bot.sent:
+            assert "/save_location" not in text
+            assert "/oneoff" not in text
+        assert bot.keyboards_for(100) == [], "klawiatura z /save_location i /oneoff wróciła do UX"
 
     def test_save_without_or_after_expired_pending_has_clear_message(self, bot):
         # PR2-d: zarówno brak wpisu, jak i TTL nie mogą nic zapisać.
@@ -456,13 +513,13 @@ class TestAccessWithoutProfile:
         assert "100" not in lb.PENDING_SAVE
         assert bot.users.record(100)["profile_status"] == "none"
 
-    def test_gps_webapp_and_city_make_pending_not_automatic_profile(self, bot):
-        # PR2-e: trzy wejścia lokalizacji dla kont Users nie robią update do
-        # Formularz ani Users; każdy tworzy efemeryczny PENDING_SAVE.
+    def test_gps_and_webapp_outside_city_flow_make_pending_not_profile(self, bot):
+        # PR2-e (po UX cleanup): pinezka i WebApp POZA flow /miasto nadal dają
+        # tylko raport jednorazowy + efemeryczny PENDING_SAVE — bez zapisu do
+        # Formularz i bez zapisu do Users.
         for chat_id, source, update in (
             (101, "gps", lambda: bot.pin(101, reply=True)),
             (102, "webapp", lambda: bot.webapp_location(102)),
-            (103, "city", lambda: bot.msg(103, "/miasto Warszawa")),
         ):
             bot.run(bot.msg(chat_id, "/start BETAX1"))
             bot.run(update())
@@ -471,6 +528,61 @@ class TestAccessWithoutProfile:
             assert rec["lat_round"] == "" and rec["location_consent_at"] == "", source
             assert lb.PENDING_SAVE[str(chat_id)]["source"] == source
             assert str(chat_id) not in bot.gc.formularz.chat_ids(), source
+            assert bot.has_reply(chat_id, "Użyta lokalizacja"), source
+
+    def test_city_command_saves_profile_and_generates_no_card(self, bot):
+        # PR2 UX cleanup (pkt 7 + D): /miasto jest jedynym widocznym flow zapisu.
+        bot.run(bot.msg(103, "/start BETAX1"))
+        bot.run(bot.msg(103, "/miasto"))
+        assert bot.has_reply(103, "ZMIANA LOKALIZACJI")
+        assert bot.has_reply(103, "Obecna lokalizacja:\nbrak")
+        assert lb.PENDING_CITY["103"]["ctx"] == lb.CTX_SAVE_PROFILE
+
+        bot.run(bot.msg(103, "Warszawa"))
+
+        rec = bot.users.record(103)
+        assert rec["profile_status"] == "active"
+        assert rec["lat_round"] == "52.23" and rec["lon_round"] == "21.012"
+        assert rec["location_label"] == "Warszawa"
+        assert rec["location_source"] == "city"
+        assert rec["location_consent_at"] and rec["profile_updated_at"]
+        assert bot.oneoffs == [], "flow /miasto nie może generować karty"
+        assert bot.cards == []
+        assert "103" not in bot.gc.formularz.chat_ids(), "zapis Users nie dotyka Formularz"
+        assert "103" not in lb.PENDING_CITY, "stan oczekiwania musi być skonsumowany"
+        assert bot.has_reply(103, "Lokalizacja zapisana")
+        assert bot.has_reply(103, "/dzien")
+
+    def test_city_command_with_argument_saves_profile_immediately(self, bot):
+        bot.run(bot.msg(104, "/start BETAX1"))
+        bot.run(bot.msg(104, "/miasto Warszawa"))
+        assert bot.users.record(104)["profile_status"] == "active"
+        assert bot.oneoffs == []
+
+    def test_gps_in_city_flow_saves_profile_without_card(self, bot):
+        # D4: GPS wysłany w trakcie flow /miasto zapisuje profil (bez karty),
+        # także pinezka bez "Odpowiedz" w czacie prywatnym.
+        bot.run(bot.msg(105, "/start BETAX1"))
+        bot.run(bot.msg(105, "/miasto"))
+        bot.run(bot.pin(105, reply=False))
+
+        rec = bot.users.record(105)
+        assert rec["profile_status"] == "active"
+        assert rec["location_source"] == "gps"
+        assert rec["lat_round"] == "54.5" and rec["lon_round"] == "18.5"
+        assert bot.oneoffs == [], "GPS w flow /miasto nie generuje karty"
+        assert "105" not in lb.PENDING_CITY
+
+    def test_webapp_gps_in_city_flow_saves_profile_without_card(self, bot):
+        bot.run(bot.msg(106, "/start BETAX1"))
+        bot.run(bot.msg(106, "/miasto"))
+        bot.run(bot.webapp_location(106, lat=50.0614, lon=19.9366))
+
+        rec = bot.users.record(106)
+        assert rec["profile_status"] == "active"
+        assert rec["location_source"] == "webapp"
+        assert rec["lat_round"] == "50.061" and rec["lon_round"] == "19.937"
+        assert bot.oneoffs == []
 
     def test_guest_shortcut_works_with_access(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -550,7 +662,8 @@ class TestPrivacyCommands:
 
     def test_forget_location_legacy_clears_profile_keeps_access(self, bot):
         bot.run(bot.msg(700, "/forget_location"))
-        assert bot.has_reply(700, "Lokalizacja usunięta")
+        assert bot.has_reply(700, "Usunąłem zapisaną lokalizację")
+        assert bot.has_reply(700, "dostęp pozostaje aktywny")
 
         row = next(r for r in bot.gc.formularz.rows if str(r[1]).strip() == "700")
         assert row[FORM_HEADERS.index("Lat")] == ""
@@ -577,14 +690,23 @@ class TestPrivacyCommands:
         assert rec["access_status"] == "granted", "forget_location nie może odbierać accessu"
 
     def test_delete_me_hard_delete_everywhere(self, bot):
+        # D2: /delete_me (tak jak /usunDane) najpierw pyta o potwierdzenie,
+        # a hard delete wykonuje się dopiero po "Tak, chcę".
         bot.run(bot.msg(100, "/start BETAX1"))
-        lb.PENDING_CITY["100"] = 9999999999.0
+        lb._set_pending_city("100", lb.CTX_ONEOFF_DAY)
         lb._put_pending_save(100, 52.23, 21.01, "Warszawa", "pl", "city")
 
         bot.run(bot.msg(100, "/delete_me"))
+        assert bot.users.record(100) is not None, "kasacja bez potwierdzenia!"
+        assert "100" in lb.PENDING_DELETE
+
+        bot.run(bot.msg(100, "Tak, chcę"))
         assert bot.users.record(100) is None, "wiersz Users nieusunięty"
         assert "100" not in lb.PENDING_CITY, "PENDING_CITY nie wyczyszczone"
         assert "100" not in lb.PENDING_SAVE, "PENDING_SAVE nie wyczyszczone"
+        assert "100" not in lb.PENDING_DELETE, "PENDING_DELETE nie wyczyszczone"
+        assert bot.has_reply(100, "Usunąłem Twoje dane")
+        assert not bot.has_reply(100, "https://"), "po kasacji nie podajemy linku zaproszenia"
 
         # dostęp znika w kolejnej paczce
         bot.run(bot.msg(100, "/day"))
@@ -593,12 +715,14 @@ class TestPrivacyCommands:
     def test_delete_me_legacy_rows_removed_including_blocked(self, bot):
         bot.gc.formularz.rows.append(["2026-01-04 08:00:00", "701", "BlockedLegacy", "Hel", "54.6", "18.8", "", "", "pl"])
         bot.run(bot.msg(701, "/delete_me"))
+        bot.run(bot.msg(701, "Tak, chcę"))
         assert "701" not in bot.gc.formularz.chat_ids()
         assert "BLOCKED_701" not in bot.gc.formularz.chat_ids()
         assert "700" in bot.gc.formularz.chat_ids(), "usunięto wiersze obcego użytkownika!"
 
     def test_delete_me_stranger_gets_no_data(self, bot):
         bot.run(bot.msg(555, "/delete_me"))
+        bot.run(bot.msg(555, "Tak, chcę"))
         assert bot.has_reply(555, "Nie znaleziono")
 
 
@@ -622,3 +746,382 @@ class TestBlockedMarking:
         mark_user_as_blocked(bot.gc, 700, reason="kicked_from_group")
         assert "BLOCKED_700" in bot.gc.formularz.chat_ids()
         # i w Users (jeśli był wiersz) — 700 nie miał wiersza w Users, więc tylko Formularz
+
+
+# ============================================================================
+# PR2 UX CLEANUP — punkt 8 zakresu (testy a-h) + aliasy PL
+# ============================================================================
+import re
+
+BACKTICKED_COMMAND = re.compile(r"`/")
+
+
+class TestPr2UxCleanup:
+    """Jednorazowy raport o nic nie pyta; zapis lokalizacji jest tylko przez /miasto."""
+
+    # --- a) /dzien bez profilu pyta o miasto -------------------------------
+    def test_a_dzien_without_profile_asks_for_city_only(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/dzien"))
+
+        assert bot.has_reply(100, "Wpisz poniżej samą nazwę miejscowości dla prognozy dziennej")
+        assert bot.has_reply(100, "`Warszawa`")            # backticki TYLKO dla przykładów
+        assert not bot.has_reply(100, "profil nieaktywny")
+        assert not bot.has_reply(100, "Profil nie jest")
+        assert not bot.has_reply(100, "Brak dostępu")
+        assert lb.PENDING_CITY["100"]["ctx"] == lb.CTX_ONEOFF_DAY
+        assert bot.oneoffs == []
+
+    def test_a_teraz_and_trend_ask_with_their_own_context(self, bot):
+        for cmd, ctx, needle in (
+            ("/teraz", lb.CTX_ONEOFF_NOW, "najbliższe godziny"),
+            ("/trend", lb.CTX_ONEOFF_FUTURE, "trendu 14 dni"),
+        ):
+            bot.run(bot.msg(100, "/start BETAX1"))
+            bot.run(bot.msg(100, cmd))
+            assert bot.has_reply(100, needle), cmd
+            assert lb.PENDING_CITY["100"]["ctx"] == ctx, cmd
+
+    # --- b) miasto po /dzien -> karta jednorazowa, bez zapisu profilu -------
+    def test_b_city_after_dzien_generates_oneoff_and_saves_nothing(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/dzien"))
+        bot.run(bot.msg(100, "Warszawa"))
+
+        assert bot.oneoffs == [(100, 52.22972, 21.01223, "Warszawa", "pl", "day")]
+        rec = bot.users.record(100)
+        assert rec["profile_status"] == "none", "jednorazowa karta nie może zapisywać profilu"
+        assert rec["lat_round"] == "" and rec["lon_round"] == ""
+        assert rec["location_consent_at"] == ""
+        assert "100" not in bot.gc.formularz.chat_ids()
+        assert "100" not in lb.PENDING_CITY, "kontekst musi być skonsumowany"
+
+    def test_b_context_routes_to_the_right_card_type(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        for cmd, expected in (("/dzien", "day"), ("/teraz", "now"), ("/trend", "future")):
+            bot.run(bot.msg(100, cmd))
+            bot.run(bot.msg(100, "Warszawa"))
+        assert [report[-1] for report in bot.oneoffs] == ["day", "now", "future"]
+        assert bot.users.record(100)["profile_status"] == "none"
+
+    # --- c) po karcie nie ma /save_location ani /oneoff ---------------------
+    def test_c_no_save_location_nor_oneoff_after_card(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/dzien"))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/teraz Hel"))
+
+        for _cid, text in bot.sent:
+            assert "/save_location" not in text
+            assert "/oneoff" not in text
+        assert bot.keyboards_for(100) == []
+        # zamiast tego pokazujemy tylko użytą lokalizację z geokodera
+        assert bot.has_reply(100, "📍 Użyta lokalizacja:\nWarszawa")
+        assert bot.has_reply(100, "🌍 Warszawa, Polska")
+        assert bot.has_reply(100, "wpisz nazwę dokładniej")
+
+    # --- d) /miasto + miasto zapisuje profil i nie generuje karty -----------
+    def test_d_city_flow_saves_profile_without_card(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+
+        rec = bot.users.record(100)
+        assert rec["profile_status"] == "active"
+        assert rec["lat_round"] == "52.23" and rec["lon_round"] == "21.012"  # 3 miejsca
+        assert rec["location_label"] == "Warszawa"
+        assert rec["location_consent_version"] == lb.PRIVACY_VERSION
+        assert bot.oneoffs == [] and bot.cards == []
+        assert bot.has_reply(100, "Lokalizacja zapisana")
+        for cmd in ("/dzien", "/teraz", "/trend"):
+            assert bot.has_reply(100, cmd)
+        assert not bot.has_reply(100, "/save_location")
+
+    def test_d_city_prompt_shows_current_location_when_profile_active(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/miasto"))
+
+        assert bot.has_reply(100, "Obecna lokalizacja:\nWarszawa")
+        assert bot.has_reply(100, "Wpisz nową miejscowość")
+        assert bot.has_reply(100, "współrzędne są zaokrąglane")
+
+    def test_d_saved_profile_makes_dzien_work_without_city(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/dzien"))
+
+        assert bot.oneoffs[-1][:5] == (100, 52.23, 21.012, "Warszawa", "pl")
+        assert "100" not in lb.PENDING_CITY, "z profilem nie pytamy ponownie o miasto"
+
+    # --- e) /bezGPS bez lokalizacji -----------------------------------------
+    def test_e_bez_gps_without_location_reports_missing_location(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/bezGPS"))
+
+        assert bot.has_reply(100, "Nie masz zapisanej lokalizacji")
+        assert bot.has_reply(100, "dostęp pozostaje aktywny")
+        assert not bot.has_reply(100, "Usunąłem zapisaną lokalizację")
+        assert bot.users.record(100)["access_status"] == "granted"
+
+    # --- f) /bezGPS z lokalizacją czyści profil ------------------------------
+    def test_f_bez_gps_clears_profile_and_keeps_access(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/bezGPS"))
+
+        rec = bot.users.record(100)
+        assert rec["profile_status"] == "none"
+        assert rec["lat_round"] == "" and rec["lon_round"] == ""
+        assert rec["location_label"] == "" and rec["location_consent_at"] == ""
+        assert rec["access_status"] == "granted", "/bezGPS nie może odbierać dostępu"
+        assert bot.has_reply(100, "Usunąłem zapisaną lokalizację")
+        assert bot.has_reply(100, "/dzien Warszawa")
+
+    # --- g) /usunDane wymaga potwierdzenia ----------------------------------
+    def test_g_usun_dane_requires_confirmation(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/usunDane"))
+
+        # krok 1: pytanie + przyciski, dane NIENARUSZONE
+        assert bot.users.record(100) is not None
+        assert bot.has_reply(100, "Czy na pewno chcesz usunąć wszystkie swoje dane")
+        assert "100" in lb.PENDING_DELETE
+        keyboards = bot.keyboards_for(100)
+        assert keyboards, "brak klawiatury potwierdzenia"
+        labels = [btn["text"] for row in keyboards[-1]["keyboard"] for btn in row]
+        assert labels == ["Tak, chcę", "Nie, nie chcę"]
+        assert "callback" not in str(keyboards[-1]).lower()
+
+        # krok 2A: potwierdzenie wykonuje hard delete
+        bot.run(bot.msg(100, "Tak, chcę"))
+        assert bot.users.record(100) is None
+        assert bot.has_reply(100, "Usunąłem Twoje dane")
+        assert not bot.has_reply(100, "https://"), "po kasacji nie podajemy linku zaproszenia"
+
+    def test_g_usun_dane_cancellation_keeps_data(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/usunDane"))
+        bot.run(bot.msg(100, "Nie, nie chcę"))
+
+        assert bot.has_reply(100, "OK, nic nie usuwam")
+        rec = bot.users.record(100)
+        assert rec["access_status"] == "granted"
+        assert rec["profile_status"] == "active"
+        assert "100" not in lb.PENDING_DELETE
+        # dostęp dalej działa
+        bot.run(bot.msg(100, "/teraz"))
+        assert not bot.has_reply(100, "Brak dostępu")
+
+    def test_g_other_text_does_not_consume_delete_pending(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/usunDane"))
+        bot.run(bot.msg(100, "chwila, zastanawiam się"))
+        assert "100" in lb.PENDING_DELETE, "inny tekst nie może konsumować potwierdzenia"
+        assert bot.users.record(100) is not None
+        bot.run(bot.msg(100, "Tak, chcę"))
+        assert bot.users.record(100) is None
+
+    # --- h) komendy w tekstach nie są w backtickach -------------------------
+    def test_h_no_backticked_commands_in_ui_texts(self):
+        import i18n
+        offenders = []
+        for lang, bundle in i18n.UI_TEXTS.items():
+            for key, text in bundle.items():
+                if BACKTICKED_COMMAND.search(text or ""):
+                    offenders.append(f"{lang}:{key}")
+        assert offenders == [], f"komendy w backtickach (nieklikalne): {offenders}"
+
+    def test_h_no_backticked_commands_in_sent_messages(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        for cmd in ("/info", "/porady", "/priv", "/dane", "/raport", "/dzien", "/miasto"):
+            bot.run(bot.msg(100, cmd))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/dzien"))
+        bot.run(bot.msg(100, "/bezGPS"))
+        bot.run(bot.msg(100, "/usunDane"))
+        bot.run(bot.msg(100, "Nie, nie chcę"))
+
+        offenders = [t[:60] for t in bot.replies(100) if BACKTICKED_COMMAND.search(t)]
+        assert offenders == [], f"komendy w backtickach: {offenders}"
+
+    # --- aliasy PL (case-insensitive) ---------------------------------------
+    def test_aliases_map_to_canonical_handlers(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+
+        bot.run(bot.msg(100, "/priv"))
+        assert bot.has_reply(100, "PRYWATNOŚĆ")
+
+        bot.run(bot.msg(100, "/dane"))
+        assert bot.has_reply(100, "TWOJE DANE")
+
+        bot.run(bot.msg(100, "/raport"))
+        assert bot.has_reply(100, "GODZINY RAPORTÓW")
+        assert not bot.has_reply(100, "Brak dostępu")
+
+        bot.run(bot.msg(100, "/zapros"))
+        assert bot.has_reply(100, "zaproszenie jest gotowe")
+
+        bot.run(bot.msg(100, "/teraz"))
+        assert lb.PENDING_CITY["100"]["ctx"] == lb.CTX_ONEOFF_NOW
+
+        bot.run(bot.msg(100, "/trend"))
+        assert lb.PENDING_CITY["100"]["ctx"] == lb.CTX_ONEOFF_FUTURE
+
+    def test_bez_gps_and_usun_dane_are_case_insensitive(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        for cmd in ("/bezGPS", "/bezgps", "/BEZGPS", "/BezGps"):
+            bot.run(bot.msg(100, cmd))
+        hits = sum(1 for t in bot.replies(100) if "Nie masz zapisanej lokalizacji" in t)
+        assert hits == 4, f"/bezGPS musi działać case-insensitive (trafienia: {hits})"
+        assert not bot.has_reply(100, "Brak dostępu")
+
+        for cmd in ("/usunDane", "/usundane", "/USUNDANE"):
+            bot.run(bot.msg(101, "/start BETAX1"))
+            bot.run(bot.msg(101, cmd))
+            assert bot.has_reply(101, "Czy na pewno chcesz usunąć"), cmd
+            assert "101" in lb.PENDING_DELETE
+
+    def test_hidden_delete_commands_work_as_buttons(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/usunDane"))
+        bot.run(bot.msg(100, "/potwierdzusun"))
+        assert bot.users.record(100) is None
+
+    def test_hidden_confirm_without_pending_ask_does_not_delete(self, bot):
+        # /potwierdzusun wpisane "z powietrza" nie może kasować danych bez pytania
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/potwierdzusun"))
+        assert bot.users.record(100) is not None
+        assert "100" in lb.PENDING_DELETE
+        assert bot.has_reply(100, "Czy na pewno chcesz usunąć")
+        bot.run(bot.msg(100, "Nie, nie chcę"))
+        assert bot.users.record(100) is not None
+
+    # --- limit czasowy karty dziennej (pkt 5) --------------------------------
+    def test_day_time_limit_applies_to_profile_and_oneoff(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 22, 0)  # poza oknem 05:00-15:59
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+
+        bot.run(bot.msg(100, "/dzien"))
+        assert bot.has_reply(100, "05:00")
+        assert bot.oneoffs == [], "poza oknem karta dzienna nie może powstać"
+
+        bot.run(bot.msg(100, "/dzien Warszawa"))
+        assert bot.oneoffs == []
+        assert bot.users.record(100)["profile_status"] == "active"
+
+    def test_day_inside_window_generates_card(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 9, 30)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/dzien Warszawa"))
+        assert len(bot.oneoffs) == 1
+        assert not bot.has_reply(100, "05:00")
+
+    def test_now_and_trend_have_no_time_limit(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 23, 0)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/teraz Warszawa"))
+        bot.run(bot.msg(100, "/trend Warszawa"))
+        assert [r[-1] for r in bot.oneoffs] == ["now", "future"]
+
+    # --- /dane (pkt 9) --------------------------------------------------------
+    def test_my_data_without_location_shows_date_only(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/dane"))
+
+        panel = bot.replies(100)[-1]
+        assert "TWOJE DANE" in panel
+        assert "ID Telegrama: 100" in panel
+        assert "Dostęp: ✅ aktywny" in panel
+        assert "Zapisana lokalizacja: brak" in panel
+        assert "Współrzędne: brak" in panel
+        assert "/priv" in panel and "/bezGPS" in panel and "/usunDane" in panel
+        assert "Ala" not in panel, "bez nicka w panelu danych"
+        stan_na = [l for l in panel.split("\n") if l.startswith("Stan na:")][0]
+        assert re.fullmatch(r"Stan na: \d{4}-\d{2}-\d{2}", stan_na), stan_na
+
+    def test_my_data_with_location_shows_local_time(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/miasto"))
+        bot.run(bot.msg(100, "Warszawa"))
+        bot.run(bot.msg(100, "/dane"))
+
+        panel = bot.replies(100)[-1]
+        assert "Zapisana lokalizacja: Warszawa" in panel
+        assert "Współrzędne: 52.23, 21.012" in panel
+        stan_na = [l for l in panel.split("\n") if l.startswith("Stan na:")][0]
+        assert re.fullmatch(r"Stan na: \d{4}-\d{2}-\d{2} \d{2}:\d{2}", stan_na), stan_na
+
+    # --- /raport (pkt 13) -----------------------------------------------------
+    def test_report_for_users_only_account_does_not_promise_reports(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/raport"))
+
+        assert bot.has_reply(100, "GODZINY RAPORTÓW")
+        assert bot.has_reply(100, "w trakcie przenoszenia")
+        assert bot.has_reply(100, "/miasto")
+        # /menu bez sekcji lokalizacji i bez obietnicy automatycznych raportów
+        assert not bot.has_reply(100, "Obecna lokalizacja")
+        assert not bot.has_reply(100, "będą wysyłane")
+        assert bot.keyboards_for(100) == [], "konto bez Formularz nie dostaje panelu godzin"
+
+    def test_report_for_legacy_user_shows_hours_without_location(self, bot):
+        bot.run(bot.msg(700, "/raport"))
+        panel = bot.replies(700)[-1]
+        assert "GODZINY RAPORTÓW" in panel
+        assert "Rano: 08:00" in panel
+        assert "Obecna lokalizacja" not in panel
+        assert "/miasto" in panel
+
+    # --- /info (pkt 16) --------------------------------------------------------
+    def test_info_contains_tips_and_hidden_commands(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/info"))
+        info = bot.replies(100)[-1]
+        for needle in ("/dzien", "/teraz", "/trend", "/miasto", "/raport",
+                       "/zapros", "/dane", "/porady", "/priv",
+                       "/bezGPS", "/usunDane", "/save\\_location"):
+            assert needle in info, needle
+        assert not BACKTICKED_COMMAND.search(info)
+
+    def test_porady_command_still_works_but_is_not_in_menu(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/porady"))
+        assert bot.has_reply(100, "PORADY I TRIKI")
+        assert not bot.has_reply(100, "/miasto Rzym`")
+        # treść porad nie obiecuje już karty z /miasto ani "promienia 3 km"
+        assert not bot.has_reply(100, "3 km")
+        assert not bot.has_reply(100, "wygeneruje świeży raport")
+
+    # --- /oneoff jako ukryty no-op z odpowiedzią (D1) --------------------------
+    def test_oneoff_answers_neutrally_and_shows_no_commands(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/now Hel"))
+        bot.run(bot.msg(100, "/oneoff"))
+        reply = bot.replies(100)[-1]
+        assert reply == "OK, nic nie zapisuję."
+        assert "/save_location" not in reply and "/oneoff" not in reply
+        assert bot.users.record(100)["profile_status"] == "none"
+
+    # --- onboarding (pkt 1) ----------------------------------------------------
+    def test_welcome_access_lists_commands_on_separate_lines(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        welcome = bot.replies(100)[-1]
+        assert welcome.startswith("✅ Dostęp aktywowany!")
+        for line in ("/dzien — prognoza dzienna", "/teraz — prognoza na 12 godzin",
+                     "/trend — prognoza na 14 dni", "/miasto", "/dane"):
+            assert any(l.strip().startswith(line) for l in welcome.split("\n")), line
