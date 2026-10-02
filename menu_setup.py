@@ -1,3 +1,18 @@
+"""
+menu_setup.py — starszy, uproszczony skrypt resetu menu komend (default + PL).
+
+Głównym skryptem jest `update_menu.py` (wgrywa menu dla pl/en/de/es/fr/no/nb
+we wszystkich zakresach). Ten plik zostaje jako szybki twardy reset i ma
+IDENTYCZNĄ listę 8 komend, żeby oba skrypty nie rozjeżdżały się w UX.
+
+PR2 UX cleanup:
+- /menu -> /report (PL: /raport) — dotyczy wyłącznie godzin raportów,
+- /porady (PL) i /tips (EN) znikają z menu — porady są sekcją w /info,
+- komendy prywatności (/privacy, /my_data, /forget_location, /delete_me) oraz
+  techniczny /save_location nie są pozycjami menu — są w /info i w /dane,
+- PL aliasy: /dzien /teraz /trend /raport /miasto /zapros /info /dane.
+"""
+
 import os
 import requests
 from dotenv import load_dotenv
@@ -7,33 +22,25 @@ TELEGRAM_TOKEN = os.environ.get("TG_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
 commands_en = [
-    {"command": "menu", "description": "⚙️ Geo & hours settings panel"},
-    {"command": "now", "description": "📡 Tactical radar (current)"},
     {"command": "day", "description": "☀️ Daily weather card"},
+    {"command": "now", "description": "📡 Tactical radar (12 hrs)"},
     {"command": "trend", "description": "🔮 14-day weather trend"},
+    {"command": "report", "description": "⚙️ Report hours"},
+    {"command": "city", "description": "🌍 Change your location"},
     {"command": "invite", "description": "💌 Invite or add to group"},
-    {"command": "info", "description": "ℹ️ Brief bot manual"},
-    {"command": "tips", "description": "💡 Useful tricks and features"},
-    {"command": "city", "description": "🌍 Change location by text"},
-    {"command": "privacy", "description": "📜 Privacy & your data"},
-    {"command": "my_data", "description": "📦 See your stored data"},
-    {"command": "forget_location", "description": "🧹 Delete saved location"},
-    {"command": "delete_me", "description": "🗑 Delete all my data"}
+    {"command": "info", "description": "ℹ️ Info and tips"},
+    {"command": "data", "description": "📦 Your stored data"},
 ]
 
 commands_pl = [
-    {"command": "menu", "description": "⚙️ Panel ustawień Geo i godzin"},
-    {"command": "now", "description": "📡 Radar taktyczny (na teraz)"},
-    {"command": "day", "description": "☀️ Dzienna karta pogodowa"},
-    {"command": "trend", "description": "🔮 Trend pogody (14 dni)"},
-    {"command": "zapros", "description": "💌 Zaproś lub dodaj do grupy"},
-    {"command": "info", "description": "ℹ️ Krótka instrukcja obsługi"},
-    {"command": "porady", "description": "💡 Przydatne triki i funkcje"},
-    {"command": "miasto", "description": "🌍 Zmień miasto z klawiatury"},
-    {"command": "privacy", "description": "📜 Prywatność i Twoje dane"},
-    {"command": "my_data", "description": "📦 Podgląd Twoich danych"},
-    {"command": "forget_location", "description": "🧹 Usuń zapisaną lokalizację"},
-    {"command": "delete_me", "description": "🗑 Usuń wszystkie moje dane"}
+    {"command": "dzien", "description": "☀️ Prognoza dzienna"},
+    {"command": "teraz", "description": "📡 Prognoza na 12 godzin"},
+    {"command": "trend", "description": "🔮 Prognoza na 14 dni"},
+    {"command": "raport", "description": "⚙️ Godziny raportów"},
+    {"command": "miasto", "description": "🌍 Zmień lokalizację"},
+    {"command": "zapros", "description": "💌 Zaproś znajomego"},
+    {"command": "info", "description": "ℹ️ Informacje i porady"},
+    {"command": "dane", "description": "📦 Twoje dane"},
 ]
 
 print("🧹 1. Kasowanie starych ustawień z serwerów Telegrama...")
