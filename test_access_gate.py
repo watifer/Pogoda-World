@@ -1123,5 +1123,15 @@ class TestPr2UxCleanup:
         welcome = bot.replies(100)[-1]
         assert welcome.startswith("✅ Dostęp aktywowany!")
         for line in ("/dzien — prognoza dzienna", "/teraz — prognoza na 12 godzin",
-                     "/trend — prognoza na 14 dni", "/miasto", "/dane"):
+                     "/trend — prognoza na 14 dni", "/miasto", "/priv", "/dane"):
             assert any(l.strip().startswith(line) for l in welcome.split("\n")), line
+
+        # POPRAWKA #2: akapit "Najpierw Twoja prywatność..." po powitaniu,
+        # a na dole sama "Administracja Twoimi danymi".
+        lines = [l.strip() for l in welcome.split("\n")]
+        assert lines[lines.index("Witaj w Pogoda World 🌍") + 2].startswith(
+            "Najpierw Twoja prywatność, przeczytaj:")
+        assert lines[lines.index("Najpierw Twoja prywatność, przeczytaj:") + 1] == "/priv"
+        assert lines[-2] == "Administracja Twoimi danymi:"
+        assert lines[-1] == "/dane"
+        assert "Prywatność i administracja" not in welcome
