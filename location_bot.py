@@ -421,7 +421,15 @@ def _oneoff_message(lang, key, **kwargs):
 
 
 def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
-    """Generuje kartę bez odczytu lub zapisu Formularz/Users."""
+    """Generuje kartę bez odczytu lub zapisu Formularz/Users.
+
+    POPRAWKA #1 (captions): karta leci jako SAM obrazek — bez podpisu (caption)
+    z nazwą lokalizacji. Dotąd pod zdjęciem pojawiał się dopisek identyczny z
+    tytułem karty (np. „Wiązowna”), bo nazwa miejscowości jest już wtopiona
+    w grafikę. Dotyczy to ścieżki Users (profil zapisany w arkuszu oraz karta
+    jednorazowa dla podanego miasta: /day, /now, /future). Tryb gościa
+    (.d/.n/.f, wzmianka @bot) ma własny send_photo_fn i pozostaje bez zmian.
+    """
     try:
         payload = build_payload_for_location(
             lat=float(lat),
@@ -438,8 +446,9 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
         image_path = image_generator.generate_weather_card(layout)
         if not image_path:
             return False
-        safe_city = str(city).replace("<", "").replace(">", "")
-        send_photo(chat_id, image_path, caption=f"<b>{safe_city}</b>", parse_mode="HTML")
+        # POPRAWKA #1: zero captionu — sama karta (nazwa lokalizacji jest
+        # tytułem grafiki, więc podpis pod zdjęciem tylko ją dublował).
+        send_photo(chat_id, image_path, card_caption=False)
         return True
     except Exception as e:
         print(f"  ❌ [oneoff] Błąd generowania dla {chat_id}: {e}")
@@ -1054,15 +1063,21 @@ def send_reply(chat_id, text, reply_markup=None):
         print(f"⚠️ Błąd sieci podczas wysyłania wiadomości (Timeout/DNS): {e}")
         
         
-def send_photo(chat_id, photo_path, caption=None, parse_mode="Markdown"):
-    """Bezpośredni wysyłacz kart graficznych PNG dla trybu gościa i nie tylko."""
+def send_photo(chat_id, photo_path, caption=None, parse_mode="Markdown", card_caption=True):
+    """Bezpośredni wysyłacz kart graficznych PNG dla trybu gościa i nie tylko.
+
+    POPRAWKA #1: ``card_caption=False`` wysyła SAMĄ kartę — bez podpisu
+    (caption) pod zdjęciem. Ścieżka Users (/day, /now, /future) korzysta z tego
+    trybu w ``_send_oneoff_report``; tryb gościa wysyła kartę z adresem, więc
+    dla niego parametr pozostaje domyślnie włączony.
+    """
     try:
         with open(photo_path, "rb") as photo:
             payload = {"chat_id": chat_id}
-            if caption:
+            if card_caption and caption:
                 payload["caption"] = caption
-            if parse_mode:
-                payload["parse_mode"] = parse_mode
+                if parse_mode:
+                    payload["parse_mode"] = parse_mode
             requests.post(f"{BASE_URL}/sendPhoto", data=payload, files={"photo": photo}, timeout=15)
     except Exception as e:
         print(f"⚠️ Błąd wysyłania zdjęcia (sendPhoto) do {chat_id}: {e}")
