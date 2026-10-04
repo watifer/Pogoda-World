@@ -8,7 +8,9 @@ oraz Google Sheets (Formularz + Users + Bot_State). Zero sieci, zero kluczy,
 zero produkcyjnych danych.
 
 Pokrywane scenariusze:
-- obcy użytkownik: komendy/pinezka/skróty .d/.n/.f -> odmowa + link zaproszenia,
+- obcy użytkownik (POPRAWKA #7): odpowiada WYŁĄCZNIE /start — bez kodu dostaje
+  pełny no_access, z poprawnym kodem rejestrację, a komendy/pinezki/skróty
+  .d/.n/.f/?d/?12 są ignorowane po cichu (zero wiadomości),
 - /start <token>: access TYLKO w Users (bez lat/lon, bez wiersza w Formularz),
 - użytkownik z access-em bez profilu: /day Warszawa, /now Hel, /future Berlin
   generują one-off + PENDING_SAVE, bez automatycznego zapisu,
@@ -20,10 +22,16 @@ Pokrywane scenariusze:
 - /usunDane i /delete_me wymagają potwierdzenia przyciskiem (bez callbacków),
 - użytkownik legacy (Formularz): pełna funkcjonalność bez zmian,
 - Users blocked wygrywa z legacy; BLOCKED_ legacy traci dostęp,
-- kasacja danych: hard delete Users + delete_rows Formularz + czyszczenie RAM,
+- kasacja danych (POPRAWKA #7): hard delete Users + delete_rows Formularz +
+  czyszczenie RAM, a po skutecznej kasacji DOKŁADNIE dwa komunikaty —
+  delete_me_done, a po ok. 1 s osobny, pełny no_access,
+- po hard delete czat nie ma danych ani dostępu: wszystkie komendy (w tym
+  /dane, /priv, /bezGPS, /usunDane, /delete_me, /privacy, /my_data), skróty,
+  pinezki i zwykły tekst są ciszą — działa wyłącznie /start,
 - /forget_location (/bezGPS): czyści profil, dostęp zostaje, rozróżnia brak
   zapisanej lokalizacji,
-- /privacy i /my_data działają bez accessu,
+- komendy RODO (/privacy, /my_data, /delete_me) działają dla czatów z dostępem,
+  a dla czatów bez dostępu są ciszą (POPRAWKA #7),
 - komendy w tekstach UI nie są w backtickach (klikalność na telefonie).
 """
 
@@ -333,43 +341,61 @@ def bot(monkeypatch):
     return BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
 
 
+@pytest.fixture
+def fake_sleep(monkeypatch):
+    """POPRAWKA #7: przechwytuje pauzę między komunikatami po kasacji.
+
+    Zwraca listę wartości przekazanych do ``time.sleep`` — testy nie czekają
+    realnie sekundy, a mimo to mogą sprawdzić, że pauza nastąpiła.
+    """
+    calls = []
+    monkeypatch.setattr(lb.time, "sleep", lambda s: calls.append(s))
+    return calls
+
+
 # ============================================================================
 # SCENARIUSZE
 # ============================================================================
-class TestStrangerIsRefused:
-    def test_day_now_future_refused_with_invite(self, bot):
+class TestStrangerIsSilent:
+    """POPRAWKA #7: bez dostępu odpowiada WYŁĄCZNIE /start — reszta to cisza."""
+
+    def test_day_now_future_silent(self, bot):
         for cmd in ("/day", "/now", "/future", "/day Warszawa"):
             bot.run(bot.msg(100, cmd))
-            assert bot.has_reply(100, "Brak dostępu"), f"brak odmowy dla {cmd}"
-            assert bot.has_reply(100, "https://"), "odmowa bez linku zaproszenia"
+            assert bot.replies(100) == [], f"obcy dostał odpowiedź na {cmd}"
         assert bot.cards == []
         assert bot.oneoffs == []  # PR2-g: argument miasta nie omija gate accessu
 
-    def test_other_commands_refused(self, bot):
-        for cmd in ("/menu", "/miasto", "/zapros", "/info"):
+    def test_other_commands_silent(self, bot):
+        for cmd in ("/menu", "/miasto", "/zapros", "/info", "/dzien", "/teraz",
+                    "/trend", "/raport", "/dane", "/priv", "/bezGPS", "/usunDane"):
             bot.run(bot.msg(100, cmd))
-            assert bot.has_reply(100, "Brak dostępu"), f"brak odmowy dla {cmd}"
+            assert bot.replies(100) == [], f"obcy dostał odpowiedź na {cmd}"
 
-    def test_guest_shortcut_refused_and_guest_handler_not_called(self, bot):
-        bot.run(bot.msg(100, ".n Hel"))
-        assert bot.has_reply(100, "Brak dostępu")
-        assert bot.guest_calls == [], "gate powinien odmówić PRZED handle_guest_now"
+    def test_guest_shortcuts_silent_and_guest_handler_not_called(self, bot):
+        for cmd in (".n Hel", "?d Warszawa", "?12 Warszawa", "?14 Warszawa"):
+            bot.run(bot.msg(100, cmd))
+            assert bot.replies(100) == [], f"obcy dostał odpowiedź na {cmd}"
+        assert bot.guest_calls == [], "gate powinien wyciszyć PRZED handle_guest_now"
 
-    def test_mention_refused(self, bot):
+    def test_mention_silent(self, bot):
         bot.run(bot.msg(100, f"@{lb.BOT_USERNAME} jaka pogoda w Rzymie?"))
-        assert bot.has_reply(100, "Brak dostępu")
+        assert bot.replies(100) == []
         assert bot.guest_calls == []
 
-    def test_pin_as_reply_refused_but_plain_pin_silent(self, bot):
+    def test_pins_silent(self, bot):
         bot.run(bot.pin(100, reply=True))
-        assert bot.has_reply(100, "Brak dostępu")
-        before = len(bot.sent)
         bot.run(bot.pin(100, reply=False))
-        assert len(bot.sent) == before, "zwykła pinezka (bez reply) ma być ignorowana po cichu"
+        assert bot.replies(100) == [], "pinezka bez dostępu nie generuje wiadomości"
 
     def test_plain_text_stays_silent(self, bot):
         bot.run(bot.msg(100, "cześć, co potrafisz?"))
         assert bot.replies(100) == []
+
+    def test_start_without_code_gets_no_access(self, bot):
+        bot.run(bot.msg(100, "/start"))
+        assert bot.has_reply(100, "Brak dostępu")
+        assert bot.has_reply(100, "https://"), "no_access bez linku zaproszenia"
 
     def test_invalid_start_token(self, bot):
         bot.run(bot.msg(999, "/start ZLYKOD"))
@@ -637,9 +663,10 @@ class TestLegacyUserUnchanged:
         assert "700" not in lb.PENDING_SAVE
         assert bot.oneoffs == []
 
-    def test_blocked_legacy_refused(self, bot):
+    def test_blocked_legacy_silent(self, bot):
+        # POPRAWKA #7: brak dostępu = cisza (obcy, blocked, revoked, BLOCKED_).
         bot.run(bot.msg(701, "/day"))
-        assert bot.has_reply(701, "Brak dostępu")
+        assert bot.replies(701) == []
 
     def test_users_blocked_wins_over_legacy_row(self, bot, monkeypatch):
         # wiersz legacy CZYSTY (bez BLOCKED_), ale Users mówi blocked -> brak dostępu
@@ -650,15 +677,27 @@ class TestLegacyUserUnchanged:
         bot.gc.users.grid[-1][USERS_HEADERS.index("access_status")] = "blocked"
 
         bot.run(bot.msg(800, "/day"))
-        assert bot.has_reply(800, "Brak dostępu")
+        assert bot.replies(800) == [], "Users blocked wygrywa z legacy i milczy"
 
 
 class TestPrivacyCommands:
-    def test_privacy_works_without_access(self, bot):
+    def test_privacy_silent_without_access(self, bot):
+        # POPRAWKA #7: czat bez wiersza w rejestrze (obcy / po hard delete) nie ma
+        # danych, więc komendy RODO są ciszą — odpowiada wyłącznie /start.
         bot.run(bot.msg(555, "/privacy"))
-        assert bot.has_reply(555, "PRYWATNOŚĆ")
-        assert bot.has_reply(555, "https://")
-        assert lb.PRIVACY_VERSION.replace("-", "-") in bot.replies(555)[0]
+        bot.run(bot.msg(555, "/my_data"))
+        bot.run(bot.msg(555, "/forget_location"))
+        bot.run(bot.msg(555, "/delete_me"))
+        assert bot.replies(555) == []
+
+    def test_privacy_works_with_access(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/privacy"))
+        assert bot.has_reply(100, "PRYWATNOŚĆ")
+        assert bot.has_reply(100, "https://")
+        assert lb.PRIVACY_VERSION.replace("-", "-") in [
+            t for t in bot.replies(100) if "PRYWATNOŚĆ" in t
+        ][0]
 
     def test_my_data_shows_access(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -671,9 +710,9 @@ class TestPrivacyCommands:
         assert bot.has_reply(700, "legacy")
         assert bot.has_reply(700, "Gdańsk")
 
-    def test_my_data_stranger_no_data(self, bot):
+    def test_my_data_stranger_silent(self, bot):
         bot.run(bot.msg(555, "/my_data"))
-        assert bot.has_reply(555, "Nie znaleziono")
+        assert bot.replies(555) == []
 
     def test_forget_location_legacy_clears_profile_keeps_access(self, bot):
         bot.run(bot.msg(700, "/forget_location"))
@@ -704,9 +743,10 @@ class TestPrivacyCommands:
         assert rec["profile_status"] == "none"
         assert rec["access_status"] == "granted", "forget_location nie może odbierać accessu"
 
-    def test_delete_me_hard_delete_everywhere(self, bot):
+    def test_delete_me_hard_delete_everywhere(self, bot, fake_sleep):
         # D2: /delete_me (tak jak /usunDane) najpierw pyta o potwierdzenie,
         # a hard delete wykonuje się dopiero po "Tak, chcę".
+        # POPRAWKA #7: po skutecznej kasacji idą DOKŁADNIE dwa komunikaty.
         bot.run(bot.msg(100, "/start BETAX1"))
         lb._set_pending_city("100", lb.CTX_ONEOFF_DAY)
         lb._put_pending_save(100, 52.23, 21.01, "Warszawa", "pl", "city")
@@ -715,30 +755,41 @@ class TestPrivacyCommands:
         assert bot.users.record(100) is not None, "kasacja bez potwierdzenia!"
         assert "100" in lb.PENDING_DELETE
 
+        before = len(bot.sent)
         bot.run(bot.msg(100, "Tak, chcę"))
+        after = [t for c, t in bot.sent[before:] if c == 100]
+        assert len(after) == 2, f"oczekiwane dwa komunikaty, jest {len(after)}: {after}"
+        assert "Usunąłem Twoje dane" in after[0]
+        assert "Brak dostępu" in after[1] and "https://" in after[1]
+        assert fake_sleep == [lb.DELETE_NOTICE_DELAY_SEC], "brak pauzy przed drugim komunikatem"
         assert bot.users.record(100) is None, "wiersz Users nieusunięty"
         assert "100" not in lb.PENDING_CITY, "PENDING_CITY nie wyczyszczone"
         assert "100" not in lb.PENDING_SAVE, "PENDING_SAVE nie wyczyszczone"
         assert "100" not in lb.PENDING_DELETE, "PENDING_DELETE nie wyczyszczone"
-        assert bot.has_reply(100, "Usunąłem Twoje dane")
-        assert not bot.has_reply(100, "https://"), "po kasacji nie podajemy linku zaproszenia"
 
-        # dostęp znika w kolejnej paczce
+        # od tego momentu czat milczy (odpowiada tylko /start)
+        before = len(bot.sent)
         bot.run(bot.msg(100, "/day"))
-        assert bot.has_reply(100, "Brak dostępu")
+        bot.run(bot.msg(100, "/dane"))
+        assert len(bot.sent) == before, "po hard delete czat nie może dostawać odpowiedzi"
 
-    def test_delete_me_legacy_rows_removed_including_blocked(self, bot):
-        bot.gc.formularz.rows.append(["2026-01-04 08:00:00", "701", "BlockedLegacy", "Hel", "54.6", "18.8", "", "", "pl"])
-        bot.run(bot.msg(701, "/delete_me"))
-        bot.run(bot.msg(701, "Tak, chcę"))
-        assert "701" not in bot.gc.formularz.chat_ids()
-        assert "BLOCKED_701" not in bot.gc.formularz.chat_ids()
+    def test_delete_me_legacy_rows_removed_including_blocked(self, bot, fake_sleep):
+        # Konto z dostępem (czysty wiersz legacy) + własny wiersz BLOCKED_:
+        # oba wiersze znikają, a sąsiedzi zostają nietknięci.
+        bot.gc.formularz.rows.append(["2026-01-04 08:00:00", "702", "Legacy", "Hel", "54.6", "18.8", "08:00", "14:00", "pl"])
+        bot.gc.formularz.rows.append(["2026-01-04 08:05:00", "BLOCKED_702", "Legacy", "Hel", "", "", "08:00", "14:00", "pl"])
+        bot.run(bot.msg(702, "/delete_me"))
+        bot.run(bot.msg(702, "Tak, chcę"))
+        assert "702" not in bot.gc.formularz.chat_ids()
+        assert "BLOCKED_702" not in bot.gc.formularz.chat_ids()
         assert "700" in bot.gc.formularz.chat_ids(), "usunięto wiersze obcego użytkownika!"
 
-    def test_delete_me_stranger_gets_no_data(self, bot):
+    def test_delete_me_stranger_silent(self, bot):
+        # POPRAWKA #7: obcy nie ma nawet czym potwierdzać — cisza i brak pendingu.
         bot.run(bot.msg(555, "/delete_me"))
         bot.run(bot.msg(555, "Tak, chcę"))
-        assert bot.has_reply(555, "Nie znaleziono")
+        assert bot.replies(555) == []
+        assert "555" not in lb.PENDING_DELETE
 
 
 class TestBlockedMarking:
@@ -911,7 +962,7 @@ class TestPr2UxCleanup:
         assert bot.has_reply(100, "/dzien Warszawa")
 
     # --- g) /usunDane wymaga potwierdzenia ----------------------------------
-    def test_g_usun_dane_requires_confirmation(self, bot):
+    def test_g_usun_dane_requires_confirmation(self, bot, fake_sleep):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/usunDane"))
 
@@ -926,10 +977,13 @@ class TestPr2UxCleanup:
         assert "callback" not in str(keyboards[-1]).lower()
 
         # krok 2A: potwierdzenie wykonuje hard delete
+        before = len(bot.sent)
         bot.run(bot.msg(100, "Tak, chcę"))
         assert bot.users.record(100) is None
-        assert bot.has_reply(100, "Usunąłem Twoje dane")
-        assert not bot.has_reply(100, "https://"), "po kasacji nie podajemy linku zaproszenia"
+        after = [t for c, t in bot.sent[before:] if c == 100]
+        assert len(after) == 2
+        assert "Usunąłem Twoje dane" in after[0]
+        assert "https://" in after[1], "drugi komunikat to pełny no_access z linkiem"
 
     def test_g_usun_dane_cancellation_keeps_data(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -947,7 +1001,7 @@ class TestPr2UxCleanup:
         bot.run(bot.msg(100, "/teraz"))
         assert not bot.has_reply(100, "Brak dostępu")
 
-    def test_g_other_text_does_not_consume_delete_pending(self, bot):
+    def test_g_other_text_does_not_consume_delete_pending(self, bot, fake_sleep):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/usunDane"))
         bot.run(bot.msg(100, "chwila, zastanawiam się"))
@@ -1004,7 +1058,7 @@ class TestPr2UxCleanup:
         bot.run(bot.msg(100, "/trend"))
         assert lb.PENDING_CITY["100"]["ctx"] == lb.CTX_ONEOFF_FUTURE
 
-    def test_bez_gps_and_usun_dane_are_case_insensitive(self, bot):
+    def test_bez_gps_and_usun_dane_are_case_insensitive(self, bot, monkeypatch, fake_sleep):
         bot.run(bot.msg(100, "/start BETAX1"))
         for cmd in ("/bezGPS", "/bezgps", "/BEZGPS", "/BezGps"):
             bot.run(bot.msg(100, cmd))
@@ -1018,7 +1072,7 @@ class TestPr2UxCleanup:
             assert bot.has_reply(101, "Czy na pewno chcesz usunąć"), cmd
             assert "101" in lb.PENDING_DELETE
 
-    def test_hidden_delete_commands_work_as_buttons(self, bot):
+    def test_hidden_delete_commands_work_as_buttons(self, bot, fake_sleep):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/usunDane"))
         bot.run(bot.msg(100, "/potwierdzusun"))
@@ -1268,3 +1322,126 @@ class TestInfoAndTipsContent:
         assert "TRUCS ET ASTUCES" not in tips
         assert not BACKTICKED_COMMAND.search(tips)
         assert tips.count("`") % 2 == 0 and tips.count("*") % 2 == 0
+
+
+# ============================================================================
+# POPRAWKA #7: po hard delete / bez dostępu odpowiada WYŁĄCZNIE /start
+# ============================================================================
+# Komendy, skróty i teksty, które dla czatu bez dostępu muszą być CISZĄ.
+# Lista celowo pokrywa wszystkie warstwy skrótów (#6) i komendy RODO.
+NO_ACCESS_SILENT_INPUTS = (
+    "/now", "/dzien", "/teraz", "/trend", "/raport", "/menu", "/miasto",
+    "/info", "/zapros", "/dane", "/priv", "/bezGPS", "/usunDane", "/delete_me",
+    "/privacy", "/my_data",
+    "?d Warszawa", "?12 Warszawa", "?14 Warszawa", "?t Berlin", "?j Paris",
+    ".d Warszawa", ".n Hel", ".f", ".p Hel",
+    "Warszawa", "jaka pogoda?", "cześć, co potrafisz?",
+)
+
+
+class TestPostDeleteUx:
+    """POPRAWKA #7: dwa komunikaty po kasacji, potem cisza poza /start."""
+
+    def test_delete_sends_exactly_two_messages_in_order(self, bot, fake_sleep):
+        bot.run(bot.msg(500, "/start BETAX1"))
+        bot.run(bot.msg(500, "/miasto Warszawa"))
+        bot.run(bot.msg(500, "/usunDane"))
+        before = len(bot.sent)
+        bot.run(bot.msg(500, "Tak, chcę"))
+
+        msgs = [t for c, t in bot.sent[before:] if c == 500]
+        assert len(msgs) == 2, f"oczekiwane dokładnie 2 komunikaty: {msgs}"
+        assert "Usunąłem Twoje dane" in msgs[0]
+        assert "Brak dostępu" in msgs[1] and "https://" in msgs[1]
+        assert fake_sleep == [lb.DELETE_NOTICE_DELAY_SEC], "brak pauzy 1 s między komunikatami"
+        assert bot.users.record(500) is None
+
+    def test_second_message_equals_full_no_access_in_six_languages(self, monkeypatch, fake_sleep):
+        for lang in ("pl", "en", "de", "es", "fr", "no"):
+            local = BotHarness(monkeypatch)
+            local.run(local.msg(600, "/start BETAX1", lang=lang))
+            local.run(local.msg(600, "/usunDane", lang=lang))
+            before = len(local.sent)
+            local.run(local.msg(600, lb.t_ui(lang, "delete_confirm_yes"), lang=lang))
+
+            msgs = [t for c, t in local.sent[before:] if c == 600]
+            assert len(msgs) == 2, f"{lang}: {msgs}"
+            assert msgs[0] == lb.t_ui(lang, "delete_me_done"), lang
+            assert msgs[1] == lb.t_ui(lang, "no_access", url=lb.INVITE_URL), lang
+
+    def test_post_delete_everything_is_silent(self, bot, fake_sleep):
+        bot.run(bot.msg(500, "/start BETAX1"))
+        bot.run(bot.msg(500, "/usunDane"))
+        bot.run(bot.msg(500, "Tak, chcę"))
+
+        before = len(bot.sent)
+        for text in NO_ACCESS_SILENT_INPUTS:
+            bot.run(bot.msg(500, text))
+        bot.run(bot.pin(500, reply=True))
+        bot.run(bot.pin(500, reply=False))
+        assert len(bot.sent) == before, (
+            "po hard delete czat nie ma danych ani dostępu — odpowiada wyłącznie /start, "
+            f"a odpowiedziały: {[t[:40] for c, t in bot.sent[before:] if c == 500]}"
+        )
+
+    def test_post_delete_start_paths(self, bot, fake_sleep):
+        bot.run(bot.msg(500, "/start BETAX1"))
+        bot.run(bot.msg(500, "/usunDane"))
+        bot.run(bot.msg(500, "Tak, chcę"))
+
+        # /start bez kodu -> pełny no_access
+        before = len(bot.sent)
+        bot.run(bot.msg(500, "/start"))
+        assert bot.has_reply(500, "Brak dostępu")
+        assert "https://" in bot.replies(500)[-1]
+
+        # /start zły kod -> invalid_link (nadal ścieżka /start)
+        bot.run(bot.msg(500, "/start ZLYKOD"))
+        assert bot.has_reply(500, "Nieprawidłowy")
+
+        # /start poprawny kod -> aktywacja i powrót do normalnej obsługi
+        bot.run(bot.msg(500, "/start BETAX1"))
+        assert bot.has_reply(500, "Dostęp aktywowany")
+        bot.run(bot.msg(500, "/info"))
+        assert bot.has_reply(500, "JAK DZIAŁA")
+        assert len([t for c, t in bot.sent[before:] if c == 500]) == 4  # 3 x /start + /info
+
+    def test_no_access_chat_only_start_answers(self, bot):
+        before = len(bot.sent)
+        for text in NO_ACCESS_SILENT_INPUTS:
+            bot.run(bot.msg(999, text))
+        assert len(bot.sent) == before, "nowy czat bez kodu: cisza na wszystko poza /start"
+        bot.run(bot.msg(999, "/start"))
+        assert bot.has_reply(999, "Brak dostępu")
+
+    def test_batch_after_delete_stays_silent_for_rest_of_batch(self, bot, fake_sleep):
+        # Z7 (tylko RAM): kolejne update'y z TEJ SAMEJ paczki nie widzą już
+        # starego dostępu — czat milczy do końca paczki, bez trzeciego komunikatu.
+        bot.gc.formularz.rows.append(
+            ["2026-01-07 08:00:00", "710", "Legacy", "Hel", "54.6", "18.8", "08:00", "14:00", "pl"])
+        bot._updates.append(bot.msg(710, "/usunDane"))
+        bot._updates.append(bot.msg(710, "Tak, chcę"))
+        bot._updates.append(bot.msg(710, "/day"))
+        bot._updates.append(bot.msg(710, "/dane"))
+        before = len(bot.sent)
+        lb.main_bot()
+
+        msgs = [t for c, t in bot.sent[before:] if c == 710]
+        assert len(msgs) == 3, f"pytanie + 2 komunikaty kasacji, nic więcej: {msgs}"
+        assert "Czy na pewno" in msgs[0]
+        assert "Usunąłem Twoje dane" in msgs[1]
+        assert "Brak dostępu" in msgs[2]
+
+    def test_delete_without_any_rows_sends_only_no_data(self, bot, fake_sleep, monkeypatch):
+        # Ścieżka obronna: rejestr nie potwierdził usunięcia żadnego wiersza
+        # (np. zmiana arkusza między odczytem paczki a kasacją) — zostaje
+        # jedno no_data, bez pauzy i bez drugiego komunikatu.
+        monkeypatch.setattr(lb.users_store, "delete_user_row", lambda *a, **k: False)
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/usunDane"))
+        before = len(bot.sent)
+        bot.run(bot.msg(100, "Tak, chcę"))
+
+        msgs = [t for c, t in bot.sent[before:] if c == 100]
+        assert len(msgs) == 1 and "Nie znaleziono" in msgs[0], msgs
+        assert fake_sleep == [], "bez kasacji nie ma drugiego komunikatu ani pauzy"

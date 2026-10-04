@@ -64,6 +64,12 @@ PENDING_SAVE_TTL_SEC = 600
 PENDING_DELETE = {}     # { str(chat_id): expires_ts }
 PENDING_DELETE_TTL_SEC = 300
 
+# POPRAWKA #7: po skutecznym hard delete idą DOKŁADNIE dwa komunikaty —
+# delete_me_done, a po tej pauzie osobny, pełny no_access (dostęp został
+# odebrany razem z danymi). Wartość w sekundach trzymamy w stałej, żeby
+# testy mogły podmienić czas i nie czekać realnie.
+DELETE_NOTICE_DELAY_SEC = 1
+
 # =====================================================================
 # PR2 UX cleanup — ALIASY KOMEND (PL skróty + formy techniczne)
 # =====================================================================
@@ -324,6 +330,22 @@ def _delete_confirm_markup(lang):
 def _norm_answer(text):
     """Normalizacja odpowiedzi z przycisku (białe znaki + wielkość liter)."""
     return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _delete_answer_is_confirmation(chat_id, delete_cmd, text, lang) -> bool:
+    """True, gdy odpowiedź na pytanie o kasację to potwierdzenie ("Tak, chcę").
+
+    Lustrzana, minimalna kopia rozstrzygnięcia z ``_handle_delete_answer``.
+    POPRAWKA #7: main_bot potrzebuje tej informacji PRZED wywołaniem handlera,
+    żeby po hard delete odfiltrować czat z RAM na resztę paczki (Z7), a przy
+    "Nie, nie chcę" nie filtrować niczego. Wymaga aktywnego pendingu.
+    """
+    if not _pending_delete_active(chat_id):
+        return False
+    if delete_cmd:
+        return delete_cmd == "/delete_yes"
+    yes_label, _no_label = _delete_confirm_labels(lang)
+    return _norm_answer(text) == _norm_answer(yes_label)
 
 
 def _put_pending_save(chat_id, lat, lon, city, lang, source, now_ts=None):
@@ -842,8 +864,11 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
     """HARD DELETE: wiersz w Users + wszystkie wiersze legacy + stany RAM.
 
     Wywoływane WYŁĄCZNIE po potwierdzeniu ("Tak, chcę" / /potwierdzusun).
-    Po usunięciu nie podajemy linku zaproszenia — tylko informację, że powrót
-    wymaga ponownego użycia zaproszenia.
+    POPRAWKA #7: po skutecznej kasacji idą DOKŁADNIE dwa komunikaty — zaraz po
+    kasacji ``delete_me_done`` (bez linku zaproszenia), a po ok. 1 sekundzie
+    osobny, pełny ``no_access``: dostęp został odebrany razem z danymi, więc od
+    tego momentu odpowiada wyłącznie /start. Gdy nie było czego kasować,
+    zostaje jedno ``no_data`` (bez drugiego komunikatu).
     """
     users_deleted = users_store.delete_user_row(users_ws, chat_id)
     legacy_deleted = _delete_legacy_rows(main_sheet, chat_id)
@@ -856,6 +881,10 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
     remove_keyboard = {"remove_keyboard": True}
     if users_deleted or legacy_deleted:
         send_reply(chat_id, t_ui(lang, "delete_me_done"), reply_markup=remove_keyboard)
+        # POPRAWKA #7: drugi, osobny komunikat po krótkiej pauzie — pokazuje, że
+        # razem z danymi zniknął dostęp i że powrót wymaga ponownego zaproszenia.
+        time.sleep(DELETE_NOTICE_DELAY_SEC)
+        send_reply(chat_id, t_ui(lang, "no_access", url=INVITE_URL))
     else:
         send_reply(chat_id, t_ui(lang, "no_data"), reply_markup=remove_keyboard)
 
@@ -1266,23 +1295,30 @@ def main_bot():
                     message["text"] = normalized_text
             # --------------------------------------------------------
 
-            # --- DODAJ TO TUTAJ: Błyskawiczne pobranie języka dla Gościa ---
-            raw_guest = message.get("from", {}).get("language_code", "en")[:2].lower()
-            guest_lang = "no" if raw_guest in ("no", "nb") else raw_guest
-            if guest_lang not in ("pl", "en", "de", "fr", "es", "no"):
-                guest_lang = "en"
-            # ---------------------------------------------------------------
+            # POPRAWKA #7: dawny błyskawiczny język gościa (guest_lang) obsługiwał
+            # odmowę no_access dla skrótów/wzmianek bez dostępu. Odmowa zniknęła
+            # (bez dostępu jest cisza), więc zmienna nie jest już potrzebna.
+
+            # ==============================================================
+            # POPRAWKA #7 — BRAMKA DOSTĘPU LICZONA RAZ NA WIADOMOŚĆ
+            # ==============================================================
+            # Bez dostępu odpowiada WYŁĄCZNIE /start (rejestracja kodem albo
+            # informacja no_access). Wszystko inne — komendy RODO, komendy
+            # zwykłe, skróty i wzmianki, pinezki, WebApp i zwykły tekst — jest
+            # ignorowane po cichu. Dzięki temu po hard delete czat bez wiersza
+            # w rejestrze nie dostaje ani no_data, ani linku zaproszenia.
+            chat_has_access = _chat_has_access(users_map, clean_users, chat_id)
+            raw_text = (message.get("text") or "").strip()
+            if not chat_has_access and not raw_text.startswith("/start"):
+                continue
 
             # ==============================================================
             # 0A. TRYB GOŚCIA I SZYBKIE SKRÓTY (.n, .d, .f) — GATE PO ACCESS (PR1)
             # ==============================================================
             # Skróty .d/.n/.f i wzmianki @bot generują karty pogodowe, więc od PR1
-            # wymagają dostępu (Users granted lub legacy Formularz). Bez access:
-            # odmowa + link zaproszenia. guest_bot_handler pozostaje bez zmian.
-            if _is_guest_trigger((message.get("text") or "").strip(), BOT_USERNAME) and not _chat_has_access(users_map, clean_users, chat_id):
-                send_reply(chat_id, t_ui(guest_lang, "no_access", url=INVITE_URL))
-                continue
-
+            # wymagają dostępu. Brak dostępu został już obsłużony wyżej (cisza),
+            # więc tutaj docierają wyłącznie czaty z dostępem.
+            # guest_bot_handler pozostaje bez zmian.
             is_guest = handle_guest_now(
                 message=message,
                 bot_username=BOT_USERNAME, 
@@ -1352,10 +1388,10 @@ def main_bot():
                         lon = float(data.get("lon"))
                         print(f"  📍 Odebrano współrzędne GPS od {chat_id}: {lat}, {lon}")
 
-                        # WebApp także podlega gate accessu. Bez dostępu nie generuje
-                        # raportu i nie pozostawia lokalizacji nawet w RAM.
+                        # POPRAWKA #7: brak dostępu = cisza. Ten warunek jest
+                        # już nieosiągalny (bramka na wejściu pętli wycisza
+                        # WebApp bez dostępu) — zostaje jako pas bezpieczeństwa.
                         if not _chat_has_access(users_map, clean_users, chat_id):
-                            send_reply(chat_id, t_ui(user_lang, "no_access", url=INVITE_URL))
                             continue
 
                         # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
@@ -1429,11 +1465,11 @@ def main_bot():
                                 print("  [DEBUG] Nie znalazłem usera do zapisu godzin!")
 
                         # PR1: brak wiersza w Formularz = brak profilu (zapis dopiero od PR2)
+                        # POPRAWKA #7: bez dostępu cisza (bramka na wejściu pętli);
+                        # warunek zostaje jako pas bezpieczeństwa.
                         if not rows_to_update:
                             if _chat_has_access(users_map, clean_users, chat_id):
                                 send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
-                            else:
-                                send_reply(chat_id, t_ui(user_lang, "no_access", url=INVITE_URL))
                             continue
 
                         if rows_to_update:
@@ -1476,11 +1512,13 @@ def main_bot():
             # 0.5 KOMENDY PRYWATNOŚCI (RODO) — PR1 + aliasy PL (PR2 UX cleanup)
             # /privacy (/priv), /my_data (/dane), /forget_location (/bezGPS),
             # /delete_me oraz /delete_confirm (/usunDane) — kasacja zawsze pyta.
-            # Działają ZAWSZE: także bez access i bez wiersza w bazie (wymóg RODO).
+            # POPRAWKA #7: działają wyłącznie dla czatów z dostępem. Bez dostępu
+            # (obcy, blocked/revoked, po hard delete) komendy RODO są ciszą —
+            # czat bez wiersza w rejestrze nie ma czego wglądać ani usuwać.
             # ==============================================================
             text_priv = (message.get("text") or "").strip()
             priv_cmd = _match_command(text_priv, PRIVACY_COMMANDS)
-            if priv_cmd:
+            if chat_has_access and priv_cmd:
                 priv_lang = _resolve_privacy_lang(message, chat_id, users_map, clean_users)
                 print(f"  🛡 Komenda prywatności {priv_cmd} od {chat_id}")
                 _handle_privacy(chat_id, priv_cmd, priv_lang, users_ws, main_sheet, users_map, clean_users)
@@ -1495,12 +1533,16 @@ def main_bot():
             # 0.6 ODPOWIEDŹ NA PYTANIE O USUNIĘCIE DANYCH (bez callbacków)
             # Przyciski reply keyboard ("Tak, chcę" / "Nie, nie chcę") albo
             # ukryte komendy techniczne /potwierdzusun, /anulujusun.
-            # Obsługujemy PRZED bramką access — po kasacji użytkownik nie ma już
-            # dostępu, a prawo do usunięcia danych nie może zależeć od accessu.
+            # POPRAWKA #7: pytanie o kasację zadaje wyłącznie czat z dostępem
+            # (blok 0.5), więc tutaj też wystarczy sam dostęp — po hard delete
+            # pending jest wyczyszczony, a czat nie ma już czym potwierdzać.
             # ==============================================================
             delete_cmd = _match_command(text_priv, DELETE_ANSWER_COMMANDS)
-            if delete_cmd or _pending_delete_active(chat_id):
+            if chat_has_access and (delete_cmd or _pending_delete_active(chat_id)):
                 priv_lang = _resolve_privacy_lang(message, chat_id, users_map, clean_users)
+                delete_confirmed = _delete_answer_is_confirmation(
+                    chat_id, delete_cmd or "", text_priv, priv_lang
+                )
                 consumed = _handle_delete_answer(
                     chat_id, delete_cmd or "", text_priv, priv_lang, users_ws, main_sheet
                 )
@@ -1509,6 +1551,16 @@ def main_bot():
                     fresh_map = users_store.load_users_map(users_ws)
                     if fresh_map:
                         users_map = fresh_map
+                    # POPRAWKA #7 (Z7 — wyłącznie RAM): po hard delete usuwamy
+                    # czat także z bieżącej mapy Users i z listy legacy w pamięci,
+                    # żeby kolejne update'y z TEJ SAMEJ paczki nie widziały
+                    # starego dostępu. Nie dotykamy arkusza ani migracji.
+                    if delete_confirmed:
+                        users_map.pop(users_store.norm_chat_id(chat_id), None)
+                        clean_users = [
+                            u for u in clean_users
+                            if str(u.get("Chat ID", "")).strip() != str(chat_id)
+                        ]
                     continue
 
             # ==============================================================
@@ -1540,33 +1592,16 @@ def main_bot():
             # BRAMKA WEJŚCIOWA (PR1: dostęp z Users + legacy Formularz)
             # ==============================================================
             # access = Users(access_status=granted) LUB wiersz w legacy Formularz.
-            # Bez access dozwolone są tylko: /start <token> (rejestracja), komendy
-            # prywatności (obsłużone wyżej) — reszta komend: odmowa + link zaproszenia.
-            chat_has_access = _chat_has_access(users_map, clean_users, chat_id)
+            # POPRAWKA #7: bramka na wejściu pętli wyciszyła już wszystko, co nie
+            # jest /start, więc tutaj zostaje wyłącznie obsługa /start dla czatu
+            # bez dostępu: bez kodu -> no_access, zły kod -> invalid_link,
+            # limit miejsc -> limit_reached, poprawny kod -> rejestracja.
             has_legacy_row = user_row_index is not None
 
             if not chat_has_access:
                 text = message.get("text", "").strip()
                 wykryty_jezyk = get_user_lang(message)
-
-                # PR1: pinezka wysłana jako odpowiedź botowi to świadoma interakcja —
-                # dostaje odmowę z linkiem zaproszenia (zwykłe pinezki ignorujemy).
-                if "location" in message and message.get("reply_to_message"):
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "no_access", url=INVITE_URL))
-                    continue
-
-                # Ciche ignorowanie zdarzeń bez tekstu (naklejki, systemowe wiadomości z grup)
-                if not text:
-                    continue
-
                 parts = text.split()
-
-                # PR1: każda komenda bez access -> odmowa + link zaproszenia.
-                # Zwykły tekst ("cześć", spam na grupach) nadal ignorujemy po cichu.
-                if not text.startswith("/start"):
-                    if text.startswith("/"):
-                        send_reply(chat_id, t_ui(wykryty_jezyk, "no_access", url=INVITE_URL))
-                    continue
 
                 # Miękkie lądowanie dla ludzi, którzy wpisali samo /start (bez kodu)
                 if len(parts) < 2:
