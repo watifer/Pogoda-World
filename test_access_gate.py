@@ -1119,8 +1119,11 @@ class TestPr2UxCleanup:
         info = bot.replies(100)[-1]
         for needle in ("/dzien", "/teraz", "/trend", "/miasto", "/raport",
                        "/zapros", "/dane", "/porady", "/priv",
-                       "/bezGPS", "/usunDane", "/save\\_location"):
+                       "/bezGPS", "/usunDane"):
             assert needle in info, needle
+        # POPRAWKA #5: techniczny alias /save_location znika z /info
+        # (nadal działa w kodzie jako ukryta komenda kompatybilnościowa).
+        assert "/save_location" not in info.replace("\\", "")
         assert not BACKTICKED_COMMAND.search(info)
 
     def test_porady_command_still_works_but_is_not_in_menu(self, bot):
@@ -1240,3 +1243,28 @@ class TestLocationDescription:
         bot.run(bot.msg(115, "Xyzzz"))
 
         assert bot.has_reply(115, "Nie mogłem znaleźć takiego miejsca na mapie")
+
+
+# ============================================================================
+# POPRAWKA #5: /info bez /save_location, /porady w języku użytkownika
+# ============================================================================
+class TestInfoAndTipsContent:
+    def test_info_no_longer_advertises_save_location(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/info"))
+
+        info = bot.replies(100)[-1]
+        assert "/save_location" not in info.replace("\\", "")
+        assert "/bezGPS" in info and "/usunDane" in info, \
+            "dwie komendy zarządzania danymi muszą zostać"
+        assert "*Komendy rzadziej używane:*" in info
+
+    def test_tips_reply_has_no_french_leak_in_polish(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(bot.msg(100, "/porady"))
+
+        tips = bot.replies(100)[-1]
+        assert tips.startswith("💡 *PORADY I TRIKI")
+        assert "TRUCS ET ASTUCES" not in tips
+        assert not BACKTICKED_COMMAND.search(tips)
+        assert tips.count("`") % 2 == 0 and tips.count("*") % 2 == 0
