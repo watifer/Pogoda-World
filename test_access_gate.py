@@ -1369,6 +1369,13 @@ class TestPostDeleteUx:
             assert msgs[0] == lb.t_ui(lang, "delete_me_done"), lang
             assert msgs[1] == lb.t_ui(lang, "no_access", url=lb.INVITE_URL), lang
 
+    def test_no_access_legacy_markdown_escapes_code_underscores(self):
+        for lang in ("pl", "en", "de", "es", "fr", "no"):
+            text = lb.t_ui(lang, "no_access", url=lb.INVITE_URL)
+            assert re.search(r"/start \S+\\_\S+", text), (lang, text)
+            unescaped = re.findall(r"(?<!\\)_", text)
+            assert len(unescaped) == 2, f"{lang}: nieparzysty/nieoczekiwany '_' w Markdown: {text}"
+
     def test_post_delete_everything_is_silent(self, bot, fake_sleep):
         bot.run(bot.msg(500, "/start BETAX1"))
         bot.run(bot.msg(500, "/usunDane"))
