@@ -850,6 +850,14 @@ class TestPr2UxCleanup:
         assert bot.has_reply(100, "Wpisz nową miejscowość")
         assert bot.has_reply(100, "współrzędne są zaokrąglane")
 
+        # POPRAWKA #3: pinezka z mapy + "Szczegóły:" z klikalnym /porady
+        # w jednej linii, bez bloku "Przykłady:" z renderowanymi miastami.
+        assert bot.has_reply(100, "wyślij pinezkę z mapy lub lokalizację GPS. Szczegóły:")
+        assert bot.has_reply(100, "\n/porady\n")
+        assert bot.has_reply(100, "poranne lub popołudniowe raporty pogodowe")
+        assert not bot.has_reply(100, "Przykłady:")
+        assert not bot.has_reply(100, "`Warszawa`")
+
     def test_d_saved_profile_makes_dzien_work_without_city(self, bot, monkeypatch):
         freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(100, "/start BETAX1"))
