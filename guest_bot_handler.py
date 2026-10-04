@@ -7,6 +7,95 @@ import logging
 logger = logging.getLogger(__name__)
 
 # ============================================================================
+# SKRÓTY (POPRAWKA #6) — trzy warstwy, rozpoznawanie po PIERWSZYM TOKENIE
+# ============================================================================
+# Warstwy (kolejność rozpoznawania ma znaczenie):
+#   1. GLOBALNE          ?12 -> 12 godzin (now), ?14 -> trend 14 dni (future),
+#   2. DZIENNY LOKALNY   ?d (pl/en/es/no), ?t (de), ?j (fr) -> karta dzienna,
+#   3. LEGACY (ukryte)   ?n -> 12h, ?f -> trend, ?p -> 12h, ?d -> dzienna.
+#
+# Kropka jest równoważna pytajnikowi w każdej warstwie (.14, .t, .n ...).
+# Rozpoznajemy PIERWSZY TOKEN: "?14 Warszawa" to skrót "?14" + argument
+# "Warszawa" (a nie "?1" + "4 Warszawa"). Zlepiona forma "?dWarszawa" też
+# działa — to zachowanie historyczne, wymagane dla zgodności wstecznej.
+
+LOCAL_DAILY_SHORTCUT = {
+    "pl": "d",   # dzień
+    "en": "d",   # day
+    "de": "t",   # Tag
+    "es": "d",   # día
+    "fr": "j",   # jour
+    "no": "d",   # dag
+}
+
+GLOBAL_SHORTCUTS = {
+    "12": "now",
+    "14": "future",
+}
+
+# Dzienne skróty wszystkich języków — użytkownik z innym językiem nie trafi
+# w ciszę, np. Polak piszący "?t Berlin" też dostanie kartę dzienną.
+DAILY_SHORTCUT_CODES = ("d", "t", "j")
+
+LEGACY_SHORTCUTS = {
+    "n": "now",
+    "f": "future",
+    "p": "now",   # kompatybilność ze starymi klawiaturami
+}
+
+SHORTCUT_LEADS = ("?", ".")
+
+
+def _shortcut_layers():
+    """Warstwy skrótów w kolejności rozpoznawania: globalne, dzienne, legacy."""
+    return (
+        tuple(GLOBAL_SHORTCUTS.items()),
+        tuple((code, "day") for code in DAILY_SHORTCUT_CODES),
+        tuple(LEGACY_SHORTCUTS.items()),
+    )
+
+
+def iter_shortcut_keys():
+    """Wszystkie rozpoznawane klucze skrótów (?14, .d, ?n ...) — do bramki dostępu."""
+    for layer in _shortcut_layers():
+        for code, _card_type in layer:
+            for lead in SHORTCUT_LEADS:
+                yield f"{lead}{code}"
+
+
+def resolve_shortcut(text):
+    """Zwraca (prefix, card_type, query) albo (None, None, None).
+
+    Rozpoznanie idzie po PIERWSZYM TOKENIE: token musi być równy kluczowi,
+    a cała reszta wiadomości po nim jest argumentem (nazwą miejscowości).
+    Dopiero jako fallback sprawdzamy formę zlepioną ("?dWarszawa"), bo taka
+    działała u użytkowników od początku.
+    """
+    raw = (text or "").strip()
+    if not raw or raw.startswith("/"):
+        return None, None, None
+
+    low = raw.lower()
+    first_token = re.split(r"\s+", low, maxsplit=1)[0]
+
+    for layer in _shortcut_layers():
+        for code, card_type in layer:
+            for lead in SHORTCUT_LEADS:
+                key = f"{lead}{code}"
+                if first_token == key:
+                    return key, card_type, raw[len(key):].strip()
+
+    for layer in _shortcut_layers():
+        for code, card_type in layer:
+            for lead in SHORTCUT_LEADS:
+                key = f"{lead}{code}"
+                if low.startswith(key) and len(low) > len(key):
+                    return key, card_type, raw[len(key):].strip()
+
+    return None, None, None
+
+
+# ============================================================================
 # HELPERY TEKSTOWE I GEOKODUJĄCE
 # ============================================================================
 # --- PAMIĘĆ PODRĘCZNA (CACHE) DLA GEOMETRII I NAZW ---
@@ -161,28 +250,11 @@ def handle_guest_now(
     mention = f"@{bot_username.lower()}"
     is_mention = mention in text_lower
     
-    # 1. IDENTYFIKACJA SKRÓTU I TYPU KARTY
-    is_shortcut = False
-    card_type = "now"  # Domyślnie dla zapytań przez @
-    query = ""
-    
-    # Sprawdzamy prefiksy z kropką i pytajnikiem
-    if text_lower.startswith((".n ", "?n ", ".n", "?n")):
-        is_shortcut = True
-        card_type = "now"
-        query = text[2:].strip()
-    elif text_lower.startswith((".d ", "?d ", ".d", "?d")):
-        is_shortcut = True
-        card_type = "day"
-        query = text[2:].strip()
-    elif text_lower.startswith((".f ", "?f ", ".f", "?f")):
-        is_shortcut = True
-        card_type = "future"
-        query = text[2:].strip()
-    elif text_lower.startswith((".p ", "?p ", ".p", "?p")): # Wsteczna kompatybilność
-        is_shortcut = True
-        card_type = "now"
-        query = text[2:].strip()
+    # 1. IDENTYFIKACJA SKRÓTU I TYPU KARTY (POPRAWKA #6: trzy warstwy)
+    prefix, shortcut_type, query = resolve_shortcut(text)
+    is_shortcut = prefix is not None
+    card_type = shortcut_type or "now"  # Domyślnie dla zapytań przez @
+    query = query or ""
 
     if not (is_mention or is_shortcut):
         return False
@@ -239,7 +311,14 @@ def handle_guest_now(
         
         if not query:
             if is_private:
-                send_reply_fn(chat_id, "Podaj miasto lub kod pocztowy, np. .d Paryż")
+                # POPRAWKA #6: skrótów nie promujemy poza /porady, więc prompt
+                # o miejscowość jest po prostu prośbą (tekst z i18n).
+                try:
+                    from i18n import t_ui
+                    prompt_city = t_ui(user_lang, "guest_need_city")
+                except Exception:
+                    prompt_city = "📍 Podaj nazwę miejscowości lub kod pocztowy."
+                send_reply_fn(chat_id, prompt_city)
             return True
             
         try:
