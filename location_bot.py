@@ -9,7 +9,7 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
 from geopy.geocoders import Nominatim
-from guest_bot_handler import handle_guest_now
+from guest_bot_handler import handle_guest_now, resolve_shortcut, iter_shortcut_keys
 from prepare_now_layout import prepare_now_layout_data
 from prepare_layout import prepare_layout_data
 from prepare_future_layout import prepare_future_layout_data
@@ -135,17 +135,19 @@ def _norm_lang(raw):
 
 
 def _is_guest_trigger(text, bot_username):
-    """
-    Wykrywa wiadomości, które obsłużyłby tryb gościa (wzmianka @bot lub skrót
-    .d/.n/.f/.p). Utrzymujemy to tutaj, żeby guest_bot_handler pozostał bez zmian —
-    gate accessu (PR1) robimy PRZED jego wywołaniem.
+    """Wykrywa wiadomości, które obsłużyłby tryb gościa (wzmianka @bot lub skrót).
+
+    POPRAWKA #6: rozpoznawanie skrótów idzie przez trzywarstwowy parser
+    (`guest_bot_handler.resolve_shortcut`) — dzięki temu bramka dostępu (PR1)
+    obejmuje też nowe ?12 / ?14 / ?t / ?j, a nie tylko stare .d/.n/.f/.p.
     """
     if not text or text.startswith("/"):
         return False
     low = text.lower()
     if f"@{bot_username.lower()}" in low:
         return True
-    return low.startswith(GUEST_SHORTCUT_PREFIXES)
+    prefix, _card_type, _query = resolve_shortcut(text)
+    return prefix is not None
 
 
 def _chat_has_access(users_map, clean_users, chat_id) -> bool:
@@ -1106,8 +1108,11 @@ PRIVACY_COMMANDS = ("/privacy", "/my_data", "/delete_me", "/forget_location", "/
 # (przyciski reply keyboard są obsługiwane po tekście, nie po komendzie).
 DELETE_ANSWER_COMMANDS = ("/delete_yes", "/delete_no")
 
-# Prefiksy skrótów trybu gościa (muszą być spójne z guest_bot_handler.handle_guest_now)
-GUEST_SHORTCUT_PREFIXES = (".n", "?n", ".d", "?d", ".f", "?f", ".p", "?p")
+# Prefiksy skrótów trybu gościa (POPRAWKA #6).
+# Zestaw jest teraz WYPROWADZANY z parsera guest_bot_handler, więc bramka
+# dostępu i handler nie mogą się rozjechać. Zostaje jako publiczna stała dla
+# zgodności wstecznej (stare testy/harnessy) — logika używa resolve_shortcut().
+GUEST_SHORTCUT_PREFIXES = tuple(iter_shortcut_keys())
 # ==============================================================
 
 TELEGRAM_TOKEN = os.environ.get("TG_TOKEN")

@@ -227,8 +227,8 @@ class BotHarness:
             if not text or text.startswith("/"):
                 return False
             low = text.lower()
-            return (f"@{lb.BOT_USERNAME.lower()}" in low
-                    or low.startswith(lb.GUEST_SHORTCUT_PREFIXES))
+            prefix, _card, _query = lb.resolve_shortcut(text)
+            return f"@{lb.BOT_USERNAME.lower()}" in low or prefix is not None
 
         monkeypatch.setattr(requests, "get", fake_get)
         monkeypatch.setattr(requests, "post", fake_post)

@@ -117,8 +117,9 @@ def test_spanish_tips_are_spanish_not_french():
     for spanish in ("CONSEJOS Y TRUCOS", "Aprovecha", "Mañanas tranquilas",
                     "Informe adicional", "Privacidad y seguridad"):
         assert spanish in text, f"brak hiszpańskiego fragmentu: {spanish!r}"
-    # sekcja 10 była dobra i ma zostać nietknięta
-    assert "Atajos instantáneos" in text and ".n Madrid" in text
+    # sekcja 10: POPRAWKA #6 — promujemy ?d / ?12 / ?14 (bez legacy .n/.f/.d)
+    assert "Atajos instantáneos" in text and "?d Madrid" in text
+    assert "?12 Madrid" in text and "?14 Madrid" in text
 
 
 def test_spanish_tips_use_canonical_commands():
