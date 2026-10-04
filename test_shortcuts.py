@@ -148,7 +148,24 @@ def test_tips_do_not_advertise_legacy(lang):
     for note in ("Zamiast kropki", "Statt des Punktes", "in place of a dot",
                  "en lugar de un punto", "au lieu d'un point",
                  "i stedet for et punktum"):
-        assert note not in section, f"{lang}: nota o kropce została ({note!r})"
+        assert note not in section, f"{lang}: stara nota o kropce została ({note!r})"
+
+
+@pytest.mark.parametrize("lang", LANGS)
+def test_tips_mention_dot_as_easier_alternative(lang):
+    """Notka odwrotna: promujemy "?", a kropka jest wygodną alternatywą."""
+    tips = i18n.UI_TEXTS[lang]["porady_msg"]
+    section = "*10." + tips.split("*10.", 1)[1]
+    last_line = [l for l in section.split("\n") if l.strip()][-1]
+
+    assert last_line.startswith("*(") and last_line.endswith(")*"), \
+        f"{lang}: notka o kropce powinna być ostatnią, kursywą"
+    assert "?" in last_line and "." in last_line, \
+        f"{lang}: notka musi wspominać oba znaki"
+    # przykład w nocie używa formy kropkowej lokalnego skrótu dziennego
+    daily = DAILY_EXPECTED[lang].replace("?", ".")
+    assert daily in last_line, f"{lang}: brak przykładu {daily} w nocie"
+    assert "`" not in last_line, f"{lang}: backticki w nocie renderują się jako kod"
 
 
 @pytest.mark.parametrize("lang", LANGS)
