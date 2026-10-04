@@ -2111,7 +2111,7 @@ UI_TEXTS = {
         "prep_future": "🔮 Generuję prognozę hybrydową na najbliższe 14 dni... Daj mi sekundę.",
         "time_limit": "ℹ️ Główny raport dzienny jest dostępny tylko od 05:00 do 15:59.\nWybierz /now, aby sprawdzić radar taktyczny na wieczór i noc!",
         "err_gen": "⚠️ Wystąpił błąd podczas generowania karty.",
-        "no_access": "⛔ *Brak dostępu*\n\nTen bot działa obecnie w trybie zamkniętym (tylko na zaproszenia).\n\n*Aby dołączyć lub pobrać kod zaproszenia:*\n{url}\n\n💡 _Jeśli masz już kod, użyj komendy:_ /start TWÓJ_KOD",
+        "no_access": "⛔ *Brak dostępu*\n\nTen bot działa obecnie w trybie zamkniętym (tylko na zaproszenia).\n\n*Aby dołączyć lub pobrać kod zaproszenia:*\n{url}\n\n💡 _Jeśli masz już kod, użyj komendy:_ /start TWÓJ\\_KOD",
         "limit_reached": "⏳ *Osiągnięto limit miejsc*\n\nNiestety, obecnie wszystkie miejsca na serwerze są zajęte. Nowe miejsca zwalniamy na bieżąco!\n\n*Sprawdź dostępność i zapisz się na listę oczekujących:*\n{url}",
         "invalid_link": "⚠️ *Nieprawidłowy lub nieaktywny kod*\n\nTen link zaproszeniowy wygasł lub kod jest błędny.\n\n*Aby pobrać nowy, działający link wejdź na:*\n{url}",
         "welcome_new": "✅ *Rejestracja pomyślna!*\nWitamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n⚠️ *Ostatni, ale konieczny krok:*\nAby raporty mogły do Ciebie przychodzić (domyślnie o 8:00 i 14:00), musisz ustawić swoją lokalizację.\n\n👇 **Naciśnij przycisk GPS na dole ekranu** lub wpisz komendę /miasto.",
@@ -2178,7 +2178,7 @@ UI_TEXTS = {
         "prep_future": "🔮 Generating 14-day forecast... Give me a second.",
         "time_limit": "ℹ️ The main daily report is only available from 05:00 to 15:59.\nUse /now to check the tactical radar for the evening and night!",
         "err_gen": "⚠️ An error occurred while generating the card.",
-        "no_access": "⛔ *No access*\n\nThis bot currently operates in a closed invite-only beta.\n\n*To join or request an invite code:*\n{url}\n\n💡 _If you already have a code, use:_ /start YOUR_CODE",
+        "no_access": "⛔ *No access*\n\nThis bot currently operates in a closed invite-only beta.\n\n*To join or request an invite code:*\n{url}\n\n💡 _If you already have a code, use:_ /start YOUR\\_CODE",
 
         "limit_reached": "⏳ *Server capacity reached*\n\nUnfortunately, all user slots (50/50) are currently full. We release new slots regularly!\n\n*Check availability and join the waitlist:*\n{url}",
 
@@ -2247,7 +2247,7 @@ UI_TEXTS = {
     "prep_future": "🔮 Generiere 14-Tage-Vorhersage... Gib mir eine Sekunde.",
     "time_limit": "ℹ️ Der Haupttagesbericht ist nur von 05:00 bis 15:59 Uhr verfügbar.\nNutze /now, um das taktische Radar für den Abend und die Nacht zu prüfen!",
     "err_gen": "⚠️ Beim Generieren der Karte ist ein Fehler aufgetreten.",
-    "no_access": "⛔ *Kein Zugriff*\n\nDieser Bot läuft derzeit in einer geschlossenen Beta-Phase (nur auf Einladung).\n\n*Um beizutreten oder einen Code zu erhalten:*\n{url}\n\n💡 _Wenn du bereits einen Code hast, nutze:_ /start DEIN_CODE",
+    "no_access": "⛔ *Kein Zugriff*\n\nDieser Bot läuft derzeit in einer geschlossenen Beta-Phase (nur auf Einladung).\n\n*Um beizutreten oder einen Code zu erhalten:*\n{url}\n\n💡 _Wenn du bereits einen Code hast, nutze:_ /start DEIN\\_CODE",
     "limit_reached": "⏳ *Serverlimit erreicht*\n\nLeider sind derzeit alle Plätze (50/50) belegt. Wir schalten regelmäßig neue Plätze frei!\n\n*Prüfe die Verfügbarkeit hier:*\n{url}",
     "invalid_link": "⚠️ *Ungültiger oder abgelaufener Link*\n\nDieser Einladungslink ist nicht mehr gültig.\n\n*Einen neuen, funktionierenden Link findest du unter:*\n{url}",
     "welcome_new": "✅ *Registrierung erfolgreich!*\nWillkommen in der Community. Du bist über eine Einladung hier!\n\n⚠️ *Letzter, aber notwendiger Schritt:*\nDamit die Berichte dich erreichen (standardmäßig 8:00 und 14:00 Uhr), musst du deinen Standort festlegen.\n\n👇 **Tippe auf den GPS-Button unten auf dem Bildschirm** oder gib den Befehl /city ein.",
@@ -2314,7 +2314,7 @@ UI_TEXTS = {
         "prep_future": "🔮 Generando el pronóstico de 14 días... Dame un segundo.",
         "time_limit": "ℹ️ El informe diario principal solo está disponible de 05:00 a 15:59.\n¡Usa /now para ver el radar táctico para la tarde y la noche!",
         "err_gen": "⚠️ Ocurrió un error al generar la tarjeta.",
-        "no_access": "⛔ *Sin acceso*\n\nEste bot funciona actualmente en versión beta cerrada (solo con invitación).\n\n*Para unirte o solicitar un código:*\n{url}\n\n💡 _Si ya tienes un código, usa:_ /start TU_CÓDIGO",
+        "no_access": "⛔ *Sin acceso*\n\nEste bot funciona actualmente en versión beta cerrada (solo con invitación).\n\n*Para unirte o solicitar un código:*\n{url}\n\n💡 _Si ya tienes un código, usa:_ /start TU\\_CÓDIGO",
 
         "limit_reached": "⏳ *Límite de plazas alcanzado*\n\nDesafortunadamente, todas las plazas (50/50) están ocupadas. ¡Liberamos nuevas plazas regularmente!\n\n*Comprueba la disponibilidad aquí:*\n{url}",
 
@@ -2383,7 +2383,7 @@ UI_TEXTS = {
         "prep_future": "🔮 Génération des prévisions à 14 jours... Donnez-moi une seconde.",
         "time_limit": "ℹ️ Le rapport quotidien principal n'est disponible que de 05h00 à 15h59.\nUtilisez /now pour consulter le radar tactique pour le soir et la nuit !",
         "err_gen": "⚠️ Une erreur s'est produite lors de la génération de la carte.",
-        "no_access": "⛔ *Accès restreint*\n\nCe bot fonctionne actuellement en version bêta fermée (sur invitation uniquement).\n\n*Pour rejoindre ou demander un code :*\n{url}\n\n💡 _Si vous avez déjà un code, utilisez :_ /start VOTRE_CODE",
+        "no_access": "⛔ *Accès restreint*\n\nCe bot fonctionne actuellement en version bêta fermée (sur invitation uniquement).\n\n*Pour rejoindre ou demander un code :*\n{url}\n\n💡 _Si vous avez déjà un code, utilisez :_ /start VOTRE\\_CODE",
 
         "limit_reached": "⏳ *Capacité maximale atteinte*\n\nMalheureusement, toutes les places (50/50) sont actuellement occupées. Nous libérons régulièrement de nouveaux accès !\n\n*Vérifiez les disponibilités ici :*\n{url}",
 
@@ -2452,7 +2452,7 @@ UI_TEXTS = {
         "prep_future": "🔮 Genererer 14-dagers varsel... Gi meg et sekund.",
         "time_limit": "ℹ️ Den daglige hovedrapporten er kun tilgjengelig fra 05:00 til 15:59.\nBruk /now for å sjekke den taktiske radaren for kvelden og natten!",
         "err_gen": "⚠️ Det oppstod en feil under generering av kortet.",
-        "no_access": "⛔ *Ingen tilgang*\n\nDenne boten er for øyeblikket i en lukket betafase (kun via invitasjon).\n\n*For å bli med eller få en invitasjonskode:*\n{url}\n\n💡 _Hvis du allerede har en kode, bruk:_ /start DIN_KODE",
+        "no_access": "⛔ *Ingen tilgang*\n\nDenne boten er for øyeblikket i en lukket betafase (kun via invitasjon).\n\n*For å bli med eller få en invitasjonskode:*\n{url}\n\n💡 _Hvis du allerede har en kode, bruk:_ /start DIN\\_KODE",
 
         "limit_reached": "⏳ *Kapasitetsgrense nådd*\n\nDessverre er alle plassene (50/50) opptatt akkurat nå. Vi frigir nye plasser jevnlig!\n\n*Sjekk tilgjengelighet og venteliste her:*\n{url}",
 
