@@ -489,9 +489,11 @@ class TestLocationBotHelpers:
     def test_delete_me_clears_pending_city_and_save_ram(self, monkeypatch):
         # /delete_me czyści wszystkie stany RAM (także PENDING_DELETE z flow
         # potwierdzenia); send_reply mockujemy, żeby test nie próbował realnie
-        # wołać Telegrama.
+        # wołać Telegrama, a pauzę między komunikatami (#7) skracamy do zera.
         sent = []
+        sleeps = []
         monkeypatch.setattr(lb, "send_reply", lambda cid, txt, **kw: sent.append((cid, txt)))
+        monkeypatch.setattr(lb.time, "sleep", lambda s: sleeps.append(s))
         lb._set_pending_city("123456", lb.CTX_ONEOFF_DAY)
         lb._set_pending_delete("123456")
         lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city")
@@ -499,9 +501,13 @@ class TestLocationBotHelpers:
         assert "123456" not in lb.PENDING_CITY
         assert "123456" not in lb.PENDING_SAVE
         assert "123456" not in lb.PENDING_DELETE
-        # PR2 UX cleanup: bez linku zaproszenia po kasacji danych
-        assert sent and "usunąłem twoje dane" in sent[0][1].lower()
+        # POPRAWKA #7: dokładnie dwa komunikaty — delete_me_done (bez linku),
+        # po pauzie osobny, pełny no_access (z linkiem zaproszenia).
+        assert len(sent) == 2, sent
+        assert "usunąłem twoje dane" in sent[0][1].lower()
         assert "http" not in sent[0][1]
+        assert "brak dostępu" in sent[1][1].lower() and "http" in sent[1][1]
+        assert sleeps == [lb.DELETE_NOTICE_DELAY_SEC]
 
 
 class _LegacySheetStub:

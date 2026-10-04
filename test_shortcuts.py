@@ -11,7 +11,8 @@ Kluczowe wymagania:
   2. kolejność warstw: globalne -> dzienny lokalny -> legacy,
   3. kropka równoważna pytajnikowi,
   4. zlepiona forma "?dWarszawa" działa (zgodność wsteczna),
-  5. bramka dostępu (PR1) obejmuje nowe skróty — obcy user dostaje zaproszenie
+  5. bramka dostępu obejmuje nowe skróty — obcy user jest ignorowany po cichu
+     (POPRAWKA #7: bez dostępu odpowiada wyłącznie /start),
      także po "?14 Berlin".
 
 Uruchomienie: pytest test_shortcuts.py -v
