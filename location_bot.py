@@ -458,16 +458,16 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
 
 
 def _used_location_message(lang, city, address=None):
-    """Stopka po karcie jednorazowej: TYLKO użyta lokalizacja z geokodera.
+    """Stopka po karcie jednorazowej: użyta lokalizacja z pełnym opisem.
 
-    PR2 UX cleanup: po raporcie jednorazowym nie pytamy o zapis i nie pokazujemy
-    /save_location ani /oneoff. Użytkownik dostaje wyłącznie informację, czy
-    geokoder trafił w zamierzone miejsce.
+    POPRAWKA #4: zawsze pełna forma komunikatu (📍 etykieta / 🌍 opis /
+    ⚠️ wskazówka). W środkowym akapicie ląduje adres z geokodera, a gdy ten
+    wskaże teren bez miejscowości — komunikat "Lokalizacja w terenie
+    (poza miastem)". Gdy nie mamy adresu, zostaje sama nazwa miejscowości.
     """
-    address = str(address or "").strip()
-    if address:
-        return t_ui(lang, "used_location", city=city, address=address)
-    return t_ui(lang, "used_location_short", city=city)
+    opis = _md_safe(address) or _md_safe(city)
+    return t_ui(lang, "used_location", address=opis)
+
 
 
 def _day_window_blocked_for_tz(chat_id, lang, tz_name) -> bool:
@@ -536,16 +536,25 @@ def _run_saved_profile_report(chat_id, profile, lang, card_type):
 def _run_city_oneoff(chat_id, city_query, lang, card_type):
     """Geokoduje nazwę miasta i generuje raport bez żadnego trwałego zapisu."""
     send_reply(chat_id, t_ui(lang, "search_loc"))
-    lat, lon, full_address = get_coords_from_city(city_query, lang)
+    lat, lon, full_address, geo_ok = geocode_city_details(city_query, lang)
+    if not geo_ok:
+        # Serwer map milczy (timeout/sieć) — mówimy wprost, że to problem łącz.
+        send_reply(chat_id, t_ui(lang, "geo_conn_err"))
+        return False
     if lat is None or lon is None:
         send_reply(chat_id, t_ui(lang, "search_fail"))
         return False
     if card_type == "day" and _day_card_window_blocked(chat_id, lang, lat, lon):
         return False
-    city = get_city_from_coords(lat, lon, lang)
-    if city in ("Lokalizacja w terenie", "", None, "Nieznana miejscowość"):
-        city = str(city_query).strip()
-    return _run_oneoff_report(chat_id, lat, lon, city, lang, "city", card_type, address=full_address)
+    city, opis, geo_status = _resolve_location_labels(
+        lat, lon, lang,
+        fallback_city=str(city_query).strip(),
+        fallback_address=full_address,
+    )
+    if geo_status == GEO_ERROR:
+        send_reply(chat_id, t_ui(lang, "geo_conn_err"))
+        return False
+    return _run_oneoff_report(chat_id, lat, lon, city, lang, "city", card_type, address=opis)
 
 
 def _current_location_label(chat_id, lang, users_map, clean_users):
@@ -610,12 +619,11 @@ def _save_profile_from_location(chat_id, users_ws, users_map, lat, lon, city, la
         "profile_updated_at": saved_at,
     })
 
-    address = str(address or "").strip()
-    if address:
-        msg = t_ui(lang, "location_saved", city=city, address=address)
-    else:
-        msg = t_ui(lang, "location_saved_short", city=city)
-    send_reply(chat_id, msg, reply_markup={"remove_keyboard": True})
+    # POPRAWKA #4: pełny opis zapisanej lokalizacji (📍 / 🌍 / ⚠️). Środkowy
+    # akapit to adres z geokodera, komunikat o terenie albo sama nazwa miejsca.
+    opis = _md_safe(address) or _md_safe(city)
+    send_reply(chat_id, t_ui(lang, "location_saved", address=opis),
+               reply_markup={"remove_keyboard": True})
     return True
 
 
@@ -910,46 +918,150 @@ def _delete_legacy_rows(main_sheet, chat_id):
 
 
 
-def get_city_from_coords(lat, lon, lang="pl"):
+# ============================================================================
+# GEOKODER Z JAWNYM STATUSEM (POPRAWKA #4)
+# ============================================================================
+# Odpowiedź geokodera to nie tylko dane, ale i STATUS — dopiero on pozwala
+# odróżnić trzy sytuacje, które dla użytkownika znaczą co innego:
+#   GEO_OK      -> geokoder znalazł miejscowość, wieś lub miasto,
+#   GEO_NO_CITY -> odpowiedział, ale to teren bez miejscowości (pustynia, góry
+#                  itp.) -> komunikat "Lokalizacja w terenie (poza miastem)",
+#   GEO_ERROR   -> NIE odpowiedział (timeout sieci/limit) -> "Błędy na łączach,
+#                  spróbuj za chwilę ponownie." i NIC nie zapisujemy.
+GEO_OK = "ok"
+GEO_NO_CITY = "no_city"
+GEO_ERROR = "error"
+
+# Etykiety zapisywane do bazy, gdy geokoder nie wskaże miejscowości
+# (dokładnie te same napisy, które kod zwracał dotychczas).
+FIELD_LOCATION_LABEL = "Lokalizacja w terenie (poza miastem)"
+FIELD_LOCATION_LEGACY = "Lokalizacja w terenie"
+
+_GEO_DETAILS_CACHE = {}   # (lat, lon, lang) -> (expiry_ts, (name, address, status))
+_GEO_DETAILS_TTL = 86400  # 24 h — adres miejscowości nie zmienia się co chwilę
+
+
+def _md_safe(text):
+    """Usuwa znaki sterujące Markdownem z tekstów wstawianych do wiadomości.
+
+    Wiadomości lecą z parse_mode=Markdown, a adres z geokodera może teoretycznie
+    zawierać `*`, `_` lub backtick i rozwalić formatowanie całej wiadomości.
+    """
+    return re.sub(r"[*_`\[\]]", "", str(text or "")).strip()
+
+
+def get_location_details_from_coords(lat, lon, lang="pl"):
+    """Reverse geocoding z jednoznacznym statusem: (name, address, status).
+
+    JEDNO zapytanie do Nominatim na parę (lat, lon, lang); wynik zapisujemy
+    w cache 24 h, żeby ścieżki GPS/pinezka nie dublowały ruchu. Błąd NIE jest
+    cache'owany — użytkownik może od razu ponowić próbę.
+    """
     try:
-        geolocator = Nominatim(user_agent="pogoda_world_bot")  # nazwa: pogoda_world_bot tylko dla geolokalizacji od OpenStreetMap bez zwiazku z Telegramem
-        # ZMIANA: Wstrzykujemy język użytkownika (lang) zamiast twardego "pl"
+        key = (round(float(lat), 3), round(float(lon), 3), (lang or "pl")[:2].lower())
+    except (TypeError, ValueError):
+        return None, None, GEO_ERROR
+
+    cached = _GEO_DETAILS_CACHE.get(key)
+    if cached and time.time() < cached[0]:
+        return cached[1]
+
+    try:
+        geolocator = Nominatim(user_agent="pogoda_world_bot")  # niezależne od Telegrama
         location = geolocator.reverse(f"{lat}, {lon}", language=lang)
-        
-        if location and location.raw.get('address'):
-            addr = location.raw['address']
-            
-            nazwa = (addr.get('city') or 
-                     addr.get('town') or 
-                     addr.get('village') or 
-                     addr.get('suburb') or         
-                     addr.get('city_district') or  
-                     addr.get('state_district') or 
-                     addr.get('hamlet') or 
-                     addr.get('municipality') or 
-                     addr.get('county') or
-                     addr.get('state'))            
-            
-            if nazwa:
-                return nazwa
-            else:
-                return "Lokalizacja w terenie (poza miastem)"
-                
+
+        if not location:
+            return None, None, GEO_ERROR
+
+        addr = (location.raw or {}).get("address") or {}
+        nazwa = (addr.get('city') or
+                 addr.get('town') or
+                 addr.get('village') or
+                 addr.get('suburb') or
+                 addr.get('city_district') or
+                 addr.get('state_district') or
+                 addr.get('hamlet') or
+                 addr.get('municipality') or
+                 addr.get('county') or
+                 addr.get('state'))
+        address = str(getattr(location, "address", "") or "").strip()
+
+        if nazwa:
+            result = (str(nazwa).strip(), address or str(nazwa).strip(), GEO_OK)
+        else:
+            result = (None, address, GEO_NO_CITY)
+
+        _GEO_DETAILS_CACHE[key] = (time.time() + _GEO_DETAILS_TTL, result)
+        return result
+
     except Exception as e:
         print(f"Błąd geolokalizacji: {e}")
-        
-    return "Lokalizacja w terenie"
-    
-def get_coords_from_city(city_name, lang="pl"):
+        return None, None, GEO_ERROR
+
+
+def get_city_from_coords(lat, lon, lang="pl"):
+    """Zgodność wsteczna: sama nazwa miejscowości (gość, ścieżki legacy)."""
+    name, _address, status = get_location_details_from_coords(lat, lon, lang)
+    if status == GEO_OK and name:
+        return name
+    if status == GEO_NO_CITY:
+        return FIELD_LOCATION_LABEL
+    return FIELD_LOCATION_LEGACY
+
+
+def geocode_city_details(city_name, lang="pl"):
+    """Forward geocoding ze statusem: (lat, lon, address, ok).
+
+    ``ok=False`` oznacza AWARIĘ łącz (timeout/sieć), a nie brak wyników —
+    to rozróżnienie decyduje, czy pokazujemy "Błędy na łączach", czy
+    "nie znalazłem takiego miejsca".
+    """
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
-        # ZMIANA: Wstrzykujemy język użytkownika przy szukaniu miasta!
         location = geolocator.geocode(city_name, exactly_one=True, language=lang)
         if location:
-            return location.latitude, location.longitude, location.address
+            return location.latitude, location.longitude, location.address, True
+        return None, None, None, True
     except Exception as e:
         print(f"Błąd wyszukiwania miasta po nazwie: {e}")
-    return None, None, None
+        return None, None, None, False
+
+
+def get_coords_from_city(city_name, lang="pl"):
+    """Zgodność wsteczna (gość, testy): bez flagi awarii łącz."""
+    lat, lon, address, _ok = geocode_city_details(city_name, lang)
+    return lat, lon, address
+
+
+def _resolve_location_labels(lat, lon, lang, fallback_city=None, fallback_address=None):
+    """Jedno miejsce wyliczania etykiety i opisu lokalizacji (POPRAWKA #4).
+
+    Zwraca ``(label, display, status)``:
+      label   -> co zapisać jako nazwę miejsca (Users / tytuł karty),
+      display -> pełny opis dla użytkownika (adres albo "Lokalizacja w terenie
+                 (poza miastem)"),
+      status  -> GEO_OK / GEO_NO_CITY / GEO_ERROR. Przy GEO_ERROR nie mamy
+                 czym ratować komunikatu, więc nic nie zapisujemy i mówimy
+                 użytkownikowi o błędach na łączach.
+
+    ``fallback_city`` / ``fallback_address`` to dane z forward-geocode (gdy
+    użytkownik wpisał nazwę) — dzięki nim chwilowa awaria reverse nie gubi
+    lokalizacji, którą już znamy.
+    """
+    name, address, status = get_location_details_from_coords(lat, lon, lang)
+    fb_city = str(fallback_city or "").strip()
+    fb_addr = str(fallback_address or "").strip()
+
+    if status == GEO_ERROR:
+        if not (fb_city or fb_addr):
+            return None, None, GEO_ERROR
+        label = fb_city or fb_addr
+        return label, (fb_addr or label), GEO_OK
+
+    if status == GEO_NO_CITY:
+        return (fb_city or FIELD_LOCATION_LABEL), t_ui(lang, "location_field"), GEO_NO_CITY
+
+    return name, (address or name), GEO_OK
 
 def alert_admin(text):
     admin_id = os.environ.get("TG_CHAT_ID")
@@ -1241,9 +1353,13 @@ def main_bot():
                             send_reply(chat_id, t_ui(user_lang, "no_access", url=INVITE_URL))
                             continue
 
-                        city = get_city_from_coords(lat, lon, user_lang)
-                        if city == "Lokalizacja w terenie" or not city:
-                            city = "Twoja okolica"
+                        # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
+                        city, opis_lokalizacji, geo_status = _resolve_location_labels(
+                            lat, lon, user_lang
+                        )
+                        if geo_status == GEO_ERROR:
+                            send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
+                            continue
 
                         # PR2 UX cleanup: konta Users dostają raport jednorazowy,
                         # ALE GPS wysłany w trakcie flow /miasto (ctx=save_profile)
@@ -1256,11 +1372,12 @@ def main_bot():
                                 PENDING_CITY.pop(str(chat_id), None)
                                 _save_profile_from_location(
                                     chat_id, users_ws, users_map, lat, lon, city,
-                                    user_lang, "webapp"
+                                    user_lang, "webapp", address=opis_lokalizacji,
                                 )
                             else:
                                 _run_oneoff_report(
-                                    chat_id, lat, lon, city, user_lang, "webapp", "day"
+                                    chat_id, lat, lon, city, user_lang, "webapp", "day",
+                                    address=opis_lokalizacji,
                                 )
                             continue
 
@@ -1598,16 +1715,22 @@ def main_bot():
                 # /miasto (wtedy jest świadomym zapisem profilu, bez karty).
                 # Legacy-only zachowuje historyczne działanie Formularz bez migracji.
                 if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    city = get_city_from_coords(lat, lon, user_lang)
-                    if city == "Lokalizacja w terenie" or not city:
-                        city = "Twoja okolica"
+                    # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
+                    city, opis_lokalizacji, geo_status = _resolve_location_labels(
+                        lat, lon, user_lang
+                    )
+                    if geo_status == GEO_ERROR:
+                        send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
+                        continue
                     if pin_in_city_flow:
                         PENDING_CITY.pop(str(chat_id), None)
                         _save_profile_from_location(
-                            chat_id, users_ws, users_map, lat, lon, city, user_lang, "gps"
+                            chat_id, users_ws, users_map, lat, lon, city, user_lang, "gps",
+                            address=opis_lokalizacji,
                         )
                     else:
-                        _run_oneoff_report(chat_id, lat, lon, city, user_lang, "gps", "day")
+                        _run_oneoff_report(chat_id, lat, lon, city, user_lang, "gps", "day",
+                                           address=opis_lokalizacji)
                     continue
 
                 try:
@@ -1947,9 +2070,14 @@ def main_bot():
             # WSPÓLNA LOGIKA GEOKODOWANIA (Dla /miasto Warszawa ORAZ samego "Warszawa")
             # =====================================================================
             send_reply(chat_id, t_ui(user_lang, "search_loc"))
-            
-            lat, lon, full_address = get_coords_from_city(city_query, user_lang)
-            
+
+            lat, lon, full_address, geo_ok = geocode_city_details(city_query, user_lang)
+
+            if not geo_ok:
+                # POPRAWKA #4: awaria serwera map != brak wyników.
+                send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
+                continue
+
             if lat is not None and lon is not None:
                 print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
 
@@ -1959,9 +2087,17 @@ def main_bot():
                 # Legacy-only (brak wiersza w Users) zachowuje dotychczasowy zapis
                 # do Formularz — bez migracji i bez zmiany schedulera.
                 if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
-                    if krotka_nazwa in ("Lokalizacja w terenie", "", None, "Nieznana miejscowość"):
-                        krotka_nazwa = city_query.capitalize()
+                    # POPRAWKA #4: etykieta + opis lokalizacji z jednego miejsca.
+                    # Ratujemy się danymi z forward-geocode, więc chwilowa awaria
+                    # reverse nie gubi wpisanej przez użytkownika nazwy.
+                    krotka_nazwa, opis_lokalizacji, geo_status = _resolve_location_labels(
+                        lat, lon, user_lang,
+                        fallback_city=city_query.capitalize(),
+                        fallback_address=full_address,
+                    )
+                    if geo_status == GEO_ERROR:
+                        send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
+                        continue
 
                     oneoff_card_type = ONEOFF_CARD_TYPES.get(pending_ctx or "")
                     if oneoff_card_type:
@@ -1969,13 +2105,13 @@ def main_bot():
                             continue
                         _run_oneoff_report(
                             chat_id, lat, lon, krotka_nazwa, user_lang, "city",
-                            oneoff_card_type, address=full_address,
+                            oneoff_card_type, address=opis_lokalizacji,
                         )
                         continue
 
                     _save_profile_from_location(
                         chat_id, users_ws, users_map, lat, lon, krotka_nazwa,
-                        user_lang, "city", address=full_address,
+                        user_lang, "city", address=opis_lokalizacji,
                     )
                     continue
 
