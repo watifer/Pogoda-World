@@ -1,4 +1,5 @@
 import os
+import unicodedata
 import json
 import re
 import requests
@@ -481,16 +482,10 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
         return False
 
 
-def _used_location_message(lang, city, address=None):
-    """Stopka po karcie jednorazowej: użyta lokalizacja z pełnym opisem.
-
-    POPRAWKA #4: zawsze pełna forma komunikatu (📍 etykieta / 🌍 opis /
-    ⚠️ wskazówka). W środkowym akapicie ląduje adres z geokodera, a gdy ten
-    wskaże teren bez miejscowości — komunikat "Lokalizacja w terenie
-    (poza miastem)". Gdy nie mamy adresu, zostaje sama nazwa miejscowości.
-    """
-    opis = _md_safe(address) or _md_safe(city)
-    return t_ui(lang, "used_location", address=opis)
+def _used_location_message(lang, short_label, display_location=None):
+    """Stopka one-off: krótka nazwa pozostaje osobna od display_location."""
+    safe_display = _md_safe(display_location) or _md_safe(short_label)
+    return t_ui(lang, "used_location", display_location=safe_display)
 
 
 
@@ -531,21 +526,29 @@ def _day_card_window_blocked(chat_id, lang, lat, lon) -> bool:
     return _day_window_blocked_for_tz(chat_id, lang, tz_name)
 
 
-def _run_oneoff_report(chat_id, lat, lon, city, lang, source, card_type, address=None):
-    """Raport jednorazowy: karta + informacja o użytej lokalizacji.
+def _run_oneoff_report(
+    chat_id, lat, lon, short_label, lang, source, card_type, display_location=None
+):
+    """One-off report: forecast coordinates and short card name stay separate
+    from the full, safe label shown in the confirmation message.
 
-    Nic nie zapisuje w Users ani w Formularz. Dokładne współrzędne zostają tylko
-    w efemerycznym RAM (PENDING_SAVE) jako zaplecze ukrytego aliasu technicznego.
+    Nothing is persisted to Users or Formularz. The original coordinates are
+    kept in RAM only for the existing hidden technical alias.
     """
-    pending = _put_pending_save(chat_id, lat, lon, city, lang, source)
+    pending = _put_pending_save(chat_id, lat, lon, short_label, lang, source)
     if not pending:
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
         return False
-    if not _send_oneoff_report(chat_id, lat, lon, pending["city"], pending["lang"], card_type):
+    if not _send_oneoff_report(
+        chat_id, lat, lon, pending["city"], pending["lang"], card_type
+    ):
         PENDING_SAVE.pop(str(chat_id), None)
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
         return False
-    send_reply(chat_id, _used_location_message(pending["lang"], pending["city"], address))
+    send_reply(
+        chat_id,
+        _used_location_message(pending["lang"], pending["city"], display_location),
+    )
     return True
 
 
@@ -560,7 +563,9 @@ def _run_saved_profile_report(chat_id, profile, lang, card_type):
 def _run_city_oneoff(chat_id, city_query, lang, card_type):
     """Geokoduje nazwę miasta i generuje raport bez żadnego trwałego zapisu."""
     send_reply(chat_id, t_ui(lang, "search_loc"))
-    lat, lon, full_address, geo_ok = geocode_city_details(city_query, lang)
+    (
+        lat, lon, fallback_short_label, fallback_display_location, geo_ok,
+    ) = _geocode_city_public_details(city_query, lang)
     if not geo_ok:
         # Serwer map milczy (timeout/sieć) — mówimy wprost, że to problem łącz.
         send_reply(chat_id, t_ui(lang, "geo_conn_err"))
@@ -570,15 +575,19 @@ def _run_city_oneoff(chat_id, city_query, lang, card_type):
         return False
     if card_type == "day" and _day_card_window_blocked(chat_id, lang, lat, lon):
         return False
-    city, opis, geo_status = _resolve_location_labels(
+    short_label, display_location, geo_status = _resolve_location_labels(
         lat, lon, lang,
-        fallback_city=str(city_query).strip(),
-        fallback_address=full_address,
+        fallback_short_label=fallback_short_label,
+        fallback_display_location=fallback_display_location,
+        query=city_query,
     )
     if geo_status == GEO_ERROR:
         send_reply(chat_id, t_ui(lang, "geo_conn_err"))
         return False
-    return _run_oneoff_report(chat_id, lat, lon, city, lang, "city", card_type, address=opis)
+    return _run_oneoff_report(
+        chat_id, lat, lon, short_label, lang, "city", card_type,
+        display_location=display_location,
+    )
 
 
 def _current_location_label(chat_id, lang, users_map, clean_users):
@@ -612,15 +621,16 @@ def _current_location_label(chat_id, lang, users_map, clean_users):
     return None
 
 
-def _save_profile_from_location(chat_id, users_ws, users_map, lat, lon, city, lang, source, address=None):
-    """Świadomy zapis profilu w Users (flow /miasto) — BEZ generowania karty.
-
-    Współrzędne są zaokrąglane przez users_store.set_profile do 3 miejsc po
-    przecinku; dokładny punkt GPS nigdy nie trafia do bazy.
+def _save_profile_from_location(
+    chat_id, users_ws, users_map, lat, lon, short_label, lang, source,
+    display_location=None,
+):
+    """Save the short label and original coordinates through the existing Users
+    writer (which rounds stored coordinates to three decimal places).
     """
     saved_at = users_store.now_iso()
     saved = users_store.set_profile(
-        users_ws, chat_id, lat, lon, city, source, lang, PRIVACY_VERSION, saved_at
+        users_ws, chat_id, lat, lon, short_label, source, lang, PRIVACY_VERSION, saved_at
     )
     if not saved:
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
@@ -635,7 +645,7 @@ def _save_profile_from_location(chat_id, users_ws, users_map, lat, lon, city, la
         "profile_status": "active",
         "lat_round": str(round(float(lat), 3)),
         "lon_round": str(round(float(lon), 3)),
-        "location_label": city,
+        "location_label": short_label,
         "location_source": source,
         "lang": _norm_lang(lang) or "en",
         "location_consent_at": saved_at,
@@ -643,11 +653,14 @@ def _save_profile_from_location(chat_id, users_ws, users_map, lat, lon, city, la
         "profile_updated_at": saved_at,
     })
 
-    # POPRAWKA #4: pełny opis zapisanej lokalizacji (📍 / 🌍 / ⚠️). Środkowy
-    # akapit to adres z geokodera, komunikat o terenie albo sama nazwa miejsca.
-    opis = _md_safe(address) or _md_safe(city)
-    send_reply(chat_id, t_ui(lang, "location_saved", address=opis),
-               reply_markup={"remove_keyboard": True})
+    # Tylko oczyszczony display_location trafia do komunikatu; profil i karta
+    # nadal używają osobnego short_label.
+    safe_display = _md_safe(display_location) or _md_safe(short_label)
+    send_reply(
+        chat_id,
+        t_ui(lang, "location_saved", display_location=safe_display),
+        reply_markup={"remove_keyboard": True},
+    )
     return True
 
 
@@ -968,28 +981,254 @@ GEO_ERROR = "error"
 FIELD_LOCATION_LABEL = "Lokalizacja w terenie (poza miastem)"
 FIELD_LOCATION_LEGACY = "Lokalizacja w terenie"
 
-_GEO_DETAILS_CACHE = {}   # (lat, lon, lang) -> (expiry_ts, (name, address, status))
+_GEO_DETAILS_CACHE = {}   # (lat, lon, lang, query, mode) -> (expiry_ts, (short_label, display_location, status))
 _GEO_DETAILS_TTL = 86400  # 24 h — adres miejscowości nie zmienia się co chwilę
 
 
 def _md_safe(text):
-    """Usuwa znaki sterujące Markdownem z tekstów wstawianych do wiadomości.
+    """Escape dynamic text for Telegram's legacy Markdown parse mode.
 
-    Wiadomości lecą z parse_mode=Markdown, a adres z geokodera może teoretycznie
-    zawierać `*`, `_` lub backtick i rozwalić formatowanie całej wiadomości.
+    Call only for dynamic values inserted outside an existing Markdown entity.
+    Telegram then renders the escaped punctuation literally instead of
+    interpreting geocoder data as formatting or a link.
     """
-    return re.sub(r"[*_`\[\]]", "", str(text or "")).strip()
+    value = str(text or "").strip()
+    escaped = []
+    for char in value:
+        if char in "\\_*`[":
+            escaped.append("\\")
+        escaped.append(char)
+    return "".join(escaped)
 
 
-def get_location_details_from_coords(lat, lon, lang="pl"):
-    """Reverse geocoding z jednoznacznym statusem: (name, address, status).
+_LOCALITY_ADDRESS_FIELDS = ("city", "town", "village", "hamlet", "locality")
+_ADMIN_ADDRESS_FIELDS = ("municipality", "county", "state")
+_PUBLIC_ADDRESS_FIELDS = _ADMIN_ADDRESS_FIELDS + ("postcode", "country")
+_STREET_MARKER_RE = re.compile(
+    r"(?<!\w)(?:ul(?:ica)?|al(?:eja)?|street|road|avenue|ave\.?|"
+    r"rue|calle|carrer|straße|strasse|weg|platz|place|gate|gata|"
+    r"vei|veien|veg|straat|plac)(?!\w)",
+    re.IGNORECASE,
+)
 
-    JEDNO zapytanie do Nominatim na parę (lat, lon, lang); wynik zapisujemy
-    w cache 24 h, żeby ścieżki GPS/pinezka nie dublowały ruchu. Błąd NIE jest
-    cache'owany — użytkownik może od razu ponowić próbę.
+
+def _nominatim_address_components(raw_address):
+    """Return only Nominatim's structured ``address`` map, never display_name."""
+    if not isinstance(raw_address, dict):
+        return {}
+    nested = raw_address.get("address")
+    return nested if isinstance(nested, dict) else raw_address
+
+
+def _clean_location_component(value):
+    if value is None or isinstance(value, (dict, list, tuple)):
+        return ""
+    return re.sub(r"\s+", " ", str(value).replace("\r", " ").replace("\n", " ")).strip()
+
+
+def _normalize_location_text(value, discard_numbers=False):
+    """Loose comparison form for matching a query to structured place names."""
+    text = str(value or "").casefold().replace("ł", "l").replace("ø", "o")
+    text = text.replace("æ", "ae").replace("œ", "oe")
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    text = re.sub(r"[^a-z0-9]+", " ", text).strip()
+    tokens = text.split()
+    if discard_numbers:
+        tokens = [token for token in tokens if not any(ch.isdigit() for ch in token)]
+    return " ".join(tokens)
+
+
+def _contains_location_phrase(text, phrase):
+    if not text or not phrase:
+        return False
+    return f" {phrase} " in f" {text} "
+
+
+def _select_short_location_label(address, query=None, lang="pl"):
+    """Select one locality/admin value for cards, payloads and stored labels."""
+    locality_values = [
+        _clean_location_component(address.get(field))
+        for field in _LOCALITY_ADDRESS_FIELDS
+    ]
+    locality_values = [value for value in locality_values if value]
+    normalized_query = _normalize_location_text(query, discard_numbers=True)
+
+    if normalized_query:
+        # Prefer an exact query match to avoid selecting a longer settlement name.
+        for value in locality_values:
+            if _normalize_location_text(value) == normalized_query:
+                return value
+        # If the user supplied a postcode or street along with the town, choose
+        # the most specific locality that appears as a complete phrase.
+        matches = [
+            value for value in locality_values
+            if _contains_location_phrase(
+                normalized_query, _normalize_location_text(value)
+            )
+        ]
+        if matches:
+            return max(matches, key=lambda value: len(_normalize_location_text(value)))
+
+    if locality_values:
+        return locality_values[0]
+
+    # No settlement was returned: use one safe administrative value, not query
+    # text or a raw Nominatim address. Prefix Polish admin units to keep the
+    # standalone card/profile label meaningful without repeating it in display.
+    polish = _norm_lang(lang) == "pl" and _is_polish_address(address)
+    for field in _ADMIN_ADDRESS_FIELDS:
+        value = _clean_location_component(address.get(field))
+        if value:
+            return _format_admin_component(field, value, polish=polish)
+    for field in ("postcode", "country"):
+        value = _clean_location_component(address.get(field))
+        if value:
+            return value
+    return ""
+
+
+def _public_road_component(address):
+    """Return the road field without any duplicated house-number suffix."""
+    road = _clean_location_component(address.get("road"))
+    house_number = _clean_location_component(address.get("house_number"))
+    if road and house_number:
+        road = re.sub(
+            rf"(?<!\w){re.escape(house_number)}(?!\w)", " ", road, flags=re.IGNORECASE
+        )
+        road = re.sub(r"\s+", " ", road).strip(" ,")
+    return road
+
+
+def _query_explicitly_names_road(query, address):
+    """Only expose ``road`` when the user explicitly asked for street-level data."""
+    query_text = str(query or "").strip()
+    road = _public_road_component(address)
+    normalized_query = _normalize_location_text(query_text)
+    normalized_road = _normalize_location_text(road)
+    if not query_text or not normalized_road or not _contains_location_phrase(
+        normalized_query, normalized_road
+    ):
+        return False
+
+    house_number = _normalize_location_text(address.get("house_number"))
+    if house_number and _contains_location_phrase(normalized_query, house_number):
+        return True
+    if _STREET_MARKER_RE.search(query_text):
+        return True
+
+    # A separately comma-delimited street component is also explicit, while a
+    # A multiword place name alone is not treated as a street address.
+    parts = query_text.split(",")
+    return len(parts) > 1 and any(
+        _contains_location_phrase(_normalize_location_text(part), normalized_road)
+        for part in parts
+    )
+
+
+def _location_mode_for_query(query, address):
+    return "address" if _query_explicitly_names_road(query, address) else "city"
+
+
+def _is_polish_address(address):
+    country_code = _clean_location_component(address.get("country_code")).casefold()
+    country_name = _normalize_location_text(address.get("country"))
+    return country_code == "pl" or country_name in {"polska", "poland"}
+
+
+def _format_admin_component(field, value, polish=False):
+    cleaned = _clean_location_component(value)
+    if not cleaned or not polish:
+        return cleaned
+
+    prefixes = {
+        "municipality": ("gmina", "miasto"),
+        "county": ("powiat",),
+        "state": ("wojewodztwo", "woj"),
+    }
+    allowed_prefixes = prefixes.get(field, ())
+    normalized = _normalize_location_text(cleaned)
+    if any(
+        normalized == prefix or normalized.startswith(prefix + " ")
+        for prefix in allowed_prefixes
+    ):
+        return cleaned
+
+    prefix = {
+        "municipality": "gmina",
+        "county": "powiat",
+        "state": "województwo",
+    }.get(field)
+    return f"{prefix} {cleaned}" if prefix else cleaned
+
+
+def _format_public_location_parts(raw_address, query=None, mode="city", lang="pl"):
+    """Return ``(short_label, display_location)`` from an allowlist of fields."""
+    address = _nominatim_address_components(raw_address)
+    if not address:
+        return "", ""
+
+    short_label = _select_short_location_label(address, query=query, lang=lang)
+    if not short_label:
+        return "", ""
+
+    components = []
+    seen = set()
+    polish = _norm_lang(lang) == "pl" and _is_polish_address(address)
+
+    def add(value):
+        cleaned = _clean_location_component(value)
+        key = _normalize_location_text(cleaned)
+        if cleaned and key and key not in seen:
+            seen.add(key)
+            components.append(cleaned)
+
+    # The short locality/admin name is always first and remains separate from
+    # the long label passed to UI messages.
+    add(short_label)
+    if mode == "address" and _query_explicitly_names_road(query, address):
+        add(_public_road_component(address))
+    for field in _PUBLIC_ADDRESS_FIELDS:
+        value = _format_admin_component(field, address.get(field), polish=polish)
+        add(value)
+
+    return short_label, ", ".join(components)
+
+
+def format_public_location_label(raw_address, query=None, mode="city", lang="pl"):
+    """Format a user-facing label from structured Nominatim address fields.
+
+    ``raw_address`` is ``location.raw["address"]`` (or the containing raw
+    mapping), never ``location.address``. City/reverse mode excludes roads,
+    house numbers, POIs, buildings, suburbs and neighbourhoods. Address mode
+    may include only a road explicitly present in the query, still without a
+    house number or POI.
+    """
+    address = _nominatim_address_components(raw_address)
+    effective_mode = mode
+    if effective_mode == "auto":
+        effective_mode = _location_mode_for_query(query, address)
+    if effective_mode not in ("city", "address"):
+        effective_mode = "city"
+    if effective_mode == "address" and not _query_explicitly_names_road(query, address):
+        effective_mode = "city"
+    _short_label, display_location = _format_public_location_parts(
+        address, query=query, mode=effective_mode, lang=lang
+    )
+    return display_location
+
+
+def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None):
+    """Reverse geocode to ``(short_label, display_location, status)``.
+
+    Only structured Nominatim address fields are cached/returned. The formatted
+    ``location.address`` string is intentionally never read or exposed.
     """
     try:
-        key = (round(float(lat), 3), round(float(lon), 3), (lang or "pl")[:2].lower())
+        lat_value, lon_value = float(lat), float(lon)
+        query_key = _normalize_location_text(query)
+        key = (round(lat_value, 5), round(lon_value, 5),
+               (lang or "pl")[:2].lower(), query_key, mode or "auto")
     except (TypeError, ValueError):
         return None, None, GEO_ERROR
 
@@ -998,29 +1237,21 @@ def get_location_details_from_coords(lat, lon, lang="pl"):
         return cached[1]
 
     try:
-        geolocator = Nominatim(user_agent="pogoda_world_bot")  # niezależne od Telegrama
+        geolocator = Nominatim(user_agent="pogoda_world_bot")
         location = geolocator.reverse(f"{lat}, {lon}", language=lang)
-
         if not location:
             return None, None, GEO_ERROR
 
-        addr = (location.raw or {}).get("address") or {}
-        nazwa = (addr.get('city') or
-                 addr.get('town') or
-                 addr.get('village') or
-                 addr.get('suburb') or
-                 addr.get('city_district') or
-                 addr.get('state_district') or
-                 addr.get('hamlet') or
-                 addr.get('municipality') or
-                 addr.get('county') or
-                 addr.get('state'))
-        address = str(getattr(location, "address", "") or "").strip()
-
-        if nazwa:
-            result = (str(nazwa).strip(), address or str(nazwa).strip(), GEO_OK)
+        address = _nominatim_address_components(getattr(location, "raw", {}) or {})
+        effective_mode = mode or _location_mode_for_query(query, address)
+        short_label, display_location = _format_public_location_parts(
+            address, query=query, mode=effective_mode, lang=lang
+        )
+        if short_label and display_location:
+            result = (short_label, display_location, GEO_OK)
         else:
-            result = (None, address, GEO_NO_CITY)
+            # Do not fall back to the formatted Nominatim address or the query.
+            result = (None, None, GEO_NO_CITY)
 
         _GEO_DETAILS_CACHE[key] = (time.time() + _GEO_DETAILS_TTL, result)
         return result
@@ -1031,68 +1262,88 @@ def get_location_details_from_coords(lat, lon, lang="pl"):
 
 
 def get_city_from_coords(lat, lon, lang="pl"):
-    """Zgodność wsteczna: sama nazwa miejscowości (gość, ścieżki legacy)."""
-    name, _address, status = get_location_details_from_coords(lat, lon, lang)
-    if status == GEO_OK and name:
-        return name
+    """Compatibility adapter: short place name only (guest/cards/legacy)."""
+    short_label, _display_location, status = get_location_details_from_coords(lat, lon, lang)
+    if status == GEO_OK and short_label:
+        return short_label
     if status == GEO_NO_CITY:
         return FIELD_LOCATION_LABEL
     return FIELD_LOCATION_LEGACY
 
 
-def geocode_city_details(city_name, lang="pl"):
-    """Forward geocoding ze statusem: (lat, lon, address, ok).
+def _geocode_city_public_details(city_name, lang="pl"):
+    """Forward-geocode to ``(lat, lon, short_label, display_location, ok)``.
 
-    ``ok=False`` oznacza AWARIĘ łącz (timeout/sieć), a nie brak wyników —
-    to rozróżnienie decyduje, czy pokazujemy "Błędy na łączach", czy
-    "nie znalazłem takiego miejsca".
+    Both labels are built from allowlisted structured address fields. The
+    formatted ``location.address`` string and the original query are never
+    returned as a fallback.
     """
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
         location = geolocator.geocode(city_name, exactly_one=True, language=lang)
-        if location:
-            return location.latitude, location.longitude, location.address, True
-        return None, None, None, True
+        if not location:
+            return None, None, None, None, True
+
+        address = _nominatim_address_components(getattr(location, "raw", {}) or {})
+        mode = _location_mode_for_query(city_name, address)
+        short_label, display_location = _format_public_location_parts(
+            address, query=city_name, mode=mode, lang=lang
+        )
+        if not short_label or not display_location:
+            short_label = FIELD_LOCATION_LABEL
+            display_location = t_ui(lang, "location_field")
+        return location.latitude, location.longitude, short_label, display_location, True
     except Exception as e:
         print(f"Błąd wyszukiwania miasta po nazwie: {e}")
-        return None, None, None, False
+        return None, None, None, None, False
+
+
+def geocode_city_details(city_name, lang="pl"):
+    """Compatibility adapter: ``(lat, lon, safe_display_location, ok)``."""
+    lat, lon, _short_label, display_location, ok = _geocode_city_public_details(
+        city_name, lang
+    )
+    return lat, lon, display_location, ok
 
 
 def get_coords_from_city(city_name, lang="pl"):
-    """Zgodność wsteczna (gość, testy): bez flagi awarii łącz."""
-    lat, lon, address, _ok = geocode_city_details(city_name, lang)
-    return lat, lon, address
+    """Guest/shortcut adapter: coordinates plus a safe public label, never raw address."""
+    lat, lon, display_location, _ok = geocode_city_details(city_name, lang)
+    return lat, lon, display_location
 
 
-def _resolve_location_labels(lat, lon, lang, fallback_city=None, fallback_address=None):
-    """Jedno miejsce wyliczania etykiety i opisu lokalizacji (POPRAWKA #4).
+def _resolve_location_labels(
+    lat, lon, lang, fallback_short_label=None, fallback_display_location=None,
+    query=None, mode=None,
+):
+    """Resolve the separate short label and display-only location description.
 
-    Zwraca ``(label, display, status)``:
-      label   -> co zapisać jako nazwę miejsca (Users / tytuł karty),
-      display -> pełny opis dla użytkownika (adres albo "Lokalizacja w terenie
-                 (poza miastem)"),
-      status  -> GEO_OK / GEO_NO_CITY / GEO_ERROR. Przy GEO_ERROR nie mamy
-                 czym ratować komunikatu, więc nic nie zapisujemy i mówimy
-                 użytkownikowi o błędach na łączach.
-
-    ``fallback_city`` / ``fallback_address`` to dane z forward-geocode (gdy
-    użytkownik wpisał nazwę) — dzięki nim chwilowa awaria reverse nie gubi
-    lokalizacji, którą już znamy.
+    Reverse geocoding is preferred. Safe short/display labels from structured
+    forward-geocoder fields are used only if reverse geocoding fails or has no
+    usable components. The user query itself is never used as a display fallback.
     """
-    name, address, status = get_location_details_from_coords(lat, lon, lang)
-    fb_city = str(fallback_city or "").strip()
-    fb_addr = str(fallback_address or "").strip()
+    if query:
+        short_label, display_location, status = get_location_details_from_coords(
+            lat, lon, lang, query=query, mode=mode
+        )
+    else:
+        short_label, display_location, status = get_location_details_from_coords(
+            lat, lon, lang
+        )
+    fallback_short = _clean_location_component(fallback_short_label)
+    fallback_display = _clean_location_component(fallback_display_location)
 
     if status == GEO_ERROR:
-        if not (fb_city or fb_addr):
-            return None, None, GEO_ERROR
-        label = fb_city or fb_addr
-        return label, (fb_addr or label), GEO_OK
+        if fallback_short and fallback_display:
+            return fallback_short, fallback_display, GEO_OK
+        return None, None, GEO_ERROR
 
     if status == GEO_NO_CITY:
-        return (fb_city or FIELD_LOCATION_LABEL), t_ui(lang, "location_field"), GEO_NO_CITY
+        if fallback_short and fallback_display:
+            return fallback_short, fallback_display, GEO_NO_CITY
+        return FIELD_LOCATION_LABEL, t_ui(lang, "location_field"), GEO_NO_CITY
 
-    return name, (address or name), GEO_OK
+    return short_label, (display_location or short_label), GEO_OK
 
 def alert_admin(text):
     admin_id = os.environ.get("TG_CHAT_ID")
@@ -1395,7 +1646,7 @@ def main_bot():
                             continue
 
                         # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
-                        city, opis_lokalizacji, geo_status = _resolve_location_labels(
+                        short_label, display_location, geo_status = _resolve_location_labels(
                             lat, lon, user_lang
                         )
                         if geo_status == GEO_ERROR:
@@ -1412,13 +1663,13 @@ def main_bot():
                             if _take_pending_city_ctx(chat_id, consume=False) == CTX_SAVE_PROFILE:
                                 PENDING_CITY.pop(str(chat_id), None)
                                 _save_profile_from_location(
-                                    chat_id, users_ws, users_map, lat, lon, city,
-                                    user_lang, "webapp", address=opis_lokalizacji,
+                                    chat_id, users_ws, users_map, lat, lon, short_label,
+                                    user_lang, "webapp", display_location=display_location,
                                 )
                             else:
                                 _run_oneoff_report(
-                                    chat_id, lat, lon, city, user_lang, "webapp", "day",
-                                    address=opis_lokalizacji,
+                                    chat_id, lat, lon, short_label, user_lang, "webapp", "day",
+                                    display_location=display_location,
                                 )
                             continue
 
@@ -1441,10 +1692,13 @@ def main_bot():
                                 main_sheet.update_cell(r_idx, col_lat, lat)
                                 main_sheet.update_cell(r_idx, col_lon, lon)
                                 if col_miasto:
-                                    main_sheet.update_cell(r_idx, col_miasto, city)
+                                    main_sheet.update_cell(r_idx, col_miasto, short_label)
 
                         ukryj_klawiature = {"remove_keyboard": True}
-                        send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city), reply_markup=ukryj_klawiature)
+                        send_reply(
+                            chat_id, t_ui(user_lang, "loc_updated", city=short_label),
+                            reply_markup=ukryj_klawiature,
+                        )
 
                     elif data.get("type") == "set_settings":
                         rano = (data.get("rano") or "").strip()
@@ -1756,7 +2010,7 @@ def main_bot():
                 # Legacy-only zachowuje historyczne działanie Formularz bez migracji.
                 if not _is_legacy_only_user(users_map, clean_users, chat_id):
                     # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
-                    city, opis_lokalizacji, geo_status = _resolve_location_labels(
+                    short_label, display_location, geo_status = _resolve_location_labels(
                         lat, lon, user_lang
                     )
                     if geo_status == GEO_ERROR:
@@ -1765,12 +2019,14 @@ def main_bot():
                     if pin_in_city_flow:
                         PENDING_CITY.pop(str(chat_id), None)
                         _save_profile_from_location(
-                            chat_id, users_ws, users_map, lat, lon, city, user_lang, "gps",
-                            address=opis_lokalizacji,
+                            chat_id, users_ws, users_map, lat, lon, short_label, user_lang, "gps",
+                            display_location=display_location,
                         )
                     else:
-                        _run_oneoff_report(chat_id, lat, lon, city, user_lang, "gps", "day",
-                                           address=opis_lokalizacji)
+                        _run_oneoff_report(
+                            chat_id, lat, lon, short_label, user_lang, "gps", "day",
+                            display_location=display_location,
+                        )
                     continue
 
                 try:
@@ -2111,7 +2367,9 @@ def main_bot():
             # =====================================================================
             send_reply(chat_id, t_ui(user_lang, "search_loc"))
 
-            lat, lon, full_address, geo_ok = geocode_city_details(city_query, user_lang)
+            (
+                lat, lon, fallback_short_label, fallback_display_location, geo_ok,
+            ) = _geocode_city_public_details(city_query, user_lang)
 
             if not geo_ok:
                 # POPRAWKA #4: awaria serwera map != brak wyników.
@@ -2130,10 +2388,11 @@ def main_bot():
                     # POPRAWKA #4: etykieta + opis lokalizacji z jednego miejsca.
                     # Ratujemy się danymi z forward-geocode, więc chwilowa awaria
                     # reverse nie gubi wpisanej przez użytkownika nazwy.
-                    krotka_nazwa, opis_lokalizacji, geo_status = _resolve_location_labels(
+                    short_label, display_location, geo_status = _resolve_location_labels(
                         lat, lon, user_lang,
-                        fallback_city=city_query.capitalize(),
-                        fallback_address=full_address,
+                        fallback_short_label=fallback_short_label,
+                        fallback_display_location=fallback_display_location,
+                        query=city_query,
                     )
                     if geo_status == GEO_ERROR:
                         send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
@@ -2144,14 +2403,14 @@ def main_bot():
                         if oneoff_card_type == "day" and _day_card_window_blocked(chat_id, user_lang, lat, lon):
                             continue
                         _run_oneoff_report(
-                            chat_id, lat, lon, krotka_nazwa, user_lang, "city",
-                            oneoff_card_type, address=opis_lokalizacji,
+                            chat_id, lat, lon, short_label, user_lang, "city",
+                            oneoff_card_type, display_location=display_location,
                         )
                         continue
 
                     _save_profile_from_location(
-                        chat_id, users_ws, users_map, lat, lon, krotka_nazwa,
-                        user_lang, "city", address=opis_lokalizacji,
+                        chat_id, users_ws, users_map, lat, lon, short_label,
+                        user_lang, "city", display_location=display_location,
                     )
                     continue
 
@@ -2174,14 +2433,18 @@ def main_bot():
                     main_sheet.update_cell(real_row_index, col_lon, lon)
                     
                     krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
-                    if krotka_nazwa in ("Lokalizacja w terenie", "", None, "Nieznana miejscowość"):
-                        krotka_nazwa = city_query.capitalize()
-                        
+                    if krotka_nazwa in (FIELD_LOCATION_LEGACY, "", None, "Nieznana miejscowość"):
+                        krotka_nazwa = fallback_short_label
+                    krotka_nazwa = krotka_nazwa or FIELD_LOCATION_LABEL
+
                     if "Miasto" in headers:
                         col_miasto = headers.index("Miasto") + 1
                         main_sheet.update_cell(real_row_index, col_miasto, krotka_nazwa)
                         
-                    sukces_msg = t_ui(user_lang, "search_success", city=krotka_nazwa, address=full_address, query=city_query)
+                    safe_display = _md_safe(fallback_display_location) or _md_safe(krotka_nazwa)
+                    sukces_msg = t_ui(
+                        user_lang, "search_success", display_location=safe_display
+                    )
                     send_reply(chat_id, sukces_msg)
                     
                 except Exception as e:
