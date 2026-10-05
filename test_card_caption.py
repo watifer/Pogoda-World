@@ -89,6 +89,47 @@ def test_oneoff_card_for_given_city_has_no_caption(tg_posts, card_type):
     assert "caption" not in photos[0]["data"]
 
 
+def test_long_display_location_never_becomes_card_location_name(monkeypatch):
+    """Długi opis jest tylko tekstem pod kartą; payload/layout dostają short_label."""
+    display_location = (
+        "Wiązowna, gmina Wiązowna, powiat otwocki, województwo mazowieckie, "
+        "05-462, Polska"
+    )
+    payload_calls = []
+    layout_calls = []
+    replies = []
+
+    def build_payload(**kwargs):
+        payload_calls.append(kwargs)
+        return {"location_name": kwargs["location_name"], "hourly": []}
+
+    def prepare_layout(payload):
+        layout_calls.append(payload)
+        return payload
+
+    monkeypatch.setattr(lb, "build_payload_for_location", build_payload)
+    monkeypatch.setattr(lb, "_resolve_tz", lambda lat, lon: "Europe/Warsaw")
+    monkeypatch.setattr(lb, "prepare_layout_data", prepare_layout)
+    monkeypatch.setattr(lb.image_generator, "generate_weather_card", lambda layout: "card.png")
+    monkeypatch.setattr(lb, "send_photo", lambda *args, **kwargs: None)
+    monkeypatch.setattr(lb, "send_reply", lambda chat_id, text, **kwargs: replies.append(text))
+    lb.PENDING_SAVE.clear()
+
+    assert lb._run_oneoff_report(
+        CHAT_ID, 52.123456, 21.987654, CITY, "pl", "city", "day",
+        display_location=display_location,
+    ) is True
+
+    assert payload_calls[0]["location_name"] == CITY
+    assert payload_calls[0]["lat"] == 52.123456
+    assert payload_calls[0]["lon"] == 21.987654
+    assert layout_calls[0]["location_name"] == CITY
+    assert display_location not in str(payload_calls[0])
+    assert display_location not in str(layout_calls[0])
+    assert display_location in replies[0]
+    lb.PENDING_SAVE.clear()
+
+
 def test_used_location_note_still_follows_city_card(monkeypatch):
     """Usuwamy TYLKO caption; informacja o użytej lokalizacji zostaje (pkt. UX)."""
     sent = []
@@ -96,8 +137,10 @@ def test_used_location_note_still_follows_city_card(monkeypatch):
     monkeypatch.setattr(lb, "send_reply", lambda chat_id, text, **kw: sent.append(text))
     lb.PENDING_SAVE.clear()
 
-    ok = lb._run_oneoff_report(CHAT_ID, 52.15, 21.29, CITY, "pl", "city", "day",
-                               address=f"{CITY}, Polska")
+    ok = lb._run_oneoff_report(
+        CHAT_ID, 52.15, 21.29, CITY, "pl", "city", "day",
+        display_location=f"{CITY}, Polska",
+    )
 
     assert ok is True
     assert len(sent) == 1

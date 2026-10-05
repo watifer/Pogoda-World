@@ -256,8 +256,10 @@ class BotHarness:
             lambda city, lang="pl": (52.22972, 21.01223, f"{city}, Polska"),
         )
         monkeypatch.setattr(
-            lb, "geocode_city_details",
-            lambda city, lang="pl": (52.22972, 21.01223, f"{city}, Polska", True),
+            lb, "_geocode_city_public_details",
+            lambda city, lang="pl": (
+                52.22972, 21.01223, city, f"{city}, Polska", True,
+            ),
         )
         monkeypatch.setattr(
             lb, "get_city_from_coords",
@@ -266,7 +268,7 @@ class BotHarness:
         # POPRAWKA #4: pełny adres z reverse-geocodera (domyślnie sukces).
         monkeypatch.setattr(
             lb, "get_location_details_from_coords",
-            lambda lat, lon, lang="pl": (
+            lambda lat, lon, lang="pl", query=None, mode=None: (
                 ("Hel" if float(lat) >= 54 else "Warszawa"),
                 f"{'Hel' if float(lat) >= 54 else 'Warszawa'}, Polska",
                 lb.GEO_OK,
@@ -591,8 +593,8 @@ class TestAccessWithoutProfile:
         assert "103" not in lb.PENDING_CITY, "stan oczekiwania musi być skonsumowany"
         # POPRAWKA #4: komunikat to pełny opis zapisanej lokalizacji.
         assert bot.has_reply(103, "Zapisana lokalizacja")
-        assert bot.has_reply(103, "🌍 Warszawa, Polska")
-        assert bot.has_reply(103, "⚠️ Jeśli to nie to miejsce, ponownie użyj /miasto")
+        assert bot.has_reply(103, "Warszawa, Polska")
+        assert bot.has_reply(103, "Pomyłka? Powtórz jeszcze raz komendę.")
 
     def test_city_command_with_argument_saves_profile_immediately(self, bot):
         bot.run(bot.msg(104, "/start BETAX1"))
@@ -662,6 +664,13 @@ class TestLegacyUserUnchanged:
         assert row[FORM_HEADERS.index("Miasto")] == "Warszawa"
         assert "700" not in lb.PENDING_SAVE
         assert bot.oneoffs == []
+
+    def test_legacy_webapp_uses_short_safe_label(self, bot):
+        bot.run(bot.webapp_location(700, lat=50.0614, lon=19.9366))
+
+        row = next(r for r in bot.gc.formularz.rows if str(r[1]).strip() == "700")
+        assert row[FORM_HEADERS.index("Miasto")] == "Warszawa"
+        assert bot.has_reply(700, "Rozpoznano: Warszawa")
 
     def test_blocked_legacy_silent(self, bot):
         # POPRAWKA #7: brak dostępu = cisza (obcy, blocked, revoked, BLOCKED_).
@@ -885,11 +894,10 @@ class TestPr2UxCleanup:
             assert "/oneoff" not in text
         assert bot.keyboards_for(100) == []
         # zamiast tego pokazujemy tylko użytą lokalizację z geokodera
-        # (POPRAWKA #4: pełny opis — 📍 etykieta / 🌍 adres / ⚠️ wskazówka)
-        assert bot.has_reply(100, "*📍 Użyta lokalizacja:*")
-        assert bot.has_reply(100, "🌍 Warszawa, Polska")
-        assert bot.has_reply(100, "⚠️ Jeśli to nie to miejsce, ponownie użyj tej samej komendy")
-        assert bot.has_reply(100, "wpisz nazwę dokładniej")
+        # (POPRAWKA #4: krótka etykieta i bezpieczny opis lokalizacji)
+        assert bot.has_reply(100, "📍 *Użyta lokalizacja:*")
+        assert bot.has_reply(100, "Warszawa, Polska")
+        assert bot.has_reply(100, "Pomyłka? Powtórz jeszcze raz komendę.")
 
     # --- d) /miasto + miasto zapisuje profil i nie generuje karty -----------
     def test_d_city_flow_saves_profile_without_card(self, bot):
@@ -905,7 +913,7 @@ class TestPr2UxCleanup:
         assert bot.oneoffs == [] and bot.cards == []
         # POPRAWKA #4: pełny opis lokalizacji zamiast listy komend w stopce.
         assert bot.has_reply(100, "Zapisana lokalizacja")
-        assert bot.has_reply(100, "🌍 Warszawa, Polska")
+        assert bot.has_reply(100, "Warszawa, Polska")
         assert not bot.has_reply(100, "/save_location")
 
     def test_d_city_prompt_shows_current_location_when_profile_active(self, bot):
@@ -1232,9 +1240,9 @@ class TestLocationDescription:
         bot.run(bot.pin(110, reply=False))
 
         assert bot.users.record(110)["profile_status"] == "active"
-        assert bot.has_reply(110, "*📍 Zapisana lokalizacja:*")
-        assert bot.has_reply(110, "🌍 Hel, Polska")
-        assert bot.has_reply(110, "⚠️ Jeśli to nie to miejsce, ponownie użyj /miasto")
+        assert bot.has_reply(110, "✅ *Zapisana lokalizacja:*")
+        assert bot.has_reply(110, "Hel, Polska")
+        assert bot.has_reply(110, "Pomyłka? Powtórz jeszcze raz komendę.")
 
     def test_webapp_gps_in_city_flow_shows_full_address(self, bot):
         bot.run(bot.msg(111, "/start BETAX1"))
@@ -1242,13 +1250,13 @@ class TestLocationDescription:
         bot.run(bot.webapp_location(111, lat=50.0614, lon=19.9366))
 
         assert bot.users.record(111)["profile_status"] == "active"
-        assert bot.has_reply(111, "🌍 Warszawa, Polska")
+        assert bot.has_reply(111, "Warszawa, Polska")
 
     def test_field_location_uses_message_from_code(self, bot, monkeypatch):
         """Pustynia/góry: geokoder nie zna miejscowości, ale zna teren."""
         monkeypatch.setattr(
             lb, "get_location_details_from_coords",
-            lambda lat, lon, lang: (None, "Sahara, Algieria", lb.GEO_NO_CITY),
+            lambda lat, lon, lang, query=None, mode=None: (None, "Sahara, Algieria", lb.GEO_NO_CITY),
         )
         bot.run(bot.msg(112, "/start BETAX1"))
         bot.run(bot.msg(112, "/miasto"))
@@ -1257,12 +1265,12 @@ class TestLocationDescription:
         rec = bot.users.record(112)
         assert rec["profile_status"] == "active", "teren nadal jest zapisywany jako lokalizacja"
         assert rec["location_label"] == lb.FIELD_LOCATION_LABEL
-        assert bot.has_reply(112, "🌍 Lokalizacja w terenie (poza miastem)")
+        assert bot.has_reply(112, "Lokalizacja w terenie (poza miastem)")
 
     def test_geocoder_failure_reports_and_saves_nothing(self, bot, monkeypatch):
         monkeypatch.setattr(
             lb, "get_location_details_from_coords",
-            lambda lat, lon, lang: (None, None, lb.GEO_ERROR),
+            lambda lat, lon, lang, query=None, mode=None: (None, None, lb.GEO_ERROR),
         )
         bot.run(bot.msg(113, "/start BETAX1"))
         bot.run(bot.msg(113, "/miasto"))
@@ -1276,8 +1284,8 @@ class TestLocationDescription:
 
     def test_city_search_failure_is_not_reported_as_not_found(self, bot, monkeypatch):
         monkeypatch.setattr(
-            lb, "geocode_city_details",
-            lambda city, lang="pl": (None, None, None, False),
+            lb, "_geocode_city_public_details",
+            lambda city, lang="pl": (None, None, None, None, False),
         )
         bot.run(bot.msg(114, "/start BETAX1"))
         bot.run(bot.msg(114, "/miasto"))
@@ -1289,8 +1297,8 @@ class TestLocationDescription:
 
     def test_city_not_found_keeps_the_old_message(self, bot, monkeypatch):
         monkeypatch.setattr(
-            lb, "geocode_city_details",
-            lambda city, lang="pl": (None, None, None, True),
+            lb, "_geocode_city_public_details",
+            lambda city, lang="pl": (None, None, None, None, True),
         )
         bot.run(bot.msg(115, "/start BETAX1"))
         bot.run(bot.msg(115, "/miasto"))
