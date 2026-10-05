@@ -1,18 +1,4 @@
-"""test_location_message.py — POPRAWKA #4: pełny opis lokalizacji + status geokodera.
-
-Zakres zmian zgłoszonych przez właściciela produktu:
-  1. komunikat po /miasto (Zapisana lokalizacja) i po karcie jednorazowej
-     (Użyta lokalizacja) pokazuje PEŁNY adres z geokodera, żeby użytkownik
-     rozpoznał miejsce (miejscowości o tej samej nazwie bywa wiele),
-  2. etykieta 📍 jest pogrubiona („trochę większymi literami”),
-  3. akapity opatrzone emoji: 📍 etykieta / 🌍 opis / ⚠️ wskazówka,
-  4. awaria geokodera (timeout/sieć) => „Błędy na łączach, spróbuj za chwilę
-     ponownie.” i NIC nie zapisujemy,
-  5. geokoder odpowiedział, ale to teren bez miejscowości (pustynia, góry)
-     => komunikat z kodu: „Lokalizacja w terenie (poza miastem)”.
-
-Uruchomienie: pytest test_location_message.py -v
-"""
+"""UX tests for safe, separate short and display location labels."""
 
 import pytest
 
@@ -20,8 +6,25 @@ import i18n
 import location_bot as lb
 
 LANGS = ("pl", "en", "de", "es", "fr", "no")
-LABEL = {"pl": "Zapisana lokalizacja", "used_pl": "Użyta lokalizacja"}
-ADDRESS = "Wiązowna, gmina Wiązowna, powiat otwocki, województwo mazowieckie, 05-462, Polska"
+SHORT_LABEL = "Wiązowna"
+DISPLAY_LOCATION = (
+    "Wiązowna, gmina Wiązowna, powiat otwocki, województwo mazowieckie, "
+    "05-462, Polska"
+)
+POISON = "Biblioteka publiczna, Kościelna 41, Osiedle Parkowe"
+ADDRESS = {
+    "city": "Wiązowna",
+    "municipality": "Wiązowna",
+    "county": "otwocki",
+    "state": "mazowieckie",
+    "postcode": "05-462",
+    "country": "Polska",
+    "country_code": "pl",
+    "road": "Kościelna",
+    "house_number": "41",
+    "suburb": "Osiedle Parkowe",
+    "amenity": "Biblioteka publiczna w Wiązownie",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -32,60 +35,42 @@ def _clean_geo_cache():
 
 
 # ============================================================================
-# 1. TREŚĆ KOMUNIKATÓW (6 języków)
+# UI strings: only the clean display label is shown below a card / after /city
 # ============================================================================
 
 @pytest.mark.parametrize("lang", LANGS)
 @pytest.mark.parametrize("key", ["location_saved", "used_location"])
-def test_message_structure_three_blocks(lang, key):
+def test_messages_use_display_location_placeholder(lang, key):
     text = i18n.UI_TEXTS[lang][key]
-    lines = text.format(address=ADDRESS).split("\n")
-
-    assert lines[0].startswith("*📍 ") and lines[0].endswith(":*"), \
-        "etykieta musi być pogrubiona i zakończona dwukropkiem"
-    assert lines[1] == f"🌍 {ADDRESS}", "drugi akapit to pełny adres z geokodera"
-    assert lines[2] == "", "adres i wskazówka muszą być rozdzielone pustą linią"
-    assert lines[3].startswith("⚠️ "), "ostatni akapit zaczynamy emoji ostrzeżenia"
-    assert len(lines) == 4, "komunikat ma dokładnie 3 akapity (bez list komend)"
+    assert "{display_location}" in text
+    assert "{address}" not in text
+    assert "{city}" not in text
+    assert "`" not in text
+    assert "/save_location" not in text and "/oneoff" not in text
+    assert text.count("*") % 2 == 0
 
 
-@pytest.mark.parametrize("lang", LANGS)
-def test_saved_message_points_to_city_command(lang):
-    text = i18n.UI_TEXTS[lang]["location_saved"]
-    cmd = "/miasto" if lang == "pl" else "/city"
-    assert cmd in text
-    assert "ponownie użyj" in text or "use" in text or "nutze" in text \
-        or "usa" in text or "utilisez" in text or "bruk" in text
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_used_message_points_to_same_command(lang):
-    text = i18n.UI_TEXTS[lang]["used_location"]
-    assert "samej komendy" in text or "same command" in text or "denselben Befehl" in text \
-        or "mismo comando" in text or "même commande" in text or "samme kommando" in text
-
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_no_backticks_and_no_city_placeholder(lang):
-    for key in ("location_saved", "used_location"):
-        text = i18n.UI_TEXTS[lang][key]
-        assert "`" not in text, f"{lang}:{key}: backticki renderują się na czerwono"
-        assert "{city}" not in text, f"{lang}:{key}: martwy placeholder {{city}}"
-        assert text.count("*") % 2 == 0, f"{lang}:{key}: niedomknięte pogrubienie"
-
-
-def test_polish_texts_are_exact():
-    """Dokładne brzmienie zatwierdzone przez właściciela produktu."""
-    assert i18n.UI_TEXTS["pl"]["location_saved"] == (
-        "*📍 Zapisana lokalizacja:*\n🌍 {address}\n\n"
-        "⚠️ Jeśli to nie to miejsce, ponownie użyj /miasto i wpisz nazwę dokładniej, "
-        "np. z kodem pocztowym, krajem, powiatem lub regionem po przecinkach."
-    )
+def test_polish_location_messages_are_exact():
     assert i18n.UI_TEXTS["pl"]["used_location"] == (
-        "*📍 Użyta lokalizacja:*\n🌍 {address}\n\n"
-        "⚠️ Jeśli to nie to miejsce, ponownie użyj tej samej komendy i wpisz nazwę dokładniej, "
-        "np. z kodem pocztowym, krajem, powiatem lub regionem po przecinkach."
+        "📍 *Użyta lokalizacja:*\n{display_location}\n\n"
+        "Pomyłka? Powtórz jeszcze raz komendę."
     )
+    assert i18n.UI_TEXTS["pl"]["location_saved"] == (
+        "✅ *Zapisana lokalizacja:*\n{display_location}\n\n"
+        "Pomyłka? Powtórz jeszcze raz komendę."
+    )
+    # Legacy Formularz path uses the same safe saved-location wording.
+    assert i18n.UI_TEXTS["pl"]["search_success"] == i18n.UI_TEXTS["pl"]["location_saved"]
+
+
+def test_changed_location_messages_are_translated_and_do_not_advertise_hidden_aliases():
+    for lang in LANGS:
+        for key in ("search_success", "used_location", "location_saved"):
+            text = i18n.UI_TEXTS[lang][key]
+            assert "{display_location}" in text
+            assert "/save_location" not in text
+            assert "/oneoff" not in text
+            assert "`" not in text
 
 
 def test_short_variants_are_gone():
@@ -94,40 +79,30 @@ def test_short_variants_are_gone():
         assert "used_location_short" not in i18n.UI_TEXTS[lang]
 
 
-# ============================================================================
-# 2. AWARIA ŁĄCZ I TEREN BEZ MIEJSCOWOŚCI
-# ============================================================================
-
-@pytest.mark.parametrize("lang", LANGS)
-def test_connection_error_key_exists(lang):
-    text = i18n.UI_TEXTS[lang]["geo_conn_err"]
-    assert "⚠️" in text
-    assert len(text) > 20
-
-
-def test_connection_error_text_is_standard():
-    assert i18n.UI_TEXTS["pl"]["geo_conn_err"] == "⚠️ Błędy na łączach, spróbuj za chwilę ponownie."
-
-
-def test_field_location_text_is_the_coded_one():
-    """Środek komunikatu dla pustyni/gór = napis, który kod zwracał dotychczas."""
-    assert i18n.UI_TEXTS["pl"]["location_field"] == lb.FIELD_LOCATION_LABEL
-    assert lb.FIELD_LOCATION_LABEL == "Lokalizacja w terenie (poza miastem)"
+def test_message_helpers_escape_dynamic_display_location():
+    used = lb._used_location_message("pl", SHORT_LABEL, "Miasto_test *x* [link]")
+    saved = i18n.t_ui(
+        "pl", "location_saved",
+        display_location=lb._md_safe("Miasto_test *x* [link]"),
+    )
+    escaped = r"Miasto\_test \*x\* \[link]"
+    assert escaped in used and escaped in saved
+    assert "/save_location" not in used and "/oneoff" not in used
+    assert "/save_location" not in saved and "/oneoff" not in saved
 
 
 # ============================================================================
-# 3. STATUS GEOKODERA (fake Nominatim — zero sieci)
+# Geocoder status + safe labels (fake Nominatim; no network)
 # ============================================================================
 
 class _FakeLocation:
-    def __init__(self, address_dict=None, address_text=""):
+    def __init__(self, address_dict=None, address_text=POISON):
         self.raw = {"address": address_dict} if address_dict is not None else {}
+        # Deliberately misleading: public output must never read this string.
         self.address = address_text
 
 
 class _FakeNominatim:
-    """Atrapa Nominatim: kolejne wywołania reverse() zwracają zaplanowane wyniki."""
-
     calls = []
     results = []
 
@@ -135,14 +110,14 @@ class _FakeNominatim:
         pass
 
     def reverse(self, query, language=None):
-        _FakeNominatim.calls.append((query, language))
+        _FakeNominatim.calls.append(("reverse", query, language))
         result = _FakeNominatim.results.pop(0)
         if isinstance(result, Exception):
             raise result
         return result
 
     def geocode(self, name, exactly_one=None, language=None):
-        _FakeNominatim.calls.append((name, language))
+        _FakeNominatim.calls.append(("geocode", name, language))
         result = _FakeNominatim.results.pop(0)
         if isinstance(result, Exception):
             raise result
@@ -150,9 +125,13 @@ class _FakeNominatim:
 
 
 class _FakeGeocodeResult:
-    latitude = 52.22972
-    longitude = 21.01223
-    address = "Warszawa, województwo mazowieckie, Polska"
+    latitude = 52.229721
+    longitude = 21.012234
+    raw = {
+        "display_name": POISON,
+        "address": ADDRESS,
+    }
+    address = POISON
 
 
 @pytest.fixture
@@ -163,116 +142,245 @@ def fake_nominatim(monkeypatch):
     return _FakeNominatim
 
 
-def test_reverse_success_returns_name_address_and_ok(fake_nominatim):
-    fake_nominatim.results.append(
-        _FakeLocation({"city": "Wiązowna", "county": "otwocki"}, ADDRESS)
+def test_reverse_uses_structured_fields_and_formats_exact_polish_label(fake_nominatim):
+    fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl", query="Wiązowna"
     )
-    name, address, status = lb.get_location_details_from_coords(52.15, 21.29, "pl")
-    assert (name, address, status) == ("Wiązowna", ADDRESS, lb.GEO_OK)
+
+    assert (short_label, display_location, status) == (
+        SHORT_LABEL, DISPLAY_LOCATION, lb.GEO_OK
+    )
+    assert _FakeNominatim.calls == [("reverse", "52.15, 21.29", "pl")]
+    for forbidden in ("Biblioteka publiczna", "41", "Kościelna", "Osiedle Parkowe"):
+        assert forbidden not in display_location
 
 
-def test_reverse_without_city_is_no_city(fake_nominatim):
-    fake_nominatim.results.append(_FakeLocation({"desert": "Sahara"}, "Sahara, Algieria"))
-    name, address, status = lb.get_location_details_from_coords(23.0, 12.0, "pl")
-    assert name is None and status == lb.GEO_NO_CITY
-    assert address == "Sahara, Algieria"
+def test_city_query_never_shows_road_house_number_suburb_or_poi(fake_nominatim):
+    fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl", query="Wiązowna"
+    )
+
+    assert status == lb.GEO_OK
+    assert short_label == SHORT_LABEL
+    assert display_location == DISPLAY_LOCATION
+    assert "Biblioteka publiczna" not in display_location
+    assert "41" not in display_location
+    assert "Kościelna" not in display_location
+    assert "Osiedle Parkowe" not in display_location
+
+
+def test_poi_never_reaches_used_or_saved_location_message(fake_nominatim):
+    fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl", query="Wiązowna"
+    )
+    assert status == lb.GEO_OK
+
+    messages = (
+        lb._used_location_message("pl", short_label, display_location),
+        i18n.t_ui(
+            "pl", "location_saved",
+            display_location=lb._md_safe(display_location),
+        ),
+    )
+    for message in messages:
+        assert "Biblioteka publiczna" not in message
+        assert "Kościelna" not in message
+        assert "Osiedle Parkowe" not in message
+        assert "41" not in message
+
+
+def test_explicit_matching_street_query_may_show_road_but_never_number_or_poi(fake_nominatim):
+    street_address = dict(ADDRESS, road="Lipowa")
+    fake_nominatim.results.append(_FakeLocation(street_address))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl", query="ul. Lipowa 41, Wiązowna"
+    )
+
+    assert status == lb.GEO_OK
+    assert short_label == SHORT_LABEL
+    assert "Wiązowna, Lipowa, gmina Wiązowna" in display_location
+    assert "41" not in display_location
+    assert "Biblioteka publiczna" not in display_location
+    assert "Osiedle Parkowe" not in display_location
+
+
+def test_house_number_is_removed_even_if_it_is_embedded_in_road_field(fake_nominatim):
+    address_with_number_in_road = dict(ADDRESS, road="Lipowa 41")
+    fake_nominatim.results.append(_FakeLocation(address_with_number_in_road))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl", query="ul. Lipowa 41, Wiązowna"
+    )
+
+    assert status == lb.GEO_OK
+    assert short_label == SHORT_LABEL
+    assert "Lipowa" in display_location
+    assert "41" not in display_location
+
+
+def test_pin_or_gps_mode_never_includes_a_road(fake_nominatim):
+    fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl"
+    )
+
+    assert status == lb.GEO_OK
+    assert short_label == SHORT_LABEL
+    assert display_location == DISPLAY_LOCATION
+    assert "Kościelna" not in display_location
+
+
+def test_missing_locality_uses_safe_administrative_components(fake_nominatim):
+    safe_admin = {
+        "county": "otwocki",
+        "state": "mazowieckie",
+        "postcode": "05-462",
+        "country": "Polska",
+        "country_code": "pl",
+        "road": "Kościelna",
+        "house_number": "41",
+        "suburb": "Osiedle Parkowe",
+        "amenity": "Biblioteka publiczna",
+    }
+    fake_nominatim.results.append(_FakeLocation(safe_admin))
+    short_label, display_location, status = lb.get_location_details_from_coords(
+        52.15, 21.29, "pl"
+    )
+
+    assert status == lb.GEO_OK
+    assert short_label == "powiat otwocki"
+    assert display_location == (
+        "powiat otwocki, województwo mazowieckie, 05-462, Polska"
+    )
+    for forbidden in ("Biblioteka publiczna", "41", "Kościelna", "Osiedle Parkowe"):
+        assert forbidden not in display_location
+
+
+def test_missing_structured_fields_does_not_fall_back_to_raw_address_or_query(fake_nominatim):
+    fake_nominatim.results.append(_FakeLocation({}, "Biblioteka publiczna, Wiązowna"))
+    assert lb.get_location_details_from_coords(
+        52.15, 21.29, "pl", query="Wiązowna"
+    ) == (None, None, lb.GEO_NO_CITY)
 
 
 def test_reverse_none_means_connection_error(fake_nominatim):
     fake_nominatim.results.append(None)
-    assert lb.get_location_details_from_coords(52.15, 21.29, "pl") == (None, None, lb.GEO_ERROR)
+    assert lb.get_location_details_from_coords(52.15, 21.29, "pl") == (
+        None, None, lb.GEO_ERROR
+    )
 
 
 def test_reverse_exception_means_connection_error(fake_nominatim):
     fake_nominatim.results.append(TimeoutError("timeout"))
-    assert lb.get_location_details_from_coords(52.15, 21.29, "pl") == (None, None, lb.GEO_ERROR)
+    assert lb.get_location_details_from_coords(52.15, 21.29, "pl") == (
+        None, None, lb.GEO_ERROR
+    )
 
 
-def test_connection_error_is_not_cached(fake_nominatim):
-    """Po awarii ponowienie musi realnie uderzyć do geokodera (nie cache'ujemy błędu)."""
+def test_connection_error_is_not_cached_but_success_is(fake_nominatim):
     fake_nominatim.results.append(TimeoutError("timeout"))
     assert lb.get_location_details_from_coords(52.15, 21.29, "pl")[2] == lb.GEO_ERROR
 
-    fake_nominatim.results.append(_FakeLocation({"city": "Wiązowna"}, ADDRESS))
+    fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    assert lb.get_location_details_from_coords(52.15, 21.29, "pl")[2] == lb.GEO_OK
     assert lb.get_location_details_from_coords(52.15, 21.29, "pl")[2] == lb.GEO_OK
     assert len(fake_nominatim.calls) == 2
 
 
-def test_success_is_cached(fake_nominatim):
-    fake_nominatim.results.append(_FakeLocation({"city": "Wiązowna"}, ADDRESS))
-    first = lb.get_location_details_from_coords(52.15, 21.29, "pl")
-    second = lb.get_location_details_from_coords(52.15, 21.29, "pl")
-    assert first == second
-    assert len(fake_nominatim.calls) == 1, "drugie pytanie o tę samą parę ma iść z cache"
+def test_query_is_part_of_reverse_cache_key(fake_nominatim):
+    fake_nominatim.results.extend([_FakeLocation(ADDRESS), _FakeLocation(ADDRESS)])
+    lb.get_location_details_from_coords(52.15, 21.29, "pl", query="Wiązowna")
+    lb.get_location_details_from_coords(52.15, 21.29, "pl", query="ul. Lipowa 41, Wiązowna")
+    assert len(fake_nominatim.calls) == 2
 
 
-def test_forward_geocode_flags_connection_error(fake_nominatim):
-    fake_nominatim.results.append(TimeoutError("timeout"))
+def test_forward_geocode_and_guest_adapter_never_return_raw_address(fake_nominatim):
+    fake_nominatim.results.extend([_FakeGeocodeResult(), _FakeGeocodeResult()])
+    lat, lon, display_location, ok = lb.geocode_city_details("Wiązowna", "pl")
+    assert (lat, lon, ok) == (52.229721, 21.012234, True)
+    assert display_location == DISPLAY_LOCATION
+    assert POISON not in display_location
+
+    lat, lon, safe_label = lb.get_coords_from_city("Wiązowna", "pl")
+    assert (lat, lon, safe_label) == (52.229721, 21.012234, DISPLAY_LOCATION)
+    assert POISON not in safe_label
+
+
+def test_forward_geocode_failure_and_not_found_status(fake_nominatim):
+    fake_nominatim.results.extend([TimeoutError("timeout"), None])
     assert lb.geocode_city_details("Wiązowna", "pl") == (None, None, None, False)
-
-    fake_nominatim.results.append(None)          # brak wyników != awaria
     assert lb.geocode_city_details("Xyzzz", "pl") == (None, None, None, True)
 
-    fake_nominatim.results.append(_FakeGeocodeResult())
-    lat, lon, address, ok = lb.geocode_city_details("Warszawa", "pl")
-    assert ok is True and address == _FakeGeocodeResult.address
-
 
 # ============================================================================
-# 4. WSPÓLNA LOGIKA ETYKIETY I OPISU
+# Label resolution + user messages
 # ============================================================================
 
-def test_resolve_labels_ok(monkeypatch):
-    monkeypatch.setattr(lb, "get_location_details_from_coords",
-                        lambda lat, lon, lang: ("Wiązowna", ADDRESS, lb.GEO_OK))
-    assert lb._resolve_location_labels(52.15, 21.29, "pl") == ("Wiązowna", ADDRESS, lb.GEO_OK)
-
-
-def test_resolve_labels_no_city_uses_translated_field_message(monkeypatch):
-    monkeypatch.setattr(lb, "get_location_details_from_coords",
-                        lambda lat, lon, lang: (None, "Sahara", lb.GEO_NO_CITY))
-    label, display, status = lb._resolve_location_labels(23.0, 12.0, "de")
-    assert status == lb.GEO_NO_CITY
-    assert label == lb.FIELD_LOCATION_LABEL
-    assert display == i18n.UI_TEXTS["de"]["location_field"]
-
-
-def test_resolve_labels_error_without_fallback_is_fatal(monkeypatch):
-    monkeypatch.setattr(lb, "get_location_details_from_coords",
-                        lambda lat, lon, lang: (None, None, lb.GEO_ERROR))
-    assert lb._resolve_location_labels(52.15, 21.29, "pl") == (None, None, lb.GEO_ERROR)
-
-
-def test_resolve_labels_error_with_fallback_keeps_typing_result(monkeypatch):
-    """Chwilowa awaria reverse nie gubi nazwy, którą użytkownik właśnie wpisał."""
-    monkeypatch.setattr(lb, "get_location_details_from_coords",
-                        lambda lat, lon, lang: (None, None, lb.GEO_ERROR))
-    label, display, status = lb._resolve_location_labels(
-        52.15, 21.29, "pl", fallback_city="Wiązowna", fallback_address="Wiązowna, Polska"
+def test_resolve_labels_preserves_reverse_short_and_display_pair(monkeypatch):
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None:
+            (SHORT_LABEL, DISPLAY_LOCATION, lb.GEO_OK),
     )
-    assert (label, display, status) == ("Wiązowna", "Wiązowna, Polska", lb.GEO_OK)
+    assert lb._resolve_location_labels(
+        52.15, 21.29, "pl", query="Wiązowna"
+    ) == (SHORT_LABEL, DISPLAY_LOCATION, lb.GEO_OK)
 
 
-# ============================================================================
-# 5. WARSTWA WIADOMOŚCI
-# ============================================================================
-
-def test_used_location_message_always_full_form():
-    msg = lb._used_location_message("pl", "Wiązowna", ADDRESS)
-    assert msg.startswith("*📍 Użyta lokalizacja:*\n🌍 " + ADDRESS)
-    assert msg.endswith("po przecinkach.")
-
-
-def test_used_location_message_falls_back_to_city_name():
-    msg = lb._used_location_message("pl", "Wiązowna", None)
-    assert "🌍 Wiązowna" in msg
+def test_resolve_labels_uses_field_message_without_locality_or_forward_fallback(monkeypatch):
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (None, None, lb.GEO_NO_CITY),
+    )
+    short_label, display_location, status = lb._resolve_location_labels(
+        23.0, 12.0, "de"
+    )
+    assert status == lb.GEO_NO_CITY
+    assert short_label == lb.FIELD_LOCATION_LABEL
+    assert display_location == i18n.UI_TEXTS["de"]["location_field"]
 
 
-def test_md_safe_strips_markdown_control_chars():
-    # * , _ , ` , [ , ] znikają — resztę adresu zostawiamy bez zmian
-    assert lb._md_safe("Wiąz*owna_test`x`[y]") == "Wiązownatestxy"
-    assert lb._md_safe("Wiązowna, powiat otwocki") == "Wiązowna, powiat otwocki"
-    assert lb._md_safe(None) == ""
-    # Adres nie może rozwalić parse_mode=Markdown w send_reply.
-    msg = lb._used_location_message("pl", "X", "Dąbrowa_Górnicza *test*")
-    assert msg.count("*") % 2 == 0
+def test_query_is_not_used_as_fallback_after_reverse_failure(monkeypatch):
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (None, None, lb.GEO_ERROR),
+    )
+    assert lb._resolve_location_labels(
+        52.15, 21.29, "pl", query="Wiązowna"
+    ) == (None, None, lb.GEO_ERROR)
+
+
+def test_safe_forward_pair_is_fallback_when_reverse_fails(monkeypatch):
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (None, None, lb.GEO_ERROR),
+    )
+    assert lb._resolve_location_labels(
+        52.15, 21.29, "pl",
+        fallback_short_label=SHORT_LABEL,
+        fallback_display_location=DISPLAY_LOCATION,
+        query="Wiązowna",
+    ) == (SHORT_LABEL, DISPLAY_LOCATION, lb.GEO_OK)
+
+
+def test_message_helper_uses_full_display_but_not_as_short_label():
+    message = lb._used_location_message("pl", SHORT_LABEL, DISPLAY_LOCATION)
+    assert message == (
+        "📍 *Użyta lokalizacja:*\n"
+        f"{DISPLAY_LOCATION}\n\n"
+        "Pomyłka? Powtórz jeszcze raz komendę."
+    )
+    assert SHORT_LABEL in message
+    assert "/save_location" not in message and "/oneoff" not in message
+
+
+def test_markdown_dynamic_text_is_escaped_not_stripped():
+    assert lb._md_safe(r"Wiąz*owna_test`x`[y]\\") == (
+        r"Wiąz\*owna\_test\`x\`\[y]\\\\"
+    )
+    safe = lb._md_safe("Dąbrowa_Górnicza *test*")
+    assert safe == r"Dąbrowa\_Górnicza \*test\*"
+    message = lb._used_location_message("pl", "X", "Dąbrowa_Górnicza *test*")
+    assert r"Dąbrowa\_Górnicza \*test\*" in message
