@@ -8,15 +8,26 @@ rankingu i bez wybierania z listy:
 
   1. GEOCODE_TOO_SHORT  — 1-2 znaki bez kontekstu, NIE pyta mapy,
   2. kandydaci          — exactly_one=False, limit=7, addressdetails=True,
-                          language=lang (jedno zapytanie, kilku kandydatów),
+                          language=lang + best-effort namedetails i kraj
+                          z zapytania (jedno zapytanie, kilku kandydatów),
   3. akceptacja         — nazwa miejscowości kandydata = zapytanie jako pełna
                           nazwa albo pełny token; prefiks nie wystarcza
                           ("hel" != "helmand", "wa" != "western australia"),
-  4. GEOCODE_NO_MATCH / GEOCODE_OK / GEOCODE_UNCERTAIN — strict: zero
-                          dopasowań, jedno rozróżnialne miejsce, więcej niż
-                          jedno rozróżnialne miejsce,
-  5. GEOCODE_NOT_FOUND  — mapa odpowiedziała pustką (None albo []),
-  6. GEOCODE_ERROR      — mapa nie odpowiedziała (wyjątek sieciowy).
+  4. validated top result (ETAP 1.1) — kolejność Nominatima wygrywa DOPIERO po
+                          filtrach (klasa, jawny kraj, nazwa, kontekst): bierzemy
+                          pierwszego zwalidowanego kandydata,
+  5. GEOCODE_NO_MATCH   — zero zwalidowanych kandydatów,
+  6. GEOCODE_UNCERTAIN  — rzadki bezpiecznik: dowód tylko ze surowego
+                          display_name, bez pól miejscowości i bez namedetails,
+                          przy więcej niż jednym rozróżnialnym miejscu,
+  7. GEOCODE_NOT_FOUND  — mapa odpowiedziała pustką (None albo []),
+  8. GEOCODE_ERROR      — mapa nie odpowiedziała (wyjątek transportowy),
+                          bez ponawiania i bez zamiany na pustą listę.
+
+Do tego ETAP 1.1 dokłada: parser jawnego kraju z zapytania ("Hel PL",
+"Hel, Polska", "Nowy Jork Stany Zjednoczone"), egzonimy ("Paryż" -> Paris przez
+namedetails ALBO minimalną mapę aliasów) i wstrzykiwany do trybu gościa helper
+geocode_shortening_is_safe (skrót ratunkowy nie może zgubić kraju ani kodu).
 
 Te same statusy czytają /dzien, /teraz, /trend, /miasto, prompty, skróty i
 wzmianka @bot. Cache trybu gościa przyjmuje wyłącznie GEOCODE_OK.
@@ -88,6 +99,44 @@ def admin_boundary(name, extra=None, lat=54.6037, lon=18.7616):
     )
 
 
+def paris_result(lat=48.8566, lon=2.3522, namedetails=None, **extra):
+    """Paryż z Nominatima: pole miejscowości "Paris", opcjonalnie name:pl."""
+    address = {"city": "Paris", "country": "Francja", "country_code": "fr"}
+    address.update(extra)
+    return FakeResult(
+        address, lat=lat, lon=lon,
+        namedetails=(
+            {"name": "Paris", "name:pl": "Paryż"} if namedetails is None else namedetails
+        ),
+        display="Paris, Francja",
+    )
+
+
+def new_york_result(lat=40.7128, lon=-74.0060, **extra):
+    address = {"city": "New York", "state": "New York", "country": "Stany Zjednoczone",
+               "country_code": "us"}
+    address.update(extra)
+    return FakeResult(address, lat=lat, lon=lon, display="New York, Stany Zjednoczone")
+
+
+def norway_hel(lat=59.0, lon=10.9):
+    return FakeResult({"village": "Hel", "country": "Norway", "country_code": "no"},
+                      lat=lat, lon=lon, display="Hel, Norway")
+
+
+def weak_display_place(country, cc, lat, lon):
+    """Kandydat BEZ pól miejscowości i BEZ namedetails.
+
+    Dowodem dopasowania jest wyłącznie nagłówek ``display_name`` — najsłabsza
+    siła dowodu, jedyny powód, dla którego istnieje bezpiecznik UNCERTAIN.
+    """
+    return FakeResult(
+        {"municipality": "Hel", "country": country, "country_code": cc},
+        cls="boundary", typ="administrative", lat=lat, lon=lon,
+        display=f"Hel, {country}",
+    )
+
+
 class FakeNominatim:
     """Atrapa geopy.geocoders.Nominatim — oddaje dokładnie to, co włożymy."""
 
@@ -102,6 +151,7 @@ class FakeNominatim:
         FakeNominatim.calls.append({
             "query": query, "exactly_one": exactly_one, "language": language,
             "limit": limit, "addressdetails": addressdetails,
+            "extras": dict(kwargs),
         })
         if not FakeNominatim.responses:
             raise AssertionError("geokoder zapytany po raz drugi bez odpowiedzi")
@@ -115,10 +165,60 @@ class FakeNominatim:
         return [call for call in FakeNominatim.calls if "query" in call]
 
 
+class StrictNominatim:
+    """Atrapa geopy, która — jak prawdziwa biblioteka — odrzuca nieznane kwargs.
+
+    ``supported`` udaje zestaw nazw parametrów danej wersji geopy. Nieznany
+    kwargs podnosi ``TypeError`` PRZED ciałem metody, dokładnie jak geopy, więc
+    nie liczy się jako próba sieciowa (``network_calls`` rośnie dopiero po
+    walidacji). Dzięki temu testujemy drabinkę wariantów bez ani jednego
+    prawdziwego żądania.
+    """
+
+    supported = {"country_codes", "namedetails"}
+    reject_all = False   # symuluje geopy, które nie zna ŻADNEGO naszego wariantu
+    init_calls = 0
+    network_calls = 0
+    calls = []
+    responses = []
+    failures = []
+
+    def __init__(self, user_agent=None):
+        StrictNominatim.init_calls += 1
+
+    def geocode(self, query, exactly_one=True, language=None, limit=None,
+                addressdetails=None, **kwargs):
+        unknown = sorted(name for name in kwargs if name not in StrictNominatim.supported)
+        if StrictNominatim.reject_all or unknown:
+            raise TypeError(f"geocode() got an unexpected keyword argument {unknown[0]!r}")
+        StrictNominatim.network_calls += 1
+        StrictNominatim.calls.append({
+            "query": query, "exactly_one": exactly_one, "language": language,
+            "limit": limit, "addressdetails": addressdetails,
+            "extras": dict(kwargs),
+        })
+        if StrictNominatim.failures:
+            raise StrictNominatim.failures.pop(0)
+        if not StrictNominatim.responses:
+            raise AssertionError("geokoder zapytany po raz drugi bez odpowiedzi")
+        return StrictNominatim.responses.pop(0)
+
+    @classmethod
+    def reset(cls):
+        cls.supported = {"country_codes", "namedetails"}
+        cls.reject_all = False
+        cls.init_calls = 0
+        cls.network_calls = 0
+        cls.calls = []
+        cls.responses = []
+        cls.failures = []
+
+
 @pytest.fixture(autouse=True)
 def _no_network(monkeypatch):
     FakeNominatim.calls = []
     FakeNominatim.responses = []
+    StrictNominatim.reset()
     monkeypatch.setattr(lb, "Nominatim", FakeNominatim)
     lb._GEO_DETAILS_CACHE.clear()
     gbh._GEO_CACHE.clear()
@@ -126,9 +226,52 @@ def _no_network(monkeypatch):
     yield
     FakeNominatim.calls = []
     FakeNominatim.responses = []
+    StrictNominatim.reset()
     lb._GEO_DETAILS_CACHE.clear()
     gbh._GEO_CACHE.clear()
     gbh._CITY_CACHE.clear()
+
+
+def _freeze_hour(monkeypatch, hour, minute=0):
+    """Zamraża ``datetime.now()`` na podaną godzinę.
+
+    Handler karty dziennej importuje ``datetime`` w locie (``from datetime import
+    datetime``), więc podmiana atrybutu modułu ``datetime`` jest w nim widoczna —
+    dokładnie tak, jak w test_access_gate.
+    """
+    import datetime as _dt
+    real = _dt.datetime
+
+    class _FrozenDateTime(real):
+        @classmethod
+        def now(cls, tz=None):
+            return real(2026, 9, 30, hour, minute, tzinfo=tz)
+
+    monkeypatch.setattr(_dt, "datetime", _FrozenDateTime)
+    return _FrozenDateTime
+
+
+@pytest.fixture
+def morning_hour(monkeypatch):
+    """Zamraża ``datetime.now()`` na 10:00 — karta dzienna ma okno 05:00-15:59.
+
+    Bez tego test skrótu ``.d`` jest niedeterministyczny: po 16:00 (albo przed
+    05:00) czasu lokalnego bot celowo odmawia karty dziennej.
+    """
+    return _freeze_hour(monkeypatch, 10, 0)
+
+
+@pytest.fixture
+def evening_hour(monkeypatch):
+    """20:00 — poza oknem karty dziennej; kontrola, że morning_hour ma znaczenie."""
+    return _freeze_hour(monkeypatch, 20, 0)
+
+
+@pytest.fixture
+def strict_nominatim(monkeypatch):
+    """Podmienia geokoder na wersję walidującą kwargs (drabinka parametrów)."""
+    monkeypatch.setattr(lb, "Nominatim", StrictNominatim)
+    return StrictNominatim
 
 
 def geo(query, lang="pl"):
@@ -222,6 +365,201 @@ def test_forward_query_parameters(lang):
     assert call["addressdetails"] is True, "dowodem są strukturalne pola adresu"
     assert call["language"] == lang
     assert len(FakeNominatim.forward_calls()) == 1, "jedno zapytanie na wszystkich kandydatów"
+
+
+# ============================================================================
+# 3B. JAWNY KRAJ W ZAPYTANIU (ETAP 1.1)
+# ============================================================================
+
+@pytest.mark.parametrize("query,core,code", [
+    ("Hel Polska", "Hel", "pl"),
+    ("Hel PL", "Hel", "pl"),
+    ("Paryż Francja", "Paryż", "fr"),
+    ("Nowy Jork USA", "Nowy Jork", "us"),
+    ("Nowy Jork Stany Zjednoczone", "Nowy Jork", "us"),
+    ("Nowy Jork United States of America", "Nowy Jork", "us"),
+    ("Berlin Niemcy", "Berlin", "de"),
+    ("Oslo Norwegia", "Oslo", "no"),
+    ("Madrid Hiszpania", "Madrid", "es"),
+])
+def test_country_parser_without_comma(query, core, code):
+    assert lb._geocode_query_country(query) == (core, code)
+
+
+@pytest.mark.parametrize("query,core,code", [
+    ("Hel, Polska", "Hel", "pl"),
+    ("Hel, PL", "Hel", "pl"),
+    ("Paryż, Francja", "Paryż", "fr"),
+    ("Nowy Jork, USA", "Nowy Jork", "us"),
+    ("Nowy Jork, Stany Zjednoczone", "Nowy Jork", "us"),
+])
+def test_country_parser_with_comma(query, core, code):
+    assert lb._geocode_query_country(query) == (core, code)
+
+
+def test_country_parser_strips_suffix_commas_and_spaces():
+    assert lb._geocode_query_country("Hel, Polska") == ("Hel", "pl")
+    assert lb._geocode_query_country("Hel ,  Polska  ") == ("Hel", "pl")
+    assert lb._geocode_query_country("Hel,PL") == ("Hel", "pl")
+
+
+def test_country_parser_never_cuts_the_whole_query():
+    """"Polska" to pytanie o miejscowość, nie o kraj — nie odcinamy całości."""
+    for query in ("Polska", "Stany Zjednoczone", "Niemcy", "Norwegia", "Ameryka"):
+        assert lb._geocode_query_country(query) == (query, None)
+
+
+def test_country_parser_prefers_the_longest_suffix():
+    assert lb._geocode_query_country("Nowy Jork United States of America") == (
+        "Nowy Jork", "us",
+    )
+    assert lb._geocode_query_country("Nowy Jork Stany Zjednoczone") == ("Nowy Jork", "us")
+
+
+def test_uk_is_gb_like_nominatim():
+    assert lb._geocode_query_country("Londyn UK") == ("Londyn", "gb")
+    assert lb._geocode_query_country("Londyn Wielka Brytania") == ("Londyn", "gb")
+    assert lb._geocode_query_country("Londyn Great Britain") == ("Londyn", "gb")
+    assert lb._geocode_query_country("Nowy Jork Ameryka") == ("Nowy Jork", "us")
+
+
+def test_place_name_that_is_not_a_country_suffix_stays_untouched():
+    for query in ("Kościelna 41, Wiązowna", "Wiązowna 05-462", "Nowy Targ", "Hel"):
+        assert lb._geocode_query_country(query) == (query, None)
+
+
+def test_country_code_is_sent_as_a_filter_not_as_part_of_the_name():
+    FakeNominatim.responses.append([
+        norway_hel(),
+        poland_place("Hel", municipality="Hel", postcode="84-150"),
+    ])
+    status, lat, lon, short_label, display = geo("Hel PL")
+    assert status == lb.GEOCODE_OK
+    assert (lat, lon) == (54.6037, 18.7616), "kandydat z innym krajem odpada"
+    assert short_label == "Hel" and "Norway" not in display
+    calls = FakeNominatim.forward_calls()
+    assert len(calls) == 1, "jedno zapytanie na wszystkich kandydatów"
+    assert calls[-1]["query"] == "Hel", "kraj jest filtrem, nie częścią nazwy"
+    assert calls[-1]["extras"].get("country_codes") == "pl"
+
+
+@pytest.mark.parametrize("query", ["Hel, Polska", "Hel Polska", "Hel, PL", "Hel PL"])
+def test_every_country_form_of_hel_resolves_to_poland(query):
+    FakeNominatim.responses.append([
+        norway_hel(),
+        poland_place("Hel", municipality="Hel", county="pucki", state="pomorskie",
+                     postcode="84-150"),
+    ])
+    status, lat, _lon, short_label, display = geo(query)
+    assert status == lb.GEOCODE_OK, query
+    assert (lat, short_label) == (54.6037, "Hel")
+    assert "Norway" not in display
+
+
+def test_candidate_without_country_code_is_rejected_when_country_is_known():
+    """Kraj jawny: brak raw["address"]["country_code"] = odrzucenie, nie zgadywanie."""
+    FakeNominatim.responses.append([
+        FakeResult({"village": "Hel", "country": "Polska"}, lat=54.6037, lon=18.7616,
+                   display="Hel, Polska"),
+    ])
+    assert geo("Hel PL") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
+def test_country_mismatch_is_no_match_not_a_guess():
+    FakeNominatim.responses.append([norway_hel(), norway_hel()])
+    assert geo("Hel PL") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
+def test_without_explicit_country_no_country_filter_is_used():
+    FakeNominatim.responses.append([norway_hel(), poland_place("Hel")])
+    status, lat, _lon, _short, _display = geo("Hel")
+    assert status == lb.GEOCODE_OK and lat == 59.0
+    extras = FakeNominatim.forward_calls()[-1]["extras"]
+    assert "country_codes" not in extras and "countrycodes" not in extras
+
+
+@pytest.mark.parametrize("query,candidate", [
+    ("Paryż, Francja", paris_result),
+    ("Paryż Francja", paris_result),
+])
+def test_required_ok_for_paris_forms(query, candidate):
+    FakeNominatim.responses.append([candidate()])
+    status, lat, lon, short_label, display = geo(query)
+    assert status == lb.GEOCODE_OK
+    assert (lat, lon, short_label) == (48.8566, 2.3522, "Paris")
+    assert "Paryż" not in display
+
+
+@pytest.mark.parametrize("query", [
+    "Nowy Jork, USA", "Nowy Jork USA", "Nowy Jork, Stany Zjednoczone",
+    "Nowy Jork Stany Zjednoczone",
+])
+def test_required_ok_for_new_york_forms_with_country(query):
+    FakeNominatim.responses.append([new_york_result()])
+    status, lat, lon, short_label, _display = geo(query)
+    assert status == lb.GEOCODE_OK, query
+    assert (lat, lon, short_label) == (40.7128, -74.006, "New York")
+
+
+# ============================================================================
+# 3C. DRABINKA PARAMETRÓW GEOKODERA (geopy 2.5 vs starsze)
+# ============================================================================
+
+def test_full_parameter_set_when_geopy_knows_both_kwargs(strict_nominatim):
+    strict_nominatim.responses.append([poland_place("Hel", municipality="Hel")])
+    assert geo("Hel PL", "pl")[0] == lb.GEOCODE_OK
+    assert strict_nominatim.init_calls == 1, "jedna konstrukcja Nominatima"
+    assert strict_nominatim.network_calls == 1, "dokładnie jedno żądanie"
+    call = strict_nominatim.calls[-1]
+    assert call["query"] == "Hel"
+    assert call["exactly_one"] is False
+    assert call["limit"] == lb.GEOCODE_CANDIDATE_LIMIT == 7
+    assert call["addressdetails"] is True
+    assert call["language"] == "pl"
+    assert call["extras"] == {"country_codes": "pl", "namedetails": True}
+
+
+def test_older_geopy_uses_countrycodes(strict_nominatim):
+    strict_nominatim.supported = {"countrycodes", "namedetails"}
+    strict_nominatim.responses.append([poland_place("Hel", municipality="Hel")])
+    assert geo("Hel PL")[0] == lb.GEOCODE_OK
+    assert strict_nominatim.network_calls == 1, "TypeError nie mnoży żądań sieciowych"
+    assert strict_nominatim.calls[-1]["extras"] == {
+        "countrycodes": "pl", "namedetails": True,
+    }
+
+
+def test_country_wins_over_namedetails_when_only_countrycodes_is_known(strict_nominatim):
+    strict_nominatim.supported = {"countrycodes"}
+    strict_nominatim.responses.append([poland_place("Hel", municipality="Hel")])
+    assert geo("Hel PL")[0] == lb.GEOCODE_OK
+    assert strict_nominatim.network_calls == 1
+    assert strict_nominatim.calls[-1]["extras"] == {"countrycodes": "pl"}
+
+
+def test_namedetails_is_best_effort_when_geopy_does_not_know_it(strict_nominatim):
+    """Bez namedetails zostaje mapa aliasów — walidacja nie może od nich zależeć."""
+    strict_nominatim.supported = set()
+    strict_nominatim.responses.append([paris_result(namedetails={})])
+    assert geo("Paryż")[0] == lb.GEOCODE_OK
+    assert strict_nominatim.network_calls == 1
+    assert strict_nominatim.calls[-1]["extras"] == {}
+
+
+def test_timeout_is_error_with_exactly_one_attempt(strict_nominatim):
+    strict_nominatim.failures.append(TimeoutError("timeout"))
+    assert geo("Hel PL") == (lb.GEOCODE_ERROR, None, None, None, None)
+    assert strict_nominatim.network_calls == 1, "timeout nie jest ponawiany"
+    assert strict_nominatim.calls[-1]["extras"] == {
+        "country_codes": "pl", "namedetails": True,
+    }
+
+
+def test_no_supported_parameter_variant_is_error_not_not_found(strict_nominatim):
+    """Gdy geopy odrzuca KAŻDY wariant kwargs, to awaria — nigdy pusta mapa."""
+    strict_nominatim.reject_all = True
+    assert geo("Hel") == (lb.GEOCODE_ERROR, None, None, None, None)
+    assert strict_nominatim.network_calls == 0
 
 
 def test_public_and_compat_signatures_are_unchanged():
@@ -381,6 +719,97 @@ def test_namedetails_are_a_fallback_only_when_no_locality_fields_exist():
 # 5. FILTR KLASY KANDYDATA
 # ============================================================================
 
+# ============================================================================
+# 4B. EGZONIMY: "Paryż" -> Paris, "Nowy Jork" -> New York (ETAP 1.1)
+# ============================================================================
+
+def test_exonym_through_namedetails_returns_the_locality_field():
+    """Egzonim dowodzi dopasowania, ale tożsamością i etykietą jest pole miejscowości."""
+    FakeNominatim.responses.append([paris_result()])
+    status, lat, lon, short_label, display = geo("Paryż, Francja")
+    assert status == lb.GEOCODE_OK
+    assert (lat, lon) == (48.8566, 2.3522)
+    assert short_label == "Paris", "etykieta z pola miejscowości, nie z egzonimu"
+    assert "Paryż" not in display
+
+
+def test_exonym_through_the_alias_map_when_namedetails_are_missing():
+    """Gdy geopy/mapa nie dają namedetails, ratuje minimalna mapa aliasów."""
+    FakeNominatim.responses.append([paris_result(namedetails={})])
+    assert geo("Paryż")[0] == lb.GEOCODE_OK
+    FakeNominatim.responses.append([new_york_result()])
+    assert geo("Nowy Jork")[0] == lb.GEOCODE_OK
+
+
+def test_alias_map_is_only_an_extra_variant_of_the_same_comparison():
+    assert lb._geocode_query_variants("Paryż") == ["paryz", "paris"]
+    assert lb._geocode_query_variants("Nowy Jork") == ["nowy jork", "new york"]
+    assert lb._geocode_query_variants("Hel") == ["hel"], "bez aliasu nie ma drugiego wariantu"
+
+
+@pytest.mark.parametrize("query,name", [
+    ("Nowy Jork", "Nowy Jork"),
+    ("Paryż", "Paris"),
+])
+def test_alias_does_not_loosen_the_full_token_rule(query, name):
+    """Alias to wariant porównania, nie nowa (luźniejsza) reguła dopasowania."""
+    assert lb._geocode_name_matches_any(
+        lb._geocode_query_variants(query), lb._normalize_location_text(name)
+    )
+    for longer in ("Paryżanka", "New Yorker", "Nowy Jorkowy"):
+        assert not lb._geocode_name_matches_any(
+            lb._geocode_query_variants(query), lb._normalize_location_text(longer)
+        ), longer
+
+
+@pytest.mark.parametrize("query,field_value", [
+    ("paryz", "Paryżanka"),
+    ("hel", "Helmand"),
+    ("wa", "Western Australia"),
+])
+def test_prefix_of_a_longer_word_never_matches_even_for_aliases(query, field_value):
+    assert not lb._geocode_name_matches_any(
+        lb._geocode_query_variants(query), lb._normalize_location_text(field_value)
+    )
+
+
+def test_alias_never_matches_a_longer_place_end_to_end():
+    FakeNominatim.responses.append([
+        FakeResult({"city": "Paryżanka", "country": "Polska", "country_code": "pl"},
+                   lat=52.0, lon=21.0, display="Paryżanka, Polska"),
+    ])
+    assert geo("Paryż") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
+def test_only_allowlisted_namedetails_keys_are_evidence():
+    FakeNominatim.responses.append([
+        FakeResult({"municipality": "Xyzz", "country": "Polska", "country_code": "pl"},
+                   cls="boundary", typ="administrative", lat=52.0, lon=21.0,
+                   namedetails={"ref": "Paryż", "destination": "Paryż"},
+                   display="Xyzz, Polska"),
+    ])
+    assert geo("Paryż") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
+def test_localized_evidence_is_not_the_weak_display_fallback():
+    """>1 kandydat dopasowany przez namedetails to nadal top result, nie UNCERTAIN."""
+    def boundary(cc, country, lat, lon):
+        return FakeResult(
+            {"municipality": "Paris", "country": country, "country_code": cc},
+            cls="boundary", typ="administrative", lat=lat, lon=lon,
+            namedetails={"name": "Paris", "name:pl": "Paryż"},
+            display=f"Paris, {country}",
+        )
+
+    FakeNominatim.responses.append([
+        boundary("us", "USA", 33.66, -95.55),
+        boundary("fr", "Francja", 48.8566, 2.3522),
+    ])
+    status, lat, _lon, _short, _display = geo("Paryż")
+    assert status == lb.GEOCODE_OK
+    assert lat == 33.66, "kolejność geokodera po filtrach"
+
+
 @pytest.mark.parametrize("cls,typ", [
     ("natural", "desert"),
     ("railway", "station"),
@@ -401,36 +830,111 @@ def test_unsafe_classes_are_rejected_even_when_the_name_matches(cls, typ):
     assert geo("Wa, Australia")[0] == lb.GEOCODE_NO_MATCH
 
 
-def test_safe_classes_are_accepted():
+def _boundary_location(typ="administrative", addresstype=None, cls="boundary"):
+    """Granica administracyjna w kształcie Nominatima (opcjonalne addresstype)."""
+    location = FakeResult({"municipality": "Hel", "country": "Polska",
+                           "country_code": "pl"},
+                          cls=cls, typ=typ, lat=54.6037, lon=18.7616,
+                          display="Hel, powiat pucki, Polska")
+    location.raw.pop("type", None)
+    if typ is not None:
+        location.raw["type"] = typ
+    if addresstype is not None:
+        location.raw["addresstype"] = addresstype
+    return location
+
+
+def test_boundary_without_administrative_type_is_rejected():
+    """Sam ``boundary`` bez potwierdzonego typu NIE jest bezpieczny.
+
+    Etap 1 miał w kodzie tolerancję ``typ in ("", "administrative")``, ale nie
+    korzystał z niej żaden test, a docstring mówił o "boundary +
+    type=administrative". ETAP 1.1 wymaga jawnego dowodu typu administracyjnego.
+    """
+    without_type = _boundary_location(typ=None)
+    assert "type" not in without_type.raw and "addresstype" not in without_type.raw
+    assert lb._geocode_candidate_is_safe(without_type.raw) is False
+    FakeNominatim.responses.append([without_type])
+    assert geo("Hel") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+    empty_type = _boundary_location(typ="")
+    assert lb._geocode_candidate_is_safe(empty_type.raw) is False
+    FakeNominatim.responses.append([empty_type])
+    assert geo("Hel") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
+def test_boundary_with_addresstype_administrative_is_accepted():
+    """Gdy Nominatim podaje tylko ``addresstype=administrative`` — przechodzi."""
+    location = _boundary_location(typ=None, addresstype="administrative")
+    assert "type" not in location.raw
+    assert lb._geocode_candidate_is_safe(location.raw) is True
+    FakeNominatim.responses.append([location])
+    assert geo("Hel")[0] == lb.GEOCODE_OK
+
+
+def test_legacy_administrative_class_needs_the_same_type_proof():
+    """Klasa "administrative" (z etapu 1) wymaga tego samego dowodu typu."""
+    accepted = _boundary_location(typ="administrative", cls="administrative")
+    assert lb._geocode_candidate_is_safe(accepted.raw) is True
+    FakeNominatim.responses.append([accepted])
+    assert geo("Hel")[0] == lb.GEOCODE_OK
+
+    rejected = _boundary_location(typ="", cls="administrative")
+    assert lb._geocode_candidate_is_safe(rejected.raw) is False
+
+
+def test_boundary_with_administrative_type_is_accepted():
     for location in (poland_place("Hel"), admin_boundary("Hel")):
         FakeNominatim.responses.append([location])
         assert geo("Hel")[0] == lb.GEOCODE_OK
 
 
+@pytest.mark.parametrize("field", ["type", "addresstype"])
+@pytest.mark.parametrize("typ", ["protected_area", "national_park", "postal_code",
+                                 "maritime", "political"])
+def test_boundary_types_other_than_administrative_stay_rejected(field, typ):
+    """Dopuszczalny jest WYŁĄCZNIE typ administracyjny — w obu polach."""
+    location = _boundary_location(typ=None)
+    location.raw[field] = typ
+    assert lb._geocode_candidate_is_safe(location.raw) is False
+    FakeNominatim.responses.append([location])
+    assert geo("Hel") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
 # ============================================================================
-# 6. STRICT DISAMBIGUATION
+# 6. VALIDATED TOP RESULT (ETAP 1.1)
 # ============================================================================
 
-def test_two_distinguishable_places_are_uncertain_not_a_guess():
+def test_two_distinguishable_places_go_by_nominatim_order_not_uncertainty():
+    """ETAP 1.1: dwóch zwalidowanych kandydatów to NIE powód do niepewności.
+
+    "Hel" bez kraju idzie za kolejnością Nominatima (użytkownik dopisuje kraj,
+    żeby zawęzić) — a NIE jest normalną odpowiedzią status "kilka miejsc".
+    """
     FakeNominatim.responses.append([
         poland_place("Hel", municipality="Hel", postcode="84-150"),
         FakeResult({"village": "Hel", "country": "Norway", "country_code": "no"},
                    lat=59.0, lon=10.9, display="Hel, Norway"),
     ])
-    assert geo("Hel", "pl") == (lb.GEOCODE_UNCERTAIN, None, None, None, None)
+    status, lat, lon, short_label, display = geo("Hel", "pl")
+    assert status == lb.GEOCODE_OK
+    assert (lat, lon) == (54.6037, 18.7616), "wygrywa pierwszy zwalidowany"
+    assert short_label == "Hel" and "Norway" not in display
 
 
 def test_no_ranking_between_city_and_village():
-    """Bez rankingu: nawet 'miasto' + 'wieś' o tej samej nazwie to UNCERTAIN."""
+    """Bez rankingu: wygrywa kolejność geokodera, nie typ miejscowości."""
     FakeNominatim.responses.append([
-        FakeResult({"city": "Hel", "country": "Polska", "country_code": "pl"},
-                   cls="place", typ="city", lat=54.6037, lon=18.7616,
-                   display="Hel, Polska"),
         FakeResult({"village": "Hel", "country": "Polska", "country_code": "pl"},
                    cls="place", typ="village", lat=50.10, lon=22.00,
                    display="Hel, Polska"),
+        FakeResult({"city": "Hel", "country": "Polska", "country_code": "pl"},
+                   cls="place", typ="city", lat=54.6037, lon=18.7616,
+                   display="Hel, Polska"),
     ])
-    assert geo("Hel")[0] == lb.GEOCODE_UNCERTAIN
+    status, lat, _lon, _short, _display = geo("Hel")
+    assert status == lb.GEOCODE_OK
+    assert lat == 50.10, "wieś pierwsza w kolejności = wieś wygrywa, bez rankingu"
 
 
 def test_the_same_place_returned_twice_is_one_place():
@@ -448,13 +952,22 @@ def test_the_same_place_returned_twice_is_one_place():
 
 @pytest.mark.parametrize("lang", ["pl", "no", "en"])
 def test_language_is_not_country_context(lang):
-    """language=pl nie rozstrzyga kraju — rozstrzyga dopiero "Hel, PL" w zapytaniu."""
+    """language=pl nie rozstrzyga kraju — kraj pochodzi TYLKO z zapytania.
+
+    Bez jawnego kraju nie ma filtra country_code, więc wynik idzie za
+    kolejnością Nominatima (top result), a nie za językiem UI.
+    """
     FakeNominatim.responses.append([
-        poland_place("Hel", municipality="Hel", postcode="84-150"),
         FakeResult({"village": "Hel", "country": "Norway", "country_code": "no"},
                    lat=59.0, lon=10.9, display="Hel, Norway"),
+        poland_place("Hel", municipality="Hel", postcode="84-150"),
     ])
-    assert geo("Hel", lang)[0] == lb.GEOCODE_UNCERTAIN
+    status, lat, _lon, _short, _display = geo("Hel", lang)
+    assert status == lb.GEOCODE_OK
+    assert lat == 59.0, "język UI nie może zmieniać kolejności ani filtrować kraju"
+    call = FakeNominatim.forward_calls()[-1]
+    assert "country_codes" not in call["extras"], "język to nie kraj"
+    assert "countrycodes" not in call["extras"]
 
 
 @pytest.mark.parametrize("query", ["Hel, PL", "Hel, Polska"])
@@ -479,6 +992,78 @@ def test_context_that_contradicts_every_candidate_is_no_match():
     ])
     # Żaden kandydat nie potwierdza Portugalii: sprzeczny kontekst odrzuca obu.
     assert geo("Hel, Portugalia")[0] == lb.GEOCODE_NO_MATCH
+
+
+# ============================================================================
+# 6B. BEZPIECZNIK UNCERTAIN: TYLKO SŁABY DOWÓD Z DISPLAY_NAME
+# ============================================================================
+
+def test_weak_display_evidence_with_one_place_is_ok():
+    FakeNominatim.responses.append([weak_display_place("Polska", "pl", 54.6037, 18.7616)])
+    assert geo("Hel")[0] == lb.GEOCODE_OK
+
+
+def test_weak_display_evidence_with_two_distinguishable_places_is_uncertain():
+    """Rzadki bezpiecznik: dane za słabe, by ufać top resultowi."""
+    FakeNominatim.responses.append([
+        weak_display_place("Norwegia", "no", 59.0, 10.9),
+        weak_display_place("Polska", "pl", 54.6037, 18.7616),
+    ])
+    assert geo("Hel") == (lb.GEOCODE_UNCERTAIN, None, None, None, None)
+
+
+def test_country_that_matches_no_candidate_is_no_match_not_uncertain():
+    FakeNominatim.responses.append([
+        weak_display_place("Norwegia", "no", 59.0, 10.9),
+        weak_display_place("Polska", "pl", 54.6037, 18.7616),
+    ])
+    assert geo("Hel, Wielka Brytania") == (lb.GEOCODE_NO_MATCH, None, None, None, None)
+
+
+def test_explicit_country_narrows_the_weak_evidence_to_one_place():
+    FakeNominatim.responses.append([
+        weak_display_place("Norwegia", "no", 59.0, 10.9),
+        weak_display_place("Polska", "pl", 54.6037, 18.7616),
+    ])
+    status, lat, _lon, _short, _display = geo("Hel Polska")
+    assert status == lb.GEOCODE_OK, "filtr kraju zostawia jedno zwalidowane miejsce"
+    assert lat == 54.6037
+
+
+def test_weak_display_evidence_of_the_same_place_is_not_uncertain():
+    """Dwa wpisy tej samej miejscowości (punkt + relacja) to nie dwie miejscowości."""
+    FakeNominatim.responses.append([
+        weak_display_place("Polska", "pl", 54.6037, 18.7616),
+        weak_display_place("Polska", "pl", 54.6100, 18.7700),
+    ])
+    assert geo("Hel")[0] == lb.GEOCODE_OK
+
+
+def test_strong_evidence_disables_the_uncertain_guard():
+    """Wystarczy jeden kandydat z polem miejscowości, by bezpiecznik nie zadziałał."""
+    FakeNominatim.responses.append([
+        poland_place("Hel", municipality="Hel", postcode="84-150"),
+        weak_display_place("Norwegia", "no", 59.0, 10.9),
+    ])
+    status, lat, _lon, _short, _display = geo("Hel")
+    assert status == lb.GEOCODE_OK
+    assert lat == 54.6037
+
+
+def test_uncertain_is_never_a_normal_answer_for_popular_names():
+    """Popularne nazwy dają kartę: kraj w zapytaniu rozstrzyga, reszta idzie po kolei."""
+    France, Texas = paris_result(), paris_result(
+        lat=33.66, lon=-95.55, country_code="us", country="Stany Zjednoczone",
+    )
+    FakeNominatim.responses.append([Texas, France])
+    status, lat, _lon, _short, _display = geo("Paryż, Francja")
+    assert status == lb.GEOCODE_OK and lat == 48.8566, "filtr kraju, nie niepewność"
+
+    FakeNominatim.responses.append([
+        weak_display_place("Polska", "pl", 54.6037, 18.7616),
+        weak_display_place("Norwegia", "no", 59.0, 10.9),
+    ])
+    assert geo("Hel")[0] == lb.GEOCODE_UNCERTAIN, "tylko ten jeden słaby przypadek"
 
 
 # ============================================================================
@@ -797,6 +1382,114 @@ def test_guest_fallback_to_two_tokens_is_limited_and_context_aware():
     assert gbh._shortening_keeps_context("Wiązowna 05-462 proszę") is True
     assert gbh._shortening_keeps_context("Hel, PL extra") is False
     assert gbh._shortening_keeps_context("Nowy Jork super") is True
+
+
+@pytest.mark.parametrize("query,expected", [
+    ("Nowy Jork super", True),
+    ("Nowy Jork", True),
+    ("Hel", True),
+    ("Hel, PL proszę", False),
+    ("Hel super PL", False),
+    ("Wiązowna 05-462 proszę", True),
+    ("Wiązowna proszę 05-462", False),
+    ("", False),
+])
+def test_geocode_shortening_is_safe_contract(query, expected):
+    """Helper z location_bot: skrót nie może zgubić kraju ani kodu pocztowego."""
+    assert lb.geocode_shortening_is_safe(query) is expected
+
+
+def test_guest_shortening_uses_the_injected_country_checker():
+    """Bez wstrzykniętego checkera zostałby tylko lokalny fallback (przecinek/kod)."""
+    calls = []
+
+    def status_fn(city, lang):
+        calls.append(city)
+        return None, None, None, lb.GEOCODE_NOT_FOUND
+
+    def run(query):
+        calls.clear()
+        gbh._geocode_best_effort(
+            query, lambda city, lang: (None, None, None), "pl", status_fn,
+            lb.geocode_shortening_is_safe,
+        )
+        return list(calls)
+
+    assert run("Nowy Jork super") == ["Nowy Jork super", "Nowy Jork"]
+    assert run("Hel, PL proszę") == ["Hel, PL proszę"], "przecinek zostaje"
+    assert run("Hel super PL") == ["Hel super PL"], "skrót zgubiłby jawny kraj"
+    assert run("Hel PL proszę") == ["Hel PL proszę", "Hel PL"], "kraj przetrwał"
+    # Stary fallback (bez checkera) zachowuje się jak w etapie 1.
+    assert gbh._shortening_keeps_context("Hel super PL") is True
+
+
+def test_guest_shortening_checker_is_wired_from_location_bot():
+    """location_bot podaje swój helper — guest handler nie zna mapy krajów."""
+    assert lb.geocode_shortening_is_safe is not gbh._shortening_keeps_context
+    assert gbh._shortening_keeps_context("Nowy Jork super", lb.geocode_shortening_is_safe)
+    assert not gbh._shortening_keeps_context(
+        "Hel super PL", lb.geocode_shortening_is_safe
+    )
+
+
+@pytest.mark.parametrize("text,card_type", [
+    ("?12 Paryż Francja", "now"),
+    (".n Paryż Francja", "now"),
+    ("?14 Paryż Francja", "future"),
+    ("@PogodaWorldBot Paryż Francja", "now"),
+])
+def test_guest_shortcuts_and_mention_card_a_validated_city(text, card_type):
+    """Ta sama walidacja dla ?12 ?14 .n i wzmianki @bot — z prawdziwym rdzeniem."""
+    FakeNominatim.responses.append([paris_result()])
+    handled, sent, photos, payloads = guest_handler_run(
+        text, lambda city, lang: lb.geocode_city_details_status(city, lang),
+        city_name="Paris",
+    )
+    assert handled is True
+    assert payloads and payloads[0][2] == card_type, text
+    assert photos and photos[0][1] == "Paris", text
+    assert sent == [], "udana karta nie ma komunikatu statusowego"
+    assert FakeNominatim.forward_calls()[0]["query"] == "Paryż"
+
+
+def test_guest_day_shortcut_cards_a_validated_city(morning_hour):
+    """.d / ?d rysują kartę dzienną — o 10:00, żeby test nie zależał od zegara."""
+    for text in (".d Paryż Francja", "?d Paryż Francja"):
+        FakeNominatim.responses.append([paris_result()])
+        handled, sent, photos, payloads = guest_handler_run(
+            text, lambda city, lang: lb.geocode_city_details_status(city, lang),
+            city_name="Paris",
+        )
+        assert handled is True and photos, text
+        assert payloads[0][2] == "day", text
+        assert sent == [], text
+
+
+def test_guest_day_shortcut_respects_the_local_card_window(evening_hour):
+    """Kontrola dla morning_hour: o 20:00 karta dzienna NIE powstaje."""
+    FakeNominatim.responses.append([paris_result()])
+    _handled, sent, photos, _payloads = guest_handler_run(
+        ".d Paryż Francja",
+        lambda city, lang: lb.geocode_city_details_status(city, lang),
+        city_name="Paris",
+    )
+    assert photos == []
+    assert sent and i18n.t_ui("pl", "time_limit") in sent[-1]
+
+
+def test_guest_wrong_country_is_no_match_and_no_card():
+    FakeNominatim.responses.append([
+        FakeResult({"city": "Paris", "country": "Stany Zjednoczone", "country_code": "us"},
+                   lat=33.66, lon=-95.55, display="Paris, Stany Zjednoczone"),
+    ])
+    _handled, sent, photos, payloads = guest_handler_run(
+        "?12 Paryż Francja",
+        lambda city, lang: lb.geocode_city_details_status(city, lang),
+        city_name="Paris",
+    )
+    assert photos == [] and payloads == []
+    assert i18n.UI_TEXTS["pl"]["geocode_no_match"] in sent[-1]
+    assert gbh._GEO_CACHE == {}, "odrzucony wynik nie trafia do cache"
 
 
 def test_ok_without_coordinates_never_sends_an_empty_message():

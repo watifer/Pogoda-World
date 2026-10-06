@@ -44,12 +44,20 @@ import requests
 # przez monkeypatch.setenv (odporne na kolejność importów modułów testowych
 # oraz na .env użytkownika, który load_dotenv() mógł już wczytać).
 
+import i18n
 import location_bot as lb
 import users_store
 
 FORM_HEADERS = ["Sygnatura czasowa", "Chat ID", "Imię", "Miasto", "Lat", "Lon",
                 "Raport poranny", "Aktualizacja", "Lang"]
 USERS_HEADERS = users_store.CANONICAL_HEADERS
+
+# ETAP 1.1: referencja do PRAWDZIWEGO walidatora zapamiętana PRZED patchem
+# harnessu. BotHarness podmienia lb.geocode_city_accepted na atrapę, więc testy
+# pełnego flow muszą mieć oryginał, żeby naprawdę przejść walidacją kandydatów
+# (na atrapie Nominatima, bez ani jednego żądania sieciowego).
+REAL_GEOCODE_CITY_ACCEPTED = lb.geocode_city_accepted
+REAL_GET_COORDS_FROM_CITY = lb.get_coords_from_city
 
 
 def freeze_local_hour(monkeypatch, hour, minute=0):
@@ -204,6 +212,7 @@ class BotHarness:
         self.sent = []        # (chat_id, text)
         self.markups = []     # reply_markup każdej wysłanej wiadomości (index = sent)
         self.guest_calls = []  # teksty przekazane do handle_guest_now
+        self.guest_kwargs = []  # pełne kwargs handle_guest_now (wiring ETAP 1/1.1)
         self.cards = []       # chat_id z _send_card_to_user (legacy)
         self.oneoffs = []     # (chat_id, lat, lon, city, lang, card_type)
 
@@ -232,6 +241,7 @@ class BotHarness:
         def fake_guest_now(**kw):
             text = (kw.get("message", {}).get("text") or "").strip()
             self.guest_calls.append(text)
+            self.guest_kwargs.append(kw)
             if not text or text.startswith("/"):
                 return False
             low = text.lower()
@@ -1401,6 +1411,171 @@ class TestLocationDescription:
         assert rec["profile_status"] == "active"
         assert rec["location_label"] == "Hel"
         assert bot.has_reply(119, "Hel, powiat pucki, województwo pomorskie, Polska")
+
+
+# ============================================================================
+# ETAP 1.1: walidowany top result w PEŁNYM flow bota (prawdziwy rdzeń)
+# ============================================================================
+
+class _Stage11Nominatim:
+    """Atrapa Nominatima dla flow: zero sieci, zapisuje zapytania i kwargs."""
+
+    calls = []
+    results = {}
+
+    def __init__(self, user_agent=None):
+        pass
+
+    def geocode(self, query, exactly_one=True, language=None, limit=None,
+                addressdetails=None, **kwargs):
+        _Stage11Nominatim.calls.append({"query": query, **kwargs})
+        return _Stage11Nominatim.results.get(query)
+
+    @classmethod
+    def reset(cls, results):
+        cls.calls = []
+        cls.results = {query: list(value) for query, value in results.items()}
+
+
+def _stage_result(address, name, lat, lon, cls="place", typ="city", namedetails=None):
+    """Minimalny obiekt w kształcie geopy Location, z surowym address."""
+    raw = {"class": cls, "type": typ, "address": dict(address),
+           "display_name": ", ".join(str(v) for v in address.values())}
+    if namedetails:
+        raw["namedetails"] = dict(namedetails)
+    return type("Location", (), {"raw": raw, "latitude": lat, "longitude": lon,
+                                 "address": name})()
+
+
+PARIS_FR = _stage_result(
+    {"city": "Paris", "country": "Francja", "country_code": "fr"},
+    "Paris", 48.8566, 2.3522, namedetails={"name": "Paris", "name:pl": "Paryż"},
+)
+NEW_YORK_US = _stage_result(
+    {"city": "New York", "state": "New York", "country": "Stany Zjednoczone",
+     "country_code": "us"},
+    "New York", 40.7128, -74.006,
+)
+HELMAND_AF = _stage_result(
+    {"state": "Helmand", "country": "Afganistan", "country_code": "af"},
+    "Helmand", 31.5, 65.0, cls="boundary", typ="administrative",
+)
+HEL_PL = _stage_result(
+    {"city": "Hel", "municipality": "Hel", "county": "pucki", "state": "pomorskie",
+     "postcode": "84-150", "country": "Polska", "country_code": "pl"},
+    "Hel", 54.6037, 18.7616,
+)
+
+
+@pytest.fixture
+def stage11_geocoder(monkeypatch):
+    """Prawdziwy ``geocode_city_accepted`` + atrapa Nominatima (bez sieci)."""
+    # Klucze = dokładnie to, o co pyta rdzeń geokodowania: jawny kraj jest
+    # odcinany jako filtr, więc "Nowy Jork USA" trafia tu jako "Nowy Jork".
+    _Stage11Nominatim.reset({"Paryż": [PARIS_FR], "Nowy Jork": [NEW_YORK_US],
+                             "Hel": [HELMAND_AF, HEL_PL]})
+    monkeypatch.setattr(lb, "Nominatim", _Stage11Nominatim)
+    monkeypatch.setattr(lb, "geocode_city_accepted", REAL_GEOCODE_CITY_ACCEPTED)
+    lb._GEO_DETAILS_CACHE.clear()
+    yield _Stage11Nominatim
+    lb._GEO_DETAILS_CACHE.clear()
+
+
+def _run_real_guest(text, lang="pl", chat_type="private"):
+    """Woła PRAWDZIWY handle_guest_now z atrapami wysyłki (bez Telegrama)."""
+    import guest_bot_handler as gbh
+
+    sent, photos, payloads = [], [], []
+    handled = gbh.handle_guest_now(
+        message={"text": text,
+                 "chat": {"id": 555 if chat_type == "private" else -100555,
+                          "type": chat_type},
+                 "from": {"language_code": lang}},
+        bot_username="PogodaWorldBot",
+        get_coords_fn=REAL_GET_COORDS_FROM_CITY,
+        geocode_status_fn=lambda city, l: lb.geocode_city_details_status(city, l),
+        shortening_ok_fn=lb.geocode_shortening_is_safe,
+        build_payload_fn=lambda lat, lon, lang, card_type, city: (
+            payloads.append((lat, lon, card_type, city)) or {"location": {"tz": "UTC"}}
+        ),
+        prepare_layout_fn=lambda payload, card_type: {"layout": card_type},
+        render_png_fn=lambda layout: "/tmp/karta.png",
+        send_photo_fn=lambda chat_id, path, city, f_address: photos.append(
+            (chat_id, city, f_address)
+        ),
+        send_reply_fn=lambda chat_id, txt: sent.append(txt),
+        get_city_fn=lambda lat, lon, lang: "Paris" if lon > 0 else "Nowy Jork",
+    )
+    return handled, sent, photos, payloads
+
+
+class TestStage11ValidatedTopResult:
+    """ETAP 1.1: kraj z zapytania + pierwszy zwalidowany kandydat w pełnym flow."""
+
+    def test_teraz_paris_with_country_generates_a_card(self, bot, stage11_geocoder):
+        bot.run(bot.msg(120, "/start BETAX1"))
+        bot.run(bot.msg(120, "/teraz Paryż Francja"))
+
+        assert stage11_geocoder.calls, "geokoder musi zostać zapytany"
+        assert stage11_geocoder.calls[0]["query"] == "Paryż"
+        assert stage11_geocoder.calls[0]["country_codes"] == "fr"
+        assert len(bot.oneoffs) == 1
+        chat_id, lat, lon, city, lang, card_type = bot.oneoffs[0]
+        assert (chat_id, lat, lon, lang, card_type) == (120, 48.8566, 2.3522, "pl", "now")
+        assert city, "karta musi mieć nazwę miejscowości"
+        assert bot.users.record(120)["profile_status"] == "none", "bez zapisu profilu"
+
+    def test_teraz_new_york_usa_generates_a_card(self, bot, stage11_geocoder):
+        bot.run(bot.msg(121, "/start BETAX1"))
+        bot.run(bot.msg(121, "/teraz Nowy Jork USA"))
+
+        assert stage11_geocoder.calls[0]["query"] == "Nowy Jork"
+        assert stage11_geocoder.calls[0]["country_codes"] == "us"
+        assert bot.oneoffs[-1][1:3] == (40.7128, -74.006)
+
+    def test_teraz_hel_with_country_skips_helmand(self, bot, stage11_geocoder):
+        bot.run(bot.msg(122, "/start BETAX1"))
+        bot.run(bot.msg(122, "/teraz Hel Polska"))
+
+        assert stage11_geocoder.calls[0]["query"] == "Hel"
+        assert stage11_geocoder.calls[0]["country_codes"] == "pl"
+        assert bot.oneoffs[-1][1:3] == (54.6037, 18.7616), "kandydat z Afganistanu odpada"
+
+    def test_miasto_short_query_saves_no_profile(self, bot, stage11_geocoder):
+        bot.run(bot.msg(123, "/start BETAX1"))
+        bot.run(bot.msg(123, "/miasto Wa"))
+
+        assert stage11_geocoder.calls == [], "za krótkie zapytanie nie pyta mapy"
+        assert bot.has_reply(123, "Ta nazwa jest za krótka")
+        rec = bot.users.record(123)
+        assert rec["profile_status"] == "none"
+        assert rec["lat_round"] == "" and rec["lon_round"] == ""
+
+    def test_guest_short_query_makes_no_card_but_valid_city_does(
+        self, bot, stage11_geocoder
+    ):
+        """?12 Wa -> cisza na mapie i zero karty; ?12 Paryż Francja -> karta."""
+        bot.run(bot.msg(124, "/start BETAX1"))
+
+        handled, sent, photos, payloads = _run_real_guest("?12 Wa")
+        assert handled is True
+        assert photos == [] and payloads == []
+        assert stage11_geocoder.calls == [], "geokoder nie był pytany o 'Wa'"
+        assert i18n.t_ui("pl", "geocode_too_short") in sent[-1]
+
+        _handled, _sent, photos, payloads = _run_real_guest("?12 Paryż Francja")
+        assert photos and payloads, "zwalidowany top result daje kartę"
+        assert stage11_geocoder.calls[-1]["country_codes"] == "fr"
+
+    def test_guest_call_gets_status_and_shortening_helpers(self, bot):
+        """location_bot wstrzykuje adapter statusów i safety skrótu z 1.1."""
+        bot.run(bot.msg(125, "/start BETAX1"))
+        bot.run(bot.msg(125, "?12 Hel"))
+
+        kwargs = bot.guest_kwargs[-1]
+        assert kwargs["get_coords_fn"] is lb.get_coords_from_city
+        assert kwargs["shortening_ok_fn"] is lb.geocode_shortening_is_safe
+        assert callable(kwargs["geocode_status_fn"])
 
 
 # ============================================================================
