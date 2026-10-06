@@ -1,11 +1,21 @@
 import os
 import unicodedata
 import json
+import math
 import re
 import requests
 import gspread
 import main_card
-from i18n import t_ui
+from i18n import (
+    t_ui,
+    t_geocode,
+    GEOCODE_OK,
+    GEOCODE_TOO_SHORT,
+    GEOCODE_NO_MATCH,
+    GEOCODE_UNCERTAIN,
+    GEOCODE_NOT_FOUND,
+    GEOCODE_ERROR,
+)
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
@@ -561,14 +571,25 @@ def _run_saved_profile_report(chat_id, profile, lang, card_type):
 
 
 def _run_city_oneoff(chat_id, city_query, lang, card_type):
-    """Geokoduje nazwę miasta i generuje raport bez żadnego trwałego zapisu."""
+    """Geokoduje nazwę miasta i generuje raport bez żadnego trwałego zapisu.
+
+    ETAP 1: raport powstaje wyłącznie dla GEOCODE_OK. TOO_SHORT odpada zanim
+    zdążymy cokolwiek wyszukać, a NO_MATCH / UNCERTAIN / NOT_FOUND / ERROR
+    dostają własny, wspólny komunikat statusowy — bez karty i bez pending.
+    """
+    if _geocode_query_is_too_short(city_query):
+        # 1-2 znaki bez kontekstu: nie pytamy mapy i nie udajemy, że szukamy.
+        send_reply(chat_id, t_geocode(lang, GEOCODE_TOO_SHORT))
+        return False
     send_reply(chat_id, t_ui(lang, "search_loc"))
     (
-        lat, lon, fallback_short_label, fallback_display_location, geo_ok,
-    ) = _geocode_city_public_details(city_query, lang)
-    if not geo_ok:
-        # Serwer map milczy (timeout/sieć) — mówimy wprost, że to problem łącz.
-        send_reply(chat_id, t_ui(lang, "geo_conn_err"))
+        geocode_status, lat, lon,
+        fallback_short_label, fallback_display_location,
+    ) = geocode_city_accepted(city_query, lang)
+    if geocode_status != GEOCODE_OK:
+        # Awaria serwera map (geo_conn_err), pusta odpowiedź (search_fail) albo
+        # odrzuceni kandydaci — żaden wariant nie generuje karty.
+        send_reply(chat_id, t_geocode(lang, geocode_status))
         return False
     if lat is None or lon is None:
         send_reply(chat_id, t_ui(lang, "search_fail"))
@@ -1271,44 +1292,444 @@ def get_city_from_coords(lat, lon, lang="pl"):
     return FIELD_LOCATION_LEGACY
 
 
-def _geocode_city_public_details(city_name, lang="pl"):
-    """Forward-geocode to ``(lat, lon, short_label, display_location, ok)``.
+# ============================================================================
+# WALIDACJA ZAPYTANIA DO GEOKODERA — ETAP 1
+# ============================================================================
+# Nominatim potrafi dla krótkiej lub niepełnej nazwy zwrócić miejsce, które z
+# zapytaniem nie ma nic wspólnego: "U" -> Chubut (Argentyna), "Wa" -> Little
+# Sandy Desert (Australia), "Hel" -> Helmand (Afganistan). Z takiego wyniku nie
+# generujemy karty i niczego nie zapisujemy. Stąd trzy proste zasady:
+#
+#   1. 1-2 znaki bez kontekstu = w ogóle nie pytamy mapy (GEOCODE_TOO_SHORT),
+#   2. pytamy o kilku kandydatów naraz (exactly_one=False, limit=7,
+#      addressdetails=True, language=lang) i akceptujemy wyłącznie takiego,
+#      którego nazwa miejscowości równa się zapytaniu albo zawiera je jako
+#      pełny token/frazę — prefiks dłuższego słowa nie wystarcza ("Hel" to nie
+#      "Helmand", "Wa" to nie "Western Australia"),
+#   3. zero zaakceptowanych = GEOCODE_NO_MATCH, jeden = GEOCODE_OK, więcej niż
+#      jedno rozróżnialne miejsce = GEOCODE_UNCERTAIN. Bez rankingu, bez
+#      wybierania "najlepszego" na siłę i bez inline keyboarda — prosimy tylko
+#      o doprecyzowanie.
+#
+# Statusy i ich komunikaty są jednoznaczne i definiowane raz (i18n), więc
+# /dzien, /teraz, /trend, /miasto, prompty, skróty i wzmianka @bot czytają ten
+# sam wynik. `_geocode_forward_candidates` pozostaje JEDYNYM miejscem w
+# projekcie, które woła forward geokoder.
+GEOCODE_CANDIDATE_LIMIT = 7
+GEOCODE_MIN_QUERY_CHARS = 3
 
-    Both labels are built from allowlisted structured address fields. The
-    formatted ``location.address`` string and the original query are never
-    returned as a fallback.
+# Pola miejscowości = dowód, że geokoder wskazał TO miejsce, o które pytano.
+_GEOCODE_PLACE_FIELDS = ("city", "town", "village", "hamlet", "locality")
+# Pola administracyjne = kontekst rozstrzygający (kraj, region, kod pocztowy).
+# NIGDY samodzielny dowód miejscowości dla krótkiego zapytania.
+_GEOCODE_CONTEXT_FIELDS = ("municipality", "county", "state", "country", "postcode")
+# Kontekst, który nie dowodzi nazwy, ale NIE jest też sprzecznością: adres,
+# dzielnica, osiedle. Dzięki nim "Wiązowna, Kościelna 41" nadal geoduje się po
+# ulicy, a "Wiązowna, Gdynia" nadal jest odrzucane.
+_GEOCODE_EXTRA_CONTEXT_FIELDS = (
+    "road", "house_number", "suburb", "neighbourhood", "quarter", "city_district",
+    "city_block", "hamlet", "square", "place_square",
+)
+# Kod pocztowy: polski XX-XXX oraz każdy ciąg 4-10 cyfr (inne kraje).
+_GEOCODE_POSTCODE_RE = re.compile(r"(?<!\d)(?:\d{2}-\d{3}|\d{4,10})(?!\d)")
+
+
+def _geocode_name_matches(query_norm, name_norm):
+    """Pełna nazwa albo pełny token/fraza — bez dopasowań prefiksem.
+
+    Porównanie idzie po znormalizowanych wartościach (casefold, diakrytyki
+    usunięte, interpunkcja do spacji, wiele spacji do jednej), więc granica
+    tokenu jest twarda: "hel" pasuje do "Hel", ale nie do "Helmand", a "wa"
+    nie pasuje do "Western Australia".
+    """
+    if not query_norm or not name_norm:
+        return False
+    if query_norm == name_norm:
+        return True
+    return f" {query_norm} " in f" {name_norm} "
+
+
+def _geocode_query_context(query):
+    """Rozkłada zapytanie na ``(nazwa, konteksty, kod pocztowy)``.
+
+    Kontekstem jest TYLKO to, co użytkownik napisał sam: kraj albo region po
+    przecinku oraz kod pocztowy. ``language=pl`` kontekstem kraju nie jest.
+    """
+    raw = str(query or "").strip()
+    head, comma, tail = raw.partition(",")
+
+    postcode = ""
+    match = _GEOCODE_POSTCODE_RE.search(head)
+    if match:
+        postcode = _normalize_location_text(match.group(0))
+        head = f"{head[:match.start()]} {head[match.end():]}"
+
+    context = []
+    if comma:
+        for part in tail.split(","):
+            normalized = _normalize_location_text(part)
+            if normalized:
+                context.append(normalized)
+
+    return _normalize_location_text(head), context, postcode
+
+
+def _geocode_query_is_too_short(query):
+    """Czy zapytanie jest za krótkie, żeby w ogóle pytać mapę.
+
+    1-2 znaki bez kontekstu (np. "U", "Wa", "Os") to zawsze loteria. Ten sam
+    skrót z jawnym krajem albo kodem pocztowym ("Hel, PL", "Wiązowna 05-462")
+    ma sens — wtedy pytamy, ale kandydat i tak musi przejść walidację nazwy.
+    """
+    raw = str(query or "").strip()
+    if not raw:
+        return True
+    name, context, postcode = _geocode_query_context(raw)
+    if context or postcode:
+        return False
+    if not name:
+        return True
+    # Liczymy znaki alfanumeryczne, nie długość napisu: "a b" to dwie litery,
+    # czyli dokładnie to samo ryzyko co "U" czy "Wa".
+    return len(name.replace(" ", "")) < GEOCODE_MIN_QUERY_CHARS
+
+
+def _geocode_candidate_is_safe(raw):
+    """Klasa kandydata, która w ogóle może być bazą dla lokalizacji pogodowej.
+
+    Dopuszczamy miejscowości (class=place) i granice administracyjne
+    (class=boundary + type=administrative). Filtr odcina natural=desert
+    (Little Sandy Desert dla "Wa"), railway=station i całe POI
+    (amenity/tourism/shop), które dawałoby albo bzdurny wynik, albo fałszywą
+    niepewność przez nazwę wspólną z miastem.
+    """
+    cls = _clean_location_component(raw.get("class")).casefold()
+    typ = _clean_location_component(raw.get("type") or raw.get("addresstype")).casefold()
+    if cls == "place":
+        return True
+    if cls in ("boundary", "administrative"):
+        return typ in ("", "administrative")
+    return False
+
+
+def _geocode_raw_name_values(raw):
+    """Surowe nazwy kandydata (raw["name"], namedetails, nagłówek display_name).
+
+    Używane WYŁĄCZNIE jako fallback, gdy geokoder nie podał żadnych pól
+    miejscowości — nigdy nie nadpisują sprzecznych danych z tych pól.
+    """
+    values = []
+    name = _clean_location_component(raw.get("name"))
+    if name:
+        values.append(name)
+    details = raw.get("namedetails")
+    if isinstance(details, dict):
+        values.extend(
+            cleaned for cleaned in (_clean_location_component(v) for v in details.values())
+            if cleaned
+        )
+    elif isinstance(details, str) and details.strip():
+        values.append(details.strip())
+    display = _clean_location_component(raw.get("display_name"))
+    if display:
+        values.append(display.split(",")[0].strip())
+    return values
+
+
+def _geocode_place_values(address):
+    """Znormalizowane nazwy z pól miejscowości (dowód dopasowania)."""
+    return [
+        normalized
+        for normalized in (
+            _normalize_location_text(address.get(field))
+            for field in _GEOCODE_PLACE_FIELDS
+        )
+        if normalized
+    ]
+
+
+def _geocode_context_values(raw, address):
+    """Wszystko, co kandydat mówi o swoim kontekście (administracja i adres)."""
+    values = [
+        _normalize_location_text(address.get(field))
+        for field in _GEOCODE_CONTEXT_FIELDS + _GEOCODE_EXTRA_CONTEXT_FIELDS
+    ]
+    values.append(_clean_location_component(address.get("country_code")).casefold())
+    display = _clean_location_component(raw.get("display_name"))
+    if display:
+        values.extend(_normalize_location_text(part) for part in display.split(","))
+    return [value for value in values if value]
+
+
+def _geocode_piece_explained(piece, values):
+    """Czy element kontekstu z zapytania da się wyjaśnić danymi kandydata.
+
+    Wystarczy pełna fraza ALBO każdy osobny token — inaczej "Kościelna 41"
+    byłby sprzecznością z adresem, który exactly tak się nazywa, tylko w dwóch
+    polach (road + house_number).
+    """
+    if any(_geocode_name_matches(piece, value) for value in values):
+        return True
+    tokens = set(piece.split())
+    corpus = set()
+    for value in values:
+        corpus.update(value.split())
+    return bool(tokens) and tokens <= corpus
+
+
+def _geocode_context_conflicts(contexts, postcode, raw, address):
+    """True, jeśli jawny kontekst z zapytania przeczy danym kandydata.
+
+    Brak danych nie jest sprzecznością (geokoder dla miejscowości nie zawsze
+    wypełnia postcode), ale inna gmina, inne województwo albo inny kraj
+    dyskwalifikuje kandydata — i to jest mechanizm rozstrzygania "Hel, PL".
+    """
+    if contexts:
+        values = _geocode_context_values(raw, address)
+        if values:
+            for piece in contexts:
+                if not _geocode_piece_explained(piece, values):
+                    return True
+    if postcode:
+        candidate_postcode = _normalize_location_text(address.get("postcode"))
+        if candidate_postcode and candidate_postcode != postcode:
+            return True
+    return False
+
+
+# Ta sama miejscowość wraca z Nominatima zwykle dwa razy: raz jako punkt
+# (class=place), raz jako relacja granicy (class=boundary), a ich współrzędne
+# różnią się o kilkaset metrów do kilku kilometrów. Bez tego liczyłbym "jedno
+# miasto" jako dwa różne i każde duże miasto byłoby GEOCODE_UNCERTAIN. 10 km to
+# widełki, które łączą punkt z jego granicą, a nadal rozróżniają dwie osady o
+# tej samej nazwie leżące dalej od siebie.
+_GEOCODE_SAME_PLACE_KM = 10.0
+
+
+def _geocode_candidate_identity(raw, address, matched_name):
+    """Klucz grupujący kandydatów: nazwa miejscowości + kraj."""
+    country = (
+        _clean_location_component(address.get("country_code")).casefold()
+        or _normalize_location_text(address.get("country"))
+    )
+    return (matched_name, country)
+
+
+def _geocode_same_place(first, second):
+    """True, gdy dwa zaakceptowane wyniki leżą tak blisko siebie, że to ta sama miejscowość."""
+    return (
+        _geocode_distance_km(
+            getattr(first, "latitude", None), getattr(first, "longitude", None),
+            getattr(second, "latitude", None), getattr(second, "longitude", None),
+        )
+        or float("inf")
+    ) <= _GEOCODE_SAME_PLACE_KM
+
+
+def _geocode_distance_km(lat_a, lon_a, lat_b, lon_b):
+    """Przybliżona odległość w kilometrach — dość dokładna, by porównać dwa wyniki.
+
+    Celowo bez dodatkowych zależności: potrzebujemy odpowiedzi "czy to ten sam
+    ośrodek", a nie precyzyjnego pomiaru geodezyjnego.
+    """
+    try:
+        lat_a, lon_a, lat_b, lon_b = (
+            float(lat_a), float(lon_a), float(lat_b), float(lon_b)
+        )
+    except (TypeError, ValueError):
+        return None
+    lat_span = (lat_b - lat_a) * 111.32
+    lon_span = (lon_b - lon_a) * 111.32 * math.cos(math.radians((lat_a + lat_b) / 2))
+    return (lat_span ** 2 + lon_span ** 2) ** 0.5
+
+
+def _geocode_matched_place_name(query_name, address, raw, postcode):
+    """Nazwa kandydata, która dowodzi dopasowania, albo pusty napis.
+
+    Kolejno: pola miejscowości (jedyny dowód dla zwykłego zapytania), potem —
+    wyłącznie gdy geokoder nie podał ŻADNEGO pola miejscowości — surowa nazwa.
+    Na końcu kod pocztowy, bo przy zapytaniu typu "05-462" to on jest dowodem.
+    """
+    if not query_name:
+        return postcode
+
+    place_values = _geocode_place_values(address)
+    if place_values:
+        return next(
+            (value for value in place_values
+             if _geocode_name_matches(query_name, value)),
+            "",
+        )
+
+    for value in _geocode_raw_name_values(raw):
+        normalized = _normalize_location_text(value)
+        if _geocode_name_matches(query_name, normalized):
+            return normalized
+    return ""
+
+
+def _geocode_select_accepted(query, candidates):
+    """Strict disambiguation: ``(status, kandydat)`` dla jednego zapytania.
+
+    Zero zaakceptowanych = GEOCODE_NO_MATCH, jedno rozróżnialne miejsce =
+    GEOCODE_OK (bierzemy pierwszego kandydata w kolejności geokodera, bez
+    rankingu), więcej niż jedno = GEOCODE_UNCERTAIN.
+    """
+    query_name, contexts, postcode = _geocode_query_context(query)
+    accepted = []
+    seen = []  # (tożsamość, kandydat) — by nie liczyć dwa razy tej samej miejscowości
+
+    for location in candidates:
+        raw = getattr(location, "raw", None)
+        raw = raw if isinstance(raw, dict) else {}
+        address = _nominatim_address_components(raw)
+        if not _geocode_candidate_is_safe(raw):
+            continue
+
+        matched = _geocode_matched_place_name(query_name, address, raw, postcode)
+        if not matched:
+            continue
+
+        if _geocode_context_conflicts(contexts, postcode, raw, address):
+            continue
+
+        identity = _geocode_candidate_identity(raw, address, matched)
+        if any(
+            known_identity == identity
+            and _geocode_same_place(known_location, location)
+            for known_identity, known_location in seen
+        ):
+            continue
+        seen.append((identity, location))
+        accepted.append(location)
+
+    if not accepted:
+        return GEOCODE_NO_MATCH, None
+    if len(accepted) > 1:
+        return GEOCODE_UNCERTAIN, None
+    return GEOCODE_OK, accepted[0]
+
+
+def _geocode_forward_candidates(query, lang="pl"):
+    """Pobiera kandydatów z geokodera: ``(status, lista)``.
+
+    ``status`` jest różny od None tylko wtedy, gdy nie ma czego walidować.
+    Obsługujemy każdy kształt odpowiedzi geopy: None, pustą listę, pojedynczy
+    obiekt oraz listę obiektów; wyjątek sieciowy to GEOCODE_ERROR.
     """
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
-        location = geolocator.geocode(city_name, exactly_one=True, language=lang)
-        if not location:
-            return None, None, None, None, True
-
-        address = _nominatim_address_components(getattr(location, "raw", {}) or {})
-        mode = _location_mode_for_query(city_name, address)
-        short_label, display_location = _format_public_location_parts(
-            address, query=city_name, mode=mode, lang=lang
+        results = geolocator.geocode(
+            query,
+            exactly_one=False,
+            limit=GEOCODE_CANDIDATE_LIMIT,
+            addressdetails=True,
+            language=lang,
         )
-        if not short_label or not display_location:
-            short_label = FIELD_LOCATION_LABEL
-            display_location = t_ui(lang, "location_field")
-        return location.latitude, location.longitude, short_label, display_location, True
     except Exception as e:
         print(f"Błąd wyszukiwania miasta po nazwie: {e}")
-        return None, None, None, None, False
+        return GEOCODE_ERROR, []
+
+    if not results:
+        return GEOCODE_NOT_FOUND, []
+    if not isinstance(results, (list, tuple)):
+        results = [results]
+    candidates = [result for result in results if result is not None]
+    if not candidates:
+        return GEOCODE_NOT_FOUND, []
+    return None, candidates
+
+
+def geocode_city_accepted(city_name, lang="pl"):
+    """Walidowane geokodowanie forward: ``(status, lat, lon, short, display)``.
+
+    Jedyne źródło prawdy dla wszystkich ścieżek user-facing. Etykiety są budowane
+    wyłącznie ze strukturalnych pól adresu AKCEPTOWANEGO kandydata (ten sam
+    formatter co dotąd); surowy adres z ``location.address`` ani samo zapytanie
+    nigdy nie wracają jako fallback.
+    """
+    query = str(city_name or "").strip()
+    if _geocode_query_is_too_short(query):
+        return GEOCODE_TOO_SHORT, None, None, None, None
+
+    base_status, candidates = _geocode_forward_candidates(query, lang)
+    if base_status is not None:
+        return base_status, None, None, None, None
+
+    status, location = _geocode_select_accepted(query, candidates)
+    if status != GEOCODE_OK:
+        return status, None, None, None, None
+
+    raw = getattr(location, "raw", None)
+    raw = raw if isinstance(raw, dict) else {}
+    address = _nominatim_address_components(raw)
+    mode = _location_mode_for_query(query, address)
+    short_label, display_location = _format_public_location_parts(
+        address, query=query, mode=mode, lang=lang
+    )
+    if not short_label or not display_location:
+        short_label = FIELD_LOCATION_LABEL
+        display_location = t_ui(lang, "location_field")
+
+    try:
+        lat, lon = float(location.latitude), float(location.longitude)
+    except (TypeError, ValueError):
+        # Kandydat przeszedł walidację nazwy, ale nie ma współrzędnych — nie ma
+        # z czego zbudować pogody, więc traktujemy to jak brak wyniku.
+        return GEOCODE_NOT_FOUND, None, None, None, None
+
+    return GEOCODE_OK, lat, lon, short_label, display_location
+
+
+def geocode_city_details_status(city_name, lang="pl"):
+    """Statusowy adapter ``(lat, lon, display_location, status)``.
+
+    Tego API używają WSZYSTKIE nowe ścieżki: /dzien, /teraz, /trend z
+    argumentem, prompt PENDING_CITY, /miasto oraz tryb gościa (skróty i
+    wzmianka @bot).
+    """
+    status, lat, lon, _short_label, display_location = geocode_city_accepted(
+        city_name, lang
+    )
+    return lat, lon, display_location, status
 
 
 def geocode_city_details(city_name, lang="pl"):
-    """Compatibility adapter: ``(lat, lon, safe_display_location, ok)``."""
-    lat, lon, _short_label, display_location, ok = _geocode_city_public_details(
+    """Compatibility adapter: ``(lat, lon, safe_display_location, ok)``.
+
+    Zostaje wyłącznie dla kompatybilności wstecznej. ``ok`` różni tylko awarię
+    sieci, więc NIE wolno na nim opierać nowych decyzji — TOO_SHORT, NO_MATCH,
+    UNCERTAIN i NOT_FOUND mają ``ok=True`` i puste współrzędne.
+    """
+    status, lat, lon, _short_label, display_location = geocode_city_accepted(
         city_name, lang
     )
-    return lat, lon, display_location, ok
+    return lat, lon, display_location, status != GEOCODE_ERROR
+
+
+def _geocode_city_public_details(city_name, lang="pl"):
+    """Compatibility adapter: ``(lat, lon, short_label, display_location, ok)``.
+
+    Both labels are built from allowlisted structured address fields of the
+    accepted candidate. The formatted ``location.address`` string and the
+    original query are never returned as a fallback. ``ok`` is False only for a
+    transport failure — exactly the old contract of this adapter.
+    """
+    status, lat, lon, short_label, display_location = geocode_city_accepted(
+        city_name, lang
+    )
+    return lat, lon, short_label, display_location, status != GEOCODE_ERROR
 
 
 def get_coords_from_city(city_name, lang="pl"):
-    """Guest/shortcut adapter: coordinates plus a safe public label, never raw address."""
-    lat, lon, display_location, _ok = geocode_city_details(city_name, lang)
+    """Guest/shortcut adapter: coordinates plus a safe public label, never raw address.
+
+    Sygnatura pozostaje ``(lat, lon, display_location)`` — ścieżki, które muszą
+    rozróżnić statusy, używają geocode_city_details_status.
+    """
+    _status, lat, lon, _short_label, display_location = geocode_city_accepted(
+        city_name, lang
+    )
     return lat, lon, display_location
 
 
@@ -1569,11 +1990,16 @@ def main_bot():
             # Skróty .d/.n/.f i wzmianki @bot generują karty pogodowe, więc od PR1
             # wymagają dostępu. Brak dostępu został już obsłużony wyżej (cisza),
             # więc tutaj docierają wyłącznie czaty z dostępem.
-            # guest_bot_handler pozostaje bez zmian.
+            # ETAP 1: guest_bot_handler nadal sam nic nie wie o geokoderze —
+            # dostaje tylko statusowy adapter z tego pliku.
             is_guest = handle_guest_now(
                 message=message,
                 bot_username=BOT_USERNAME, 
                 get_coords_fn=get_coords_from_city,
+                # ETAP 1: skróty i wzmianka @bot dostają TEN SAM zestaw statusów
+                # co /dzien, /teraz, /trend, /miasto i prompty. Karta trybu gościa
+                # powstaje wyłącznie dla GEOCODE_OK, a do cache trafia tylko OK.
+                geocode_status_fn=lambda city, lang: geocode_city_details_status(city, lang),
                 
                 build_payload_fn=lambda lat, lon, lang, c_type, city_name: build_payload_for_location(
                     lat=lat,
@@ -2365,15 +2791,27 @@ def main_bot():
             # =====================================================================
             # WSPÓLNA LOGIKA GEOKODOWANIA (Dla /miasto Warszawa ORAZ samego "Warszawa")
             # =====================================================================
+            # ETAP 1: /miasto X oraz sam tekst wpisany po prompcie (/miasto, /dzien,
+            # /teraz, /trend) przechodzą przez TĘ SAMĄ walidację co reszta ścieżek.
+            if _geocode_query_is_too_short(city_query):
+                # 1-2 znaki bez kontekstu (kraj po przecinku albo kod pocztowy)
+                # to nie jest zapytanie do mapy. Kontekstu NIE przywracamy: stan
+                # oczekiwania zostaje zdjęty tak jak przy każdej innej głupocie.
+                send_reply(chat_id, t_geocode(user_lang, GEOCODE_TOO_SHORT))
+                continue
+
             send_reply(chat_id, t_ui(user_lang, "search_loc"))
 
             (
-                lat, lon, fallback_short_label, fallback_display_location, geo_ok,
-            ) = _geocode_city_public_details(city_query, user_lang)
+                geocode_status, lat, lon,
+                fallback_short_label, fallback_display_location,
+            ) = geocode_city_accepted(city_query, user_lang)
 
-            if not geo_ok:
-                # POPRAWKA #4: awaria serwera map != brak wyników.
-                send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
+            if geocode_status != GEOCODE_OK:
+                # POPRAWKA #4: awaria serwera map != brak wyników. ETAP 1 dokłada
+                # NO_MATCH (nazwa nie pasuje) i UNCERTAIN (kilka miejsc o tej samej
+                # nazwie). Żaden status poza GEOCODE_OK niczego nie zapisuje.
+                send_reply(chat_id, t_geocode(user_lang, geocode_status))
                 continue
 
             if lat is not None and lon is not None:

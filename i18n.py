@@ -2128,6 +2128,9 @@ UI_TEXTS = {
         "search_success": "✅ *Zapisana lokalizacja:*\n{display_location}\n\nPomyłka? Powtórz jeszcze raz komendę.",
         "search_err": "⚠️ Błąd serwera map. Spróbuj ponownie za chwilę.",
         "guest_need_city": "📍 Podaj nazwę miejscowości lub kod pocztowy.",
+        "geocode_too_short": "📍 Ta nazwa jest za krótka, żebym mógł ją rozpoznać.\n\nWpisz pełną nazwę miejscowości, np. Warszawa albo Hel. Możesz dodać region lub kraj: Hel, Polska.",
+        "geocode_no_match": "❌ Na mapie nie ma miejsca o takiej nazwie.\n\nSprawdź pisownię i wpisz pełną nazwę miejscowości — pomoże też region albo kraj, np. Hel, Polska.",
+        "geocode_uncertain": "📍 Pod tą nazwą jest kilka różnych miejsc.\n\nDoprecyzuj zapytanie, dodając region albo kraj, np. Hel, Polska.",
         "btn_update_gps": "📍 Aktualizuj z GPS",
         "settings_saved": "✅ Ustawienia raportów zostały pomyślnie zapisane!",
         "btn_change_hours": "⚙️ Zmień ustawienia",
@@ -2197,6 +2200,9 @@ UI_TEXTS = {
         "search_success": "✅ *Location saved:*\n{display_location}\n\nWrong location? Repeat the command once more.",
         "search_err": "⚠️ Maps server error. Please try again later.",
         "guest_need_city": "📍 Enter a place name or a postal code.",
+        "geocode_too_short": "📍 That name is too short for me to recognise it.\n\nType the full place name, e.g. Warsaw or Hel. You can add a region or a country: Hel, Poland.",
+        "geocode_no_match": "❌ There is no place on the map with that name.\n\nCheck the spelling and type the full place name — a region or a country helps too, e.g. Hel, Poland.",
+        "geocode_uncertain": "📍 Several different places go by this name.\n\nPlease be more specific and add a region or a country, e.g. Hel, Poland.",
         "btn_update_gps": "📍 Update with GPS",
         "settings_saved": "✅ Report settings have been successfully saved!",
         "btn_change_hours": "⚙️ Change settings",
@@ -2264,6 +2270,9 @@ UI_TEXTS = {
     "search_success": "✅ *Standort gespeichert:*\n{display_location}\n\nFalscher Ort? Wiederhole den Befehl noch einmal.",
     "search_err": "⚠️ Karten-Serverfehler. Bitte versuche es später noch einmal.",
     "guest_need_city": "📍 Gib einen Ortsnamen oder eine Postleitzahl ein.",
+    "geocode_too_short": "📍 Dieser Name ist zu kurz, um ihn eindeutig zu erkennen.\n\nGib den vollständigen Ortsnamen ein, z. B. Berlin oder Hel. Region oder Land helfen: Hel, Polen.",
+    "geocode_no_match": "❌ Auf der Karte gibt es keinen Ort mit diesem Namen.\n\nPrüfe die Schreibweise und gib den vollständigen Ortsnamen ein – Region oder Land helfen, z. B. Hel, Polen.",
+    "geocode_uncertain": "📍 Mehrere verschiedene Orte heißen genau so.\n\nBitte präziser: füge Region oder Land hinzu, z. B. Hel, Polen.",
     "btn_update_gps": "📍 Mit GPS aktualisieren",
     "settings_saved": "✅ Berichtseinstellungen wurden erfolgreich gespeichert!",
     "group_city_tip": "\n\n🔴 _In einer Gruppe gib jetzt einfach den Städtenamen ein, z. B.:_ `Berlin`",
@@ -2333,6 +2342,9 @@ UI_TEXTS = {
         "search_success": "✅ *Ubicación guardada:*\n{display_location}\n\n¿Lugar equivocado? Repite el comando una vez más.",
         "search_err": "⚠️ Error del servidor de mapas. Por favor, inténtalo de nuevo más tarde.",
         "guest_need_city": "📍 Escribe el nombre del lugar o el código postal.",
+        "geocode_too_short": "📍 Ese nombre es demasiado corto para reconocerlo.\n\nEscribe el nombre completo del lugar, por ejemplo Varsovia o Hel. Ayuda añadir región o país: Hel, Polonia.",
+        "geocode_no_match": "❌ No hay ningún lugar en el mapa con ese nombre.\n\nRevisa la ortografía y escribe el nombre completo; también ayuda añadir región o país, por ejemplo Hel, Polonia.",
+        "geocode_uncertain": "📍 Hay varios lugares distintos con ese mismo nombre.\n\nPrecísalo añadiendo región o país, por ejemplo Hel, Polonia.",
         "btn_update_gps": "📍 Actualizar con GPS",
         "settings_saved": "✅ ¡Los ajustes del informe se han guardado correctamente!",
         "btn_change_hours": "⚙️ Cambiar ajustes",
@@ -2402,6 +2414,9 @@ UI_TEXTS = {
         "search_success": "✅ *Position enregistrée :*\n{display_location}\n\nCe n'est pas le bon endroit ? Répétez encore la commande.",
         "search_err": "⚠️ Erreur du serveur de cartes. Veuillez réessayer plus tard.",
         "guest_need_city": "📍 Indiquez un nom de lieu ou un code postal.",
+        "geocode_too_short": "📍 Ce nom est trop court pour que je le reconnaisse.\n\nSaisissez le nom complet du lieu, par exemple Varsovie ou Hel. Ajoutez la région ou le pays : Hel, Pologne.",
+        "geocode_no_match": "❌ Aucun lieu sur la carte ne porte ce nom.\n\nVérifiez l'orthographe et saisissez le nom complet ; la région ou le pays aident aussi, par exemple Hel, Pologne.",
+        "geocode_uncertain": "📍 Plusieurs lieux différents portent ce nom.\n\nPrécisez en ajoutant la région ou le pays, par exemple Hel, Pologne.",
         "btn_update_gps": "📍 Mettre à jour via GPS",
         "settings_saved": "✅ Les paramètres du rapport ont été enregistrés avec succès !",
         "btn_change_hours": "⚙️ Modifier les paramètres",
@@ -2471,6 +2486,9 @@ UI_TEXTS = {
         "search_success": "✅ *Posisjon lagret:*\n{display_location}\n\nFeil sted? Gjenta kommandoen én gang til.",
         "search_err": "⚠️ Kartserver-feil. Vennligst prøv igjen senere.",
         "guest_need_city": "📍 Skriv inn et stedsnavn eller postnummer.",
+        "geocode_too_short": "📍 Navnet er for kort til at jeg kan kjenne det igjen.\n\nSkriv inn det fullstendige stedsnavnet, for eksempel Warszawa eller Hel. Region eller land hjelper: Hel, Polen.",
+        "geocode_no_match": "❌ Det finnes ikke noe sted på kartet med dette navnet.\n\nSjekk skrivemåten og skriv det fullstendige stedsnavnet – region eller land hjelper, for eksempel Hel, Polen.",
+        "geocode_uncertain": "📍 Flere ulike steder har nøyaktig dette navnet.\n\nVær mer presis og legg til region eller land, for eksempel Hel, Polen.",
         "btn_update_gps": "📍 Oppdater med GPS",
         "settings_saved": "✅ Rapportinnstillingene er lagret!",
         "btn_change_hours": "⚙️ Endre innstillinger",
@@ -2517,3 +2535,49 @@ def t_ui(lang: str, key: str, **kwargs) -> str:
     lang = lang if lang in UI_TEXTS else "pl"
     text = UI_TEXTS[lang].get(key, UI_TEXTS["pl"].get(key, key))
     return text.format(**kwargs)
+
+# =====================================================================
+# 4. STATUSY WALIDACJI ZAPYTANIA DO GEOKODERA (ETAP 1)
+# =====================================================================
+# Słownik statusów mieszka tutaj, a nie w location_bot, bo obie ścieżki
+# user-facing (komendy + tryb gościa/skróty/wzmianka @bot) muszą widzieć te
+# same wartości, a guest_bot_handler nie może importować location_botu
+# (byłby import cykliczny). Statusy są jawne i rozłączne — NO_MATCH i
+# UNCERTAIN mogą brzmieć dla użytkownika podobnie, ale w kodzie i w testach
+# pozostają osobne, bo oznaczają co innego:
+#   GEOCODE_OK        -> dokładnie jedno miejsce, którego nazwa = zapytanie,
+#   GEOCODE_TOO_SHORT -> 1-2 znaki bez kontekstu, NIE pytamy mapy,
+#   GEOCODE_NO_MATCH  -> mapa odpowiedziała, ale żaden kandydat nie pasuje,
+#   GEOCODE_UNCERTAIN -> pasuje więcej niż jedno rozróżnialne miejsce,
+#   GEOCODE_NOT_FOUND -> mapa odpowiedziała pustką (albo None),
+#   GEOCODE_ERROR     -> mapa nie odpowiedziała (timeout/sieć/limit).
+GEOCODE_OK = "geocode_ok"
+GEOCODE_TOO_SHORT = "geocode_too_short"
+GEOCODE_NO_MATCH = "geocode_no_match"
+GEOCODE_UNCERTAIN = "geocode_uncertain"
+GEOCODE_NOT_FOUND = "geocode_not_found"
+GEOCODE_ERROR = "geocode_error"
+
+# Jeden status = jeden komunikat, wspólny dla /dzien, /teraz, /trend, /miasto,
+# promptów oczekiwania na miasto, skrótów i wzmianki @bot. Brak wpisu (oraz
+# GEOCODE_OK) znaczy "nic nie mówimy". NOT_FOUND i ERROR używają istniejących
+# tekstów, żeby stare, sprawdzone sformułowania nie zostały zamienione.
+GEOCODE_UI_KEYS = {
+    GEOCODE_TOO_SHORT: "geocode_too_short",
+    GEOCODE_NO_MATCH: "geocode_no_match",
+    GEOCODE_UNCERTAIN: "geocode_uncertain",
+    GEOCODE_NOT_FOUND: "search_fail",
+    GEOCODE_ERROR: "geo_conn_err",
+}
+
+
+def t_geocode(lang: str, status: str) -> str:
+    """Tekst dla użytkownika wynikający ze statusu walidacji geokodera.
+
+    Zwraca pusty napis dla GEOCODE_OK (sukces nie ma swojego komunikatu) i dla
+    statusu nieznanego przyjmuje "nic nie znaleziono" — nigdy nie zostawiamy
+    użytkownika w ciszy na czacie prywatnym, ale też nigdy nie zgadujemy.
+    """
+    if status == GEOCODE_OK:
+        return ""
+    return t_ui(lang, GEOCODE_UI_KEYS.get(status, "search_fail"))

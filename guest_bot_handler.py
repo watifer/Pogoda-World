@@ -3,6 +3,11 @@ import re
 import time
 import logging
 
+# ETAP 1: walidacja zapytania geokodera mieszka w location_bot, ale jej
+# SŁOWNIK STATUSÓW jest w i18n — dzięki temu tryb gościa widzi te same wartości
+# bez importu location_bot (byłby cykliczny). import i18n nie ciągnie żadnych
+# zależności sieciowych, więc tryb gościa nadal działa samodzielnie.
+from i18n import t_geocode, GEOCODE_OK, GEOCODE_NO_MATCH, GEOCODE_NOT_FOUND
 
 logger = logging.getLogger(__name__)
 
@@ -189,16 +194,45 @@ def _clean_location_query(q: str) -> str:
     return q
 
 
-def _geocode_best_effort(query: str, get_coords_fn, lang: str):
+# Kod pocztowy — dokładnie ten sam wzór co w location_bot._GEOCODE_POSTCODE_RE.
+# Powtórzony, żeby tryb gościa nie musiał pytać location_botu o zdanie przy
+# każdej skróconej próbie.
+_GEOCODE_POSTCODE_RE = re.compile(r"(?<!\d)(?:\d{2}-\d{3}|\d{4,10})(?!\d)")
+
+
+def _shortening_keeps_context(query: str) -> bool:
+    """Czy skrócenie zapytania do pierwszych dwóch tokenów nie gubi kontekstu.
+
+    "Hel, PL" nie wolno skrócić do "Hel" — zniknąłby jawny kraj, czyli jedyny
+    dowód, który rozstrzygał niepewność. To samo dotyczy kodu pocztowego.
+    """
+    raw = (query or "").strip()
+    if "," in raw:
+        return False
+    if _GEOCODE_POSTCODE_RE.search(raw):
+        return bool(_GEOCODE_POSTCODE_RE.search(" ".join(raw.split()[:2])))
+    return True
+
+
+def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn=None):
+    """Geokoduje zapytanie trybu gościa i zwraca ``(lat, lon, full, used, status)``.
+
+    ETAP 1: jeśli dostarczymy ``geocode_status_fn`` (statusowy adapter z
+    location_bot), kandydat jest akceptowany tylko po walidacji nazwy, a status
+    decyduje o cache'u i o komunikacie. Bez niego zostaje stara ścieżka
+    "bierz cokolwiek" — wyłącznie dla kompatybilności (w bocie adapter jest
+    podawany zawsze, więc realnie idziemy przez statusy).
+    """
     q = (query or "").strip()
     if not q:
-        return (None, None, None, None)
+        return (None, None, None, None, GEOCODE_NOT_FOUND)
 
     candidates = [q] # Zawsze zaczynamy od pełnego, wyczyszczonego zdania
     toks = q.split()
     
     # Deska ratunku: jeśli ktoś wpisał np. "Nowy Jork super", sprawdzamy "Nowy Jork"
-    if len(toks) > 2:
+    # — ale tylko gdy skrócenie nie wyrzuca jawnego kraju ani kodu pocztowego.
+    if len(toks) > 2 and _shortening_keeps_context(q):
         candidates.append(" ".join(toks[:2]))
 
     seen = set()
@@ -210,12 +244,25 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str):
             uniq.append(c)
 
     # KLUCZOWY LIMIT: Zawsze robimy maksymalnie 2 zapytania!
+    status = GEOCODE_NOT_FOUND
     for c in uniq[:2]:
+        if geocode_status_fn:
+            lat, lon, full, geo_status = geocode_status_fn(c, lang)
+            status = geo_status or GEOCODE_NOT_FOUND
+            if lat and lon and status == GEOCODE_OK:
+                return (lat, lon, full, c, status)
+            # Druga próba ma sens wyłącznie, gdy mapa odpowiedziała, ale nazwa
+            # nie pasowała albo nie znalazła nic. TOO_SHORT (nie pytamy mapy),
+            # UNCERTAIN (skrót nic nie rozstrzyga) i ERROR (sieć leży) zostają.
+            if status not in (GEOCODE_NO_MATCH, GEOCODE_NOT_FOUND):
+                break
+            continue
+
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
-            return (lat, lon, full, c)
+            return (lat, lon, full, c, GEOCODE_OK)
 
-    return (None, None, None, None)
+    return (None, None, None, None, status)
 
 # ============================================================================
 # GŁÓWNY HANDLER TRYBU GOŚCIA
@@ -230,8 +277,16 @@ def handle_guest_now(
     render_png_fn,
     send_photo_fn,
     send_reply_fn,
-    get_city_fn=None    
+    get_city_fn=None,
+    geocode_status_fn=None,
 ) -> bool:
+    """Tryb gościa: skróty (?d/.n/?12/?14 ...) i wzmianki @bot.
+
+    ``geocode_status_fn`` (opcjonalny, ale podawany przez location_bot) zwraca
+    ``(lat, lon, display_location, status)`` z ETAP 1 — tę samą walidację co
+    /dzien, /teraz, /trend, /miasto i prompty. Karta powstaje wyłącznie dla
+    GEOCODE_OK; w grupie błąd oznacza ciszę, ale karty nie ma nigdy.
+    """
     
     text = (message.get("text") or "").strip()
     
@@ -324,20 +379,33 @@ def handle_guest_now(
         try:
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
-            
+
             if cached_geo:
+                # W cache trafia wyłącznie GEOCODE_OK, więc trafienie to zawsze
+                # wynik zaakceptowany przez walidację nazwy (ETAP 1).
                 lat, lon, full_address = cached_geo
                 used_query = query
+                geo_status = GEOCODE_OK
             else:
-                lat, lon, full_address, used_query = _geocode_best_effort(query, get_coords_fn, user_lang)
-                if lat and lon:
+                lat, lon, full_address, used_query, geo_status = _geocode_best_effort(
+                    query, get_coords_fn, user_lang, geocode_status_fn
+                )
+                # ETAP 1: cache gościa TYLKO dla wyników zwalidowanych.
+                # TOO_SHORT, NO_MATCH, UNCERTAIN, NOT_FOUND i ERROR nie wolno
+                # utrwalać — inaczej jedna literówka lub chwila awarii mapy
+                # powtarzałaby się przez godzinę.
+                if lat and lon and geo_status == GEOCODE_OK:
                     _ttl_set(_GEO_CACHE, qkey, (lat, lon, full_address), _GEO_TTL)
-                    
+
             if not lat or not lon:
                 if is_private:
-                    send_reply_fn(chat_id, f"🧐 Nie znalazłem miejsca: *{query}*. Wpisz samo miasto lub kod.")
+                    # Wspólny słownik statusów z komendami: ten sam komunikat dla
+                    # "?12 Wa" i dla "/teraz Wa". W grupie zachowujemy ciszę.
+                    status_msg = t_geocode(user_lang, geo_status)
+                    if status_msg:  # GEOCODE_OK nie ma tekstu — nie wysyłamy pustki
+                        send_reply_fn(chat_id, status_msg)
                 return True
-                
+
             city_name = None
             if get_city_fn:
                 try:

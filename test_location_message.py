@@ -116,7 +116,8 @@ class _FakeNominatim:
             raise result
         return result
 
-    def geocode(self, name, exactly_one=None, language=None):
+    def geocode(self, name, exactly_one=None, language=None, limit=None,
+                addressdetails=None):
         _FakeNominatim.calls.append(("geocode", name, language))
         result = _FakeNominatim.results.pop(0)
         if isinstance(result, Exception):
@@ -128,6 +129,10 @@ class _FakeGeocodeResult:
     latitude = 52.229721
     longitude = 21.012234
     raw = {
+        # ETAP 1: klasa musi być bezpieczna (miejscowość), inaczej kandydat
+        # zostaje odrzucony zanim w ogóle zobaczylibyśmy jego nazwę.
+        "class": "place",
+        "type": "city",
         "display_name": POISON,
         "address": ADDRESS,
     }
