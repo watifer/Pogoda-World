@@ -255,10 +255,13 @@ class BotHarness:
             lb, "get_coords_from_city",
             lambda city, lang="pl": (52.22972, 21.01223, f"{city}, Polska"),
         )
+        # ETAP 1: testy podszywają się pod JEDYNE źródło geokodowania forward,
+        # czyli jądrową funkcję statusową. Dzięki temu ścieżki komend i tryb
+        # gościa (przez geocode_city_details_status) widzą ten sam wynik.
         monkeypatch.setattr(
-            lb, "_geocode_city_public_details",
+            lb, "geocode_city_accepted",
             lambda city, lang="pl": (
-                52.22972, 21.01223, city, f"{city}, Polska", True,
+                lb.GEOCODE_OK, 52.22972, 21.01223, city, f"{city}, Polska",
             ),
         )
         monkeypatch.setattr(
@@ -1284,8 +1287,8 @@ class TestLocationDescription:
 
     def test_city_search_failure_is_not_reported_as_not_found(self, bot, monkeypatch):
         monkeypatch.setattr(
-            lb, "_geocode_city_public_details",
-            lambda city, lang="pl": (None, None, None, None, False),
+            lb, "geocode_city_accepted",
+            lambda city, lang="pl": (lb.GEOCODE_ERROR, None, None, None, None),
         )
         bot.run(bot.msg(114, "/start BETAX1"))
         bot.run(bot.msg(114, "/miasto"))
@@ -1297,14 +1300,107 @@ class TestLocationDescription:
 
     def test_city_not_found_keeps_the_old_message(self, bot, monkeypatch):
         monkeypatch.setattr(
-            lb, "_geocode_city_public_details",
-            lambda city, lang="pl": (None, None, None, None, True),
+            lb, "geocode_city_accepted",
+            lambda city, lang="pl": (lb.GEOCODE_NOT_FOUND, None, None, None, None),
         )
         bot.run(bot.msg(115, "/start BETAX1"))
         bot.run(bot.msg(115, "/miasto"))
         bot.run(bot.msg(115, "Xyzzz"))
 
         assert bot.has_reply(115, "Nie mogłem znaleźć takiego miejsca na mapie")
+
+    # ------------------------------------------------------------------
+    # ETAP 1: krótkie i niepasujące zapytania geokodera
+    # ------------------------------------------------------------------
+    @pytest.mark.parametrize("text", ["U", "Wa", "Os", "a b"])
+    def test_short_query_never_reaches_the_geocoder(self, bot, monkeypatch, text):
+        """1-2 znaki bez kontekstu: komunikat, zero pytań do mapy, zero zapisu."""
+        calls = []
+
+        def fake(city, lang="pl"):
+            calls.append(city)
+            return (lb.GEOCODE_OK, 52.22972, 21.01223, city, f"{city}, Polska")
+
+        freeze_local_hour(monkeypatch, 10, 0)
+        monkeypatch.setattr(lb, "geocode_city_accepted", fake)
+
+        bot.run(bot.msg(116, "/start BETAX1"))
+        bot.run(bot.msg(116, f"/miasto {text}"))
+        bot.run(bot.msg(116, "/teraz"))
+        bot.run(bot.msg(116, text))
+
+        assert bot.has_reply(116, "Ta nazwa jest za krótka"), text
+        assert not bot.has_reply(116, "Szukam lokalizacji"), "nie udajemy, że szukamy"
+        assert calls == [], f"geokoder nie mógł być zapytany o {text!r}"
+        assert bot.users.record(116)["profile_status"] == "none"
+        assert bot.oneoffs == []
+        assert "116" not in lb.PENDING_CITY
+
+    def test_short_and_rejected_query_never_generates_a_oneoff_card(
+        self, bot, monkeypatch
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(117, "/start BETAX1"))
+        for command in ("/dzien", "/teraz", "/trend"):
+            bot.run(bot.msg(117, f"{command} Wa"))
+        assert bot.oneoffs == []
+        assert "117" not in lb.PENDING_SAVE
+        assert bot.users.record(117)["profile_status"] == "none"
+
+    @pytest.mark.parametrize("status,expected", [
+        (lb.GEOCODE_NO_MATCH, "Na mapie nie ma miejsca o takiej nazwie"),
+        (lb.GEOCODE_UNCERTAIN, "kilka różnych miejsc"),
+    ])
+    def test_rejected_candidates_save_nothing_and_show_own_message(
+        self, bot, monkeypatch, status, expected
+    ):
+        """NO_MATCH i UNCERTAIN zostają osobne: inny tekst, ta sama cisza w danych."""
+        freeze_local_hour(monkeypatch, 10, 0)
+        monkeypatch.setattr(
+            lb, "geocode_city_accepted",
+            lambda city, lang="pl": (status, None, None, None, None),
+        )
+        bot.run(bot.msg(118, "/start BETAX1"))
+        bot.run(bot.msg(118, "/miasto"))
+        bot.run(bot.msg(118, "Hel"))
+
+        assert bot.has_reply(118, expected)
+        assert not bot.has_reply(118, "Nie mogłem znaleźć"), "to nie jest pusta mapa"
+        rec = bot.users.record(118)
+        assert rec["profile_status"] == "none"
+        assert rec["lat_round"] == "" and rec["lon_round"] == ""
+        assert "118" not in bot.gc.formularz.chat_ids()
+        assert "118" not in lb.PENDING_CITY, "stan oczekiwania nie wraca sam"
+
+        bot.run(bot.msg(118, "/teraz Hel"))
+        bot.run(bot.msg(118, "/dzien Hel"))
+        assert bot.oneoffs == []
+        # Brak wyboru z listy: żaden status nie może doczepić inline keyboarda.
+        assert all("inline_keyboard" not in (markup or {}) for markup in bot.markups)
+
+    def test_full_name_still_saves_profile_after_validation(self, bot, monkeypatch):
+        """Poprawka nie może cofnąć tego, co działa: pełna nazwa = zapis profilu."""
+        calls = []
+
+        def fake(city, lang="pl"):
+            calls.append(city)
+            return (lb.GEOCODE_OK, 54.6037, 18.7616, "Hel", "Hel, powiat pucki, Polska")
+
+        monkeypatch.setattr(lb, "geocode_city_accepted", fake)
+        monkeypatch.setattr(
+            lb, "get_location_details_from_coords",
+            lambda lat, lon, lang="pl", query=None, mode=None: (
+                "Hel", "Hel, powiat pucki, województwo pomorskie, Polska", lb.GEO_OK,
+            ),
+        )
+        bot.run(bot.msg(119, "/start BETAX1"))
+        bot.run(bot.msg(119, "/miasto Hel"))
+
+        assert calls == ["Hel"]
+        rec = bot.users.record(119)
+        assert rec["profile_status"] == "active"
+        assert rec["location_label"] == "Hel"
+        assert bot.has_reply(119, "Hel, powiat pucki, województwo pomorskie, Polska")
 
 
 # ============================================================================
