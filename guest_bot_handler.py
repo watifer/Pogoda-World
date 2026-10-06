@@ -200,12 +200,20 @@ def _clean_location_query(q: str) -> str:
 _GEOCODE_POSTCODE_RE = re.compile(r"(?<!\d)(?:\d{2}-\d{3}|\d{4,10})(?!\d)")
 
 
-def _shortening_keeps_context(query: str) -> bool:
+def _shortening_keeps_context(query: str, country_check=None) -> bool:
     """Czy skrócenie zapytania do pierwszych dwóch tokenów nie gubi kontekstu.
 
     "Hel, PL" nie wolno skrócić do "Hel" — zniknąłby jawny kraj, czyli jedyny
     dowód, który rozstrzygał niepewność. To samo dotyczy kodu pocztowego.
+
+    ETAP 1.1: decyzję o kraju podejmuje wstrzyknięty ``country_check``
+    (``location_bot.geocode_shortening_is_safe``), bo to location_bot zna mapę
+    krajów. Bez niego zostaje lokalny fallback: przecinek i kod pocztowy, tak
+    jak w etapie 1 — dzięki temu stare wywołania nie zmieniają zachowania.
     """
+    if country_check is not None:
+        return bool(country_check(query))
+
     raw = (query or "").strip()
     if "," in raw:
         return False
@@ -214,7 +222,8 @@ def _shortening_keeps_context(query: str) -> bool:
     return True
 
 
-def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn=None):
+def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn=None,
+                         shortening_ok_fn=None):
     """Geokoduje zapytanie trybu gościa i zwraca ``(lat, lon, full, used, status)``.
 
     ETAP 1: jeśli dostarczymy ``geocode_status_fn`` (statusowy adapter z
@@ -232,7 +241,7 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn
     
     # Deska ratunku: jeśli ktoś wpisał np. "Nowy Jork super", sprawdzamy "Nowy Jork"
     # — ale tylko gdy skrócenie nie wyrzuca jawnego kraju ani kodu pocztowego.
-    if len(toks) > 2 and _shortening_keeps_context(q):
+    if len(toks) > 2 and _shortening_keeps_context(q, shortening_ok_fn):
         candidates.append(" ".join(toks[:2]))
 
     seen = set()
@@ -279,6 +288,7 @@ def handle_guest_now(
     send_reply_fn,
     get_city_fn=None,
     geocode_status_fn=None,
+    shortening_ok_fn=None,
 ) -> bool:
     """Tryb gościa: skróty (?d/.n/?12/?14 ...) i wzmianki @bot.
 
@@ -286,6 +296,11 @@ def handle_guest_now(
     ``(lat, lon, display_location, status)`` z ETAP 1 — tę samą walidację co
     /dzien, /teraz, /trend, /miasto i prompty. Karta powstaje wyłącznie dla
     GEOCODE_OK; w grupie błąd oznacza ciszę, ale karty nie ma nigdy.
+
+    ``shortening_ok_fn`` (opcjonalny, wstrzykiwany przez location_bot jako
+    ``geocode_shortening_is_safe``) pytany jest, czy skrót ratunkowy do
+    pierwszych dwóch tokenów nie gubi jawnego kraju ani kodu pocztowego.
+    Stary ``get_coords_fn`` bez adaptera statusowego działa bez zmian.
     """
     
     text = (message.get("text") or "").strip()
@@ -388,7 +403,7 @@ def handle_guest_now(
                 geo_status = GEOCODE_OK
             else:
                 lat, lon, full_address, used_query, geo_status = _geocode_best_effort(
-                    query, get_coords_fn, user_lang, geocode_status_fn
+                    query, get_coords_fn, user_lang, geocode_status_fn, shortening_ok_fn
                 )
                 # ETAP 1: cache gościa TYLKO dla wyników zwalidowanych.
                 # TOO_SHORT, NO_MATCH, UNCERTAIN, NOT_FOUND i ERROR nie wolno
