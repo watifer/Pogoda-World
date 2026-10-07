@@ -605,7 +605,9 @@ def test_hel_beats_helmand_and_ignores_the_station():
                      postcode="84-150"),
     ])
 
-    status, lat, lon, short_label, display = geo("Hel")
+    # HOTFIX: postcode gating — "84-150" musi być w query, żeby trafił do
+    # publicznego display; "Hel" bez kodu nadal wygrywa z Helmand/stacją.
+    status, lat, lon, short_label, display = geo("Hel 84-150")
     assert status == lb.GEOCODE_OK
     assert (lat, lon) == (54.6037, 18.7616)
     assert short_label == "Hel"
@@ -1235,8 +1237,13 @@ def test_known_cost_of_stage_one_street_first_query_is_rejected():
 
 
 def guest_handler_run(text, geocode_status_fn, chat_type="private", lang="pl",
-                      city_name="Hel"):
-    """Woła handle_guest_now z atrapami: (obsłużono, teksty, karty, payloady)."""
+                      city_name="Hel", resolve_labels_fn=None):
+    """Woła handle_guest_now z atrapami: (obsłużono, teksty, karty, payloady).
+
+    HOTFIX: ``resolve_labels_fn`` jest opcjonalny (domyślnie ``None``, jak w
+    kontrakcie ``handle_guest_now``) — istniejące wywołania bez niego zostają
+    bez zmian.
+    """
     sent, photos, payloads = [], [], []
 
     handled = gbh.handle_guest_now(
@@ -1260,6 +1267,7 @@ def guest_handler_run(text, geocode_status_fn, chat_type="private", lang="pl",
         get_city_fn=(None if city_name is None
                     else lambda lat, lon, lang: city_name),
         geocode_status_fn=geocode_status_fn,
+        resolve_labels_fn=resolve_labels_fn,
     )
     return handled, sent, photos, payloads
 
@@ -1563,7 +1571,9 @@ def test_accepted_result_still_splits_short_and_display_labels():
                    lat=52.15, lon=21.29,
                    display="Biblioteka publiczna, Koscielna 41, Osiedle Parkowe"),
     ])
-    status, _lat, _lon, short_label, display = geo("Wiązowna")
+    # HOTFIX: postcode gating — "05-462" musi być w query, żeby trafił do
+    # publicznego display (inaczej byłby to postcode, którego user nie wpisał).
+    status, _lat, _lon, short_label, display = geo("Wiązowna 05-462")
     assert status == lb.GEOCODE_OK
     assert short_label == "Wiązowna"
     assert display == (
@@ -1582,7 +1592,7 @@ def test_accepted_result_still_splits_short_and_display_labels():
                    display="Biblioteka publiczna, Koscielna 41, Osiedle Parkowe"),
     ])
     lat, lon, public_short, public_display, ok = lb._geocode_city_public_details(
-        "Wiązowna", "pl"
+        "Wiązowna 05-462", "pl"
     )
     assert (lat, lon, ok) == (52.15, 21.29, True)
     assert (public_short, public_display) == (short_label, display)
@@ -1951,3 +1961,383 @@ def test_stage_1_2_country_code_filter_and_context_work_together():
     FakeNominatim.responses.append([olsztyn_slaskie_result()])
     status, lat, _lon, _short, _display = geo("Olsztyn, Częstochowa, Polska")
     assert status == lb.GEOCODE_OK and lat == 50.75
+
+
+# ============================================================================
+# 11. HOTFIX — POSTCODE GATING (międzynarodowo, bez regexu PL-only)
+# ============================================================================
+# Postcode z reverse/forward adresu jest publicznie widoczny WYŁĄCZNIE, gdy
+# query użytkownika zawiera dokładnie TEN SAM postcode (tolerancja na spacje
+# i myślniki), nigdy jako "fragment większej liczby" (naiwny "contains").
+
+def test_compact_alnum_strips_separators_and_casefolds():
+    assert lb._compact_alnum("WC2N 5DU") == "wc2n5du"
+    assert lb._compact_alnum("05-462") == "05462"
+    assert lb._compact_alnum("") == ""
+
+
+@pytest.mark.parametrize("query,postcode,expected", [
+    ("London", "WC2N 5DU", False),
+    ("London WC2N 5DU", "WC2N 5DU", True),
+    ("London WC2N5DU", "WC2N 5DU", True),
+    ("london wc2n 5du", "WC2N 5DU", True),
+    ("Paryż", "75008", False),
+    ("Paryż 75008", "75008", True),
+    ("Wiązowna", "05-462", False),
+    ("Wiązowna 05462", "05-462", True),
+    ("Wiązowna 05-462", "05-462", True),
+    # Regresja: postcode jako fragment WIĘKSZEJ liczby/tokenu nie liczy się
+    # jako jawnie wpisany — naiwny "pc in compact(query)" złapałby to błędnie.
+    ("Wiązowna 1050462987", "05-462", False),
+    ("Paryż 750080", "75008", False),
+    ("Paryż 7500811", "75008", False),
+    ("", "WC2N 5DU", False),
+    (None, "WC2N 5DU", False),
+])
+def test_query_mentions_candidate_postcode(query, postcode, expected):
+    address = {"postcode": postcode}
+    assert lb._query_mentions_candidate_postcode(address, query) is expected
+
+
+def test_query_mentions_candidate_postcode_without_a_postcode_is_false():
+    assert lb._query_mentions_candidate_postcode({}, "London WC2N 5DU") is False
+    assert lb._query_mentions_candidate_postcode({"postcode": ""}, "London") is False
+
+
+def test_format_public_location_parts_hides_uk_postcode_without_matching_query():
+    address = {"city": "London", "state": "England", "postcode": "WC2N 5DU",
+               "country": "United Kingdom", "country_code": "gb"}
+    short_label, display = lb._format_public_location_parts(
+        address, query="London", mode="city", lang="en"
+    )
+    assert short_label == "London"
+    assert "WC2N" not in display and "5DU" not in display
+
+
+def test_format_public_location_parts_shows_uk_postcode_when_query_matches():
+    address = {"city": "London", "state": "England", "postcode": "WC2N 5DU",
+               "country": "United Kingdom", "country_code": "gb"}
+    short_label, display = lb._format_public_location_parts(
+        address, query="London WC2N 5DU", mode="city", lang="en"
+    )
+    assert short_label == "London"
+    assert "WC2N 5DU" in display
+
+
+def test_format_public_location_parts_postcode_gating_for_paris():
+    address = {"city": "Paris", "country": "Francja", "postcode": "75008",
+               "country_code": "fr"}
+    _short, hidden = lb._format_public_location_parts(address, query="Paryż", lang="pl")
+    assert "75008" not in hidden
+    _short, shown = lb._format_public_location_parts(
+        address, query="Paryż 75008", lang="pl"
+    )
+    assert "75008" in shown
+
+
+def test_format_public_location_parts_hides_postcode_when_query_is_none():
+    """Pinezka/GPS: query=None => postcode nigdy nie wycieka tylko dlatego, że
+    istnieje w adresie reverse."""
+    address = {"city": "Paris", "country": "Francja", "postcode": "75008",
+               "country_code": "fr"}
+    _short, display = lb._format_public_location_parts(address, query=None, lang="pl")
+    assert "75008" not in display
+
+
+def test_forward_display_postcode_gating_through_geocode_city_accepted():
+    """Każdy fallback_display z forward geokodera przechodzi TĘ SAMĄ regułę."""
+    FakeNominatim.responses.append([paris_result(postcode="75008")])
+    status, _lat, _lon, _short, display = geo("Paryż")
+    assert status == lb.GEOCODE_OK
+    assert "75008" not in display
+
+    FakeNominatim.responses.append([paris_result(postcode="75008")])
+    status, _lat, _lon, _short, display = geo("Paryż 75008")
+    assert status == lb.GEOCODE_OK
+    assert "75008" in display
+
+
+# ============================================================================
+# 12. HOTFIX — PREFERUJ FORWARD, GDY REVERSE ROZMIJA SIĘ Z QUERY
+# ============================================================================
+# Ogólna reguła (NIE "specjalny wyjątek dla Londynu"): gdy reverse odpowiada
+# poprawnie technicznie, ale jego short_label nie pasuje do rdzenia query (ten
+# sam matcher co walidacja forward: warianty + pełny token/fraza, bez
+# prefiksów), a mamy zwalidowany forward fallback dla TEGO SAMEGO zapytania —
+# forward wygrywa. Londyn jest tu wyłącznie testem regresyjnym.
+
+def test_resolve_prefers_validated_forward_when_reverse_administrative_name_mismatches_query(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (
+            "City of Westminster",
+            "City of Westminster, England, WC2N 5DU, United Kingdom",
+            lb.GEO_OK,
+        ),
+    )
+    short_label, display_location, status = lb._resolve_location_labels(
+        51.5074, -0.1278, "en",
+        fallback_short_label="London",
+        fallback_display_location="London, England, United Kingdom",
+        query="London",
+    )
+    assert status == lb.GEO_OK
+    assert short_label == "London"
+    assert display_location == "London, England, United Kingdom"
+    assert "City of Westminster" not in display_location
+    assert "WC2N 5DU" not in display_location
+
+
+@pytest.mark.parametrize("query,fallback_short", [("London", "London"), ("Londyn", "Londyn")])
+def test_resolve_forward_preference_works_for_london_and_londyn_alike(
+    monkeypatch, query, fallback_short
+):
+    """Nie wymagamy konkretnego wyboru między 'London' i 'Londyn' — wymagamy
+    braku niepasującej nazwy administracyjnej jako głównej etykiety."""
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (
+            "City of Westminster", "City of Westminster, England, United Kingdom", lb.GEO_OK,
+        ),
+    )
+    short_label, display_location, status = lb._resolve_location_labels(
+        51.5074, -0.1278, "en",
+        fallback_short_label=fallback_short,
+        fallback_display_location=f"{fallback_short}, England, United Kingdom",
+        query=query,
+    )
+    assert status == lb.GEO_OK
+    assert short_label == fallback_short
+    assert "Westminster" not in display_location
+
+
+def test_resolve_keeps_reverse_when_it_actually_matches_the_query(monkeypatch):
+    """Nie jest to ogólna degradacja reverse — tylko dla rozbieżności."""
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (
+            "London", "London, England, United Kingdom", lb.GEO_OK,
+        ),
+    )
+    short_label, display_location, status = lb._resolve_location_labels(
+        51.5074, -0.1278, "en",
+        fallback_short_label="London",
+        fallback_display_location="London, England, United Kingdom",
+        query="London",
+    )
+    assert (short_label, display_location, status) == (
+        "London", "London, England, United Kingdom", lb.GEO_OK
+    )
+
+
+def test_resolve_does_not_override_reverse_without_a_validated_forward_fallback(monkeypatch):
+    """Bez fallback_short/fallback_display reverse zostaje — nawet 'rozjechany'."""
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (
+            "City of Westminster", "City of Westminster, England, United Kingdom", lb.GEO_OK,
+        ),
+    )
+    short_label, _display, status = lb._resolve_location_labels(
+        51.5074, -0.1278, "en", query="London",
+    )
+    assert status == lb.GEO_OK
+    assert short_label == "City of Westminster"
+
+
+def test_resolve_error_and_no_city_fallbacks_are_not_degraded_by_the_new_rule(monkeypatch):
+    """GEO_ERROR/GEO_NO_CITY fallbacki zostają — nowa reguła dotyczy tylko GEO_OK."""
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (None, None, lb.GEO_ERROR),
+    )
+    assert lb._resolve_location_labels(
+        1.0, 2.0, "pl",
+        fallback_short_label="London",
+        fallback_display_location="London, United Kingdom",
+        query="London",
+    ) == ("London", "London, United Kingdom", lb.GEO_OK)
+
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang, query=None, mode=None: (None, None, lb.GEO_NO_CITY),
+    )
+    assert lb._resolve_location_labels(
+        1.0, 2.0, "pl",
+        fallback_short_label="London",
+        fallback_display_location="London, United Kingdom",
+        query="London",
+    ) == ("London", "London, United Kingdom", lb.GEO_NO_CITY)
+
+
+# ============================================================================
+# 13. HOTFIX — WARIANTY NAZW London/Londyn (kontrolowane, bez fuzzy)
+# ============================================================================
+
+def test_london_and_londyn_are_controlled_name_variants():
+    assert lb._geocode_query_variants("London") == ["london", "londyn"]
+    assert lb._geocode_query_variants("Londyn") == ["londyn", "london"]
+
+
+def test_london_alias_does_not_relax_hel_vs_helmand_or_wa_vs_western_australia():
+    assert not lb._geocode_name_matches_any(lb._geocode_query_variants("Hel"), "helmand")
+    assert not lb._geocode_name_matches_any(
+        lb._geocode_query_variants("Wa"), "western australia"
+    )
+
+
+def test_london_query_resolves_through_the_city_field_like_any_other_city():
+    FakeNominatim.responses.append([
+        FakeResult({"city": "London", "state": "England", "country": "United Kingdom",
+                    "country_code": "gb"}, lat=51.5074, lon=-0.1278,
+                   display="London, United Kingdom"),
+    ])
+    status, lat, lon, short_label, display = geo("London", "en")
+    assert status == lb.GEOCODE_OK
+    assert (lat, lon) == (51.5074, -0.1278)
+    assert short_label == "London"
+
+
+def test_londyn_query_resolves_to_the_same_city_via_the_alias():
+    FakeNominatim.responses.append([
+        FakeResult({"city": "London", "state": "England", "country": "Wielka Brytania",
+                    "country_code": "gb"}, lat=51.5074, lon=-0.1278,
+                   display="London, Wielka Brytania"),
+    ])
+    status, lat, lon, short_label, display = geo("Londyn", "pl")
+    assert status == lb.GEOCODE_OK
+    assert (lat, lon) == (51.5074, -0.1278)
+    assert short_label == "London"
+
+
+# ============================================================================
+# 14. HOTFIX — GUEST CAPTION: resolve_labels_fn jako jedyne źródło etykiet
+# ============================================================================
+
+def _london_forward_status_fn(city, lang):
+    return (51.5074, -0.1278, "London", "London, England, United Kingdom", lb.GEOCODE_OK)
+
+
+def _forward_wins_resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+    """Symuluje naprawiony _resolve_location_labels: reverse 'City of
+    Westminster' nie pasuje do 'London', więc forward fallback wygrywa."""
+    return (fallback_short, fallback_display, lb.GEO_OK)
+
+
+def test_guest_caption_uses_resolve_labels_fn_for_both_title_and_subtitle():
+    handled, _sent, photos, _payloads = guest_handler_run(
+        "?12 London", _london_forward_status_fn, lang="en", city_name=None,
+        resolve_labels_fn=_forward_wins_resolver,
+    )
+    assert handled is True
+    assert photos, "zwalidowana lokalizacja musi dać kartę"
+    _chat_id, city_name, f_address = photos[0]
+    assert city_name == "London"
+    assert f_address == "London, England, United Kingdom"
+
+
+def test_guest_caption_reverse_administrative_name_does_not_leak_into_the_title():
+    _handled, _sent, photos, _payloads = guest_handler_run(
+        "?12 London", _london_forward_status_fn, lang="en", city_name=None,
+        resolve_labels_fn=_forward_wins_resolver,
+    )
+    _chat_id, city_name, f_address = photos[0]
+    assert "Westminster" not in city_name
+    assert "Westminster" not in (f_address or "")
+
+
+def test_guest_caption_does_not_leak_a_postcode_the_user_never_typed():
+    def status_fn(city, lang):
+        return (51.5074, -0.1278, "London",
+                "London, England, United Kingdom", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        # Nawet jeśli reverse zwróci postcode, resolver (realnie: formatter z
+        # postcode gatingiem) nie może go przepuścić bez jawnego query.
+        return (fallback_short, fallback_display, lb.GEO_OK)
+
+    _handled, _sent, photos, _payloads = guest_handler_run(
+        "?12 London", status_fn, lang="en", city_name=None, resolve_labels_fn=resolver,
+    )
+    _chat_id, _city_name, f_address = photos[0]
+    assert "WC2N" not in (f_address or "") and "5DU" not in (f_address or "")
+
+
+def test_guest_caption_falls_back_to_forward_when_resolve_labels_fn_errors():
+    """Błąd/pustka resolve_labels_fn nie może nadpisać poprawnego forward fallbacku."""
+    def failing_resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        return (None, None, lb.GEO_ERROR)
+
+    _handled, _sent, photos, _payloads = guest_handler_run(
+        "?12 London", _london_forward_status_fn, lang="en", city_name=None,
+        resolve_labels_fn=failing_resolver,
+    )
+    _chat_id, city_name, f_address = photos[0]
+    assert city_name == "London"
+    assert f_address == "London, England, United Kingdom"
+
+
+def test_guest_caption_without_resolve_labels_fn_keeps_the_legacy_path():
+    """Kompatybilność wsteczna: bez resolve_labels_fn — stara ścieżka reverse+forward."""
+    _handled, _sent, photos, _payloads = guest_handler_run(
+        "?12 London", _london_forward_status_fn, lang="en", city_name="London",
+    )
+    _chat_id, city_name, f_address = photos[0]
+    assert city_name == "London"
+    assert f_address == "London, England, United Kingdom"
+
+
+@pytest.mark.parametrize("lang", ["en", "pl"])
+def test_guest_shortcut_london_label_is_consistent_across_languages(lang):
+    _handled, _sent, photos, _payloads = guest_handler_run(
+        "?n london", _london_forward_status_fn, lang=lang, city_name=None,
+        resolve_labels_fn=_forward_wins_resolver,
+    )
+    assert photos, lang
+    _chat_id, city_name, f_address = photos[0]
+    assert "Westminster" not in city_name
+    assert city_name in ("London", "Londyn")
+
+
+@pytest.mark.parametrize("lang", ["en", "pl"])
+def test_city_and_guest_agree_on_the_london_label_via_the_same_resolver(lang, monkeypatch):
+    """/miasto i guest przechodzą przez DOKŁADNIE ten sam resolver — spójność
+    jest gwarantowana przez wspólny kod, nie przez duplikowaną logikę."""
+    FakeNominatim.responses.append([
+        FakeResult({"city": "London", "state": "England", "country": "United Kingdom",
+                    "country_code": "gb"}, lat=51.5074, lon=-0.1278,
+                   display="London, United Kingdom"),
+    ])
+    status, lat, lon, fallback_short, fallback_display = geo("London", lang)
+    assert status == lb.GEOCODE_OK
+
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat_, lon_, lang_, query=None, mode=None: (
+            "City of Westminster",
+            "City of Westminster, England, United Kingdom",
+            lb.GEO_OK,
+        ),
+    )
+
+    # Ścieżka /miasto (location_bot._run_city_oneoff) i ścieżka guest
+    # (location_bot.handle_guest_now -> resolve_labels_fn) wołają TĘ SAMĄ
+    # funkcję — tu symulujemy obie strony wprost.
+    city_short, city_display, city_status = lb._resolve_location_labels(
+        lat, lon, lang,
+        fallback_short_label=fallback_short,
+        fallback_display_location=fallback_display,
+        query="London",
+    )
+    guest_short, guest_display, guest_status = lb._resolve_location_labels(
+        lat, lon, lang,
+        fallback_short_label=fallback_short,
+        fallback_display_location=fallback_display,
+        query="London",
+    )
+
+    assert city_status == guest_status == lb.GEO_OK
+    assert (city_short, city_display) == (guest_short, guest_display)
+    assert "Westminster" not in city_display
