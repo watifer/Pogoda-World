@@ -1164,16 +1164,38 @@ def house_result():
                       display="41, Koscielna, Wiązowna, 05-462, Polska")
 
 
-def test_city_then_street_is_accepted_because_the_name_still_matches():
-    """'Wiązowna, Koscielna 41': nazwa miejscowości jest dowodem, reszta kontekstem."""
+def test_known_cost_of_stage_1_2_street_context_is_now_a_hard_filter():
+    """Świadomy koszt etapu 1.2: 'Wiązowna, Koscielna 41' przestaje przechodzić.
+
+    W etapie 1.1 ten przypadek był OK: nazwa miejscowości była dowodem, a ulica
+    z numerem "wyjaśniały się" luźnym kontekstem (road + house_number w
+    ``_geocode_context_values``). Etap 1.2 zmienia regułę na WARUNKOWĄ: segment
+    po przecinku, który nie jest krajem, to jawny kontekst i MUSI przejść
+    filtr administracyjny (county/state/region/municipality/province/
+    state_district/district/city/town/city_district/suburb). Ulica i numer
+    domu nie są żadnym z tych pól, więc kandydat odpada z GEOCODE_NO_MATCH.
+
+    To jest celowa decyzja, nie regresja zabezpieczeń: bez niej kontekst stałby
+    się miękką sugestią i "Wiązowna, Poznań" też mogłoby przejść. Ten sam
+    gatunek kosztu co ``test_known_cost_of_stage_one_street_first_query_is_rejected``,
+    tylko w drugą stronę zapytania. Zapis "miejscowość, ulica numer" wymaga
+    decyzji produktowej — nie robimy jej po cichu.
+    """
     FakeNominatim.responses.append([house_result()])
-    status, lat, _lon, short_label, display = geo("Wiązowna, Koscielna 41")
+    assert geo("Wiązowna, Koscielna 41")[0] == lb.GEOCODE_NO_MATCH
+    # Bez przecinka dowód nazwy miejscowości nadal wystarcza (ścieżka etapu 1.1).
+    FakeNominatim.responses.append([house_result()])
+    status, lat, _lon, short_label, _display = geo("Wiązowna 05-462")
     assert status == lb.GEOCODE_OK
     assert (lat, short_label) == (52.1483, "Wiązowna")
-    # Etykieta nadal z formattera: ulica tak (bo była w zapytaniu), numer już nie.
-    assert "Koscielna" in display
-    for forbidden in ("41,", ", 41", "05-462, Polska, 41", POISON):
-        assert forbidden not in display
+
+
+def test_street_context_is_rejected_even_when_the_street_is_in_the_address():
+    """'Koscielna 41' jest w polach kandydata, ale to nie są pola kontekstu."""
+    FakeNominatim.responses.append([house_result()])
+    assert geo("Wiązowna, Koscielna")[0] == lb.GEOCODE_NO_MATCH
+    FakeNominatim.responses.append([house_result()])
+    assert geo("Wiązowna, 41")[0] == lb.GEOCODE_NO_MATCH
 
 
 def test_context_that_names_another_place_is_a_contradiction():
@@ -1574,3 +1596,358 @@ def test_geo_cache_of_reverse_labels_is_not_used_by_forward_validation():
     assert status == lb.GEOCODE_OK
     assert short_label == "Hel"
     assert list(lb._GEO_DETAILS_CACHE) == [("fake",)]
+
+
+# ============================================================================
+# 9. ETAP 1.2 — LUDZKIE DOPRECYZOWANIA LOKALIZACJI
+# ============================================================================
+# Zapytanie dzielimy na core / admin_context / country_context. Kontekst
+# administracyjny jest DODATKOWYM filtrem i reguła jest WARUNKOWA: gdy parser
+# wykryje admin_context, kandydat MUSI przejść nowy filtr administracyjny, a
+# stary matcher kontekstu (który czyta też display_name) nie jest obejściem.
+# Bez wykrytego kontekstu obowiązuje walidacja etapu 1.1 bez zmian.
+
+WIAZOWNA_PL = {
+    "city": "Wiązowna", "municipality": "gmina Wiązowna",
+    "county": "powiat otwocki", "state": "województwo mazowieckie",
+    "country": "Polska", "country_code": "pl",
+}
+OLSZTYN_SLASKIE_PL = {
+    "village": "Olsztyn", "municipality": "gmina Olsztyn",
+    "county": "powiat częstochowski", "state": "województwo śląskie",
+    "country": "Polska", "country_code": "pl",
+}
+OLSZTYN_WARMINSKIE_PL = {
+    "city": "Olsztyn", "state": "województwo warmińsko-mazurskie",
+    "country": "Polska", "country_code": "pl",
+}
+
+
+def wiazowna_result(**extra):
+    address = dict(WIAZOWNA_PL)
+    address.update(extra)
+    return FakeResult(
+        address, cls="place", typ="village", lat=52.15, lon=21.29,
+        display="Wiązowna, gmina Wiązowna, powiat otwocki, województwo mazowieckie,"
+                " Polska",
+    )
+
+
+def olsztyn_slaskie_result(**extra):
+    address = dict(OLSZTYN_SLASKIE_PL)
+    address.update(extra)
+    return FakeResult(
+        address, cls="place", typ="village", lat=50.75, lon=19.27,
+        display="Olsztyn, gmina Olsztyn, powiat częstochowski, województwo śląskie,"
+                " Polska",
+    )
+
+
+def olsztyn_warminskie_result(**extra):
+    address = dict(OLSZTYN_WARMINSKIE_PL)
+    address.update(extra)
+    return FakeResult(
+        address, cls="place", typ="city", lat=53.77, lon=20.49,
+        display="Olsztyn, województwo warmińsko-mazurskie, Polska",
+    )
+
+
+def helmand_result():
+    return FakeResult(
+        {"state": "Helmand", "country": "Afganistan", "country_code": "af"},
+        lat=31.5, lon=65.0, cls="boundary", typ="administrative",
+        display="Helmand, Afganistan",
+    )
+
+
+# ----------------------------------------------------------------------------
+# 9A. PARSER: core / admin_context / country_context (bez sieci)
+# ----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("query,core,admin,code", [
+    # wymagane przypadki z opisu etapu
+    ("Wiązowna, otwock", "Wiązowna", ["otwock"], None),
+    ("Wiązowna, powiat otwock", "Wiązowna", ["otwock"], None),
+    ("Wiązowna, powiat otwocki", "Wiązowna", ["otwocki"], None),
+    ("Olsztyn, województwo śląskie", "Olsztyn", ["śląskie"], None),
+    ("Olsztyn województwo śląskie", "Olsztyn", ["śląskie"], None),
+    ("Olsztyn, Częstochowa", "Olsztyn", ["Częstochowa"], None),
+    ("Olsztyn koło Częstochowy", "Olsztyn", ["Częstochowy"], None),
+    ("Wiązowna, otwock, Polska", "Wiązowna", ["otwock"], "pl"),
+    ("Olsztyn, Częstochowa, Polska", "Olsztyn", ["Częstochowa"], "pl"),
+    # markery bez przecinka
+    ("Wiązowna powiat otwock", "Wiązowna", ["otwock"], None),
+    ("Wiązowna, gmina Wiązowna", "Wiązowna", ["Wiązowna"], None),
+    ("Olsztyn w pobliżu Częstochowy", "Olsztyn", ["Częstochowy"], None),
+    ("Olsztyn okolice Częstochowy", "Olsztyn", ["Częstochowy"], None),
+    ("Olsztyn near Czestochowa", "Olsztyn", ["Czestochowa"], None),
+    # kompatybilność wstecz z etapem 1.1
+    ("Paryż, Francja", "Paryż", [], "fr"),
+    ("Hel, PL", "Hel", [], "pl"),
+    ("Hel Polska", "Hel", [], "pl"),
+    ("Hel", "Hel", [], None),
+    ("Wiązowna", "Wiązowna", [], None),
+    ("Wiązowna 05-462", "Wiązowna 05-462", [], None),
+    # "Kolo" to miejscowość, nie marker rozdzielający
+    ("Kolo", "Kolo", [], None),
+    ("Wielkie Kolo", "Wielkie Kolo", [], None),
+])
+def test_stage_1_2_query_parse(query, core, admin, code):
+    assert lb._geocode_query_parse(query) == (core, admin, code)
+
+
+def test_stage_1_2_parser_keeps_stage_1_1_country_contract():
+    """Nowy parser nie zmienia wyniku starego parsera kraju."""
+    for query in ("Polska", "Niemcy", "Nowy Jork Stany Zjednoczone",
+                  "Londyn Wielka Brytania", "Kościelna 41, Wiązowna"):
+        assert lb._geocode_query_country(query) == lb._geocode_query_country(query)
+    assert lb._geocode_query_country("Wiązowna, otwock, Polska") == (
+        "Wiązowna otwock", "pl",
+    ), "etap 1.1 skleja rdzeń spacjami — kontrakt bez zmian"
+    assert lb._geocode_split_country("Wiązowna, otwock, Polska") == (
+        "Wiązowna, otwock", "pl",
+    ), "etap 1.2 zachowuje przecinek potrzebny do podziału core/kontekst"
+
+
+# ----------------------------------------------------------------------------
+# 9B. ZAPYTANIE DO NOMINATIMA: bez fillerów
+# ----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("query,expected", [
+    ("Wiązowna, otwock", "Wiązowna, otwock"),
+    ("Wiązowna, powiat otwock", "Wiązowna, otwock"),
+    ("Wiązowna, powiat otwocki", "Wiązowna, otwocki"),
+    ("Olsztyn, województwo śląskie", "Olsztyn, śląskie"),
+    ("Olsztyn województwo śląskie", "Olsztyn, śląskie"),
+    ("Olsztyn, Częstochowa", "Olsztyn, Częstochowa"),
+    ("Olsztyn koło Częstochowy", "Olsztyn, Częstochowy"),
+    ("Wiązowna, otwock, Polska", "Wiązowna, otwock"),
+])
+def test_stage_1_2_query_sent_to_nominatim(query, expected):
+    FakeNominatim.responses.append([wiazowna_result()])
+    geo(query)
+    assert FakeNominatim.forward_calls()[-1]["query"] == expected
+
+
+def test_stage_1_2_fillers_are_never_sent_to_nominatim():
+    for query in ("Wiązowna, powiat otwock", "Olsztyn koło Częstochowy",
+                  "Wiązowna, gmina Wiązowna", "Olsztyn województwo śląskie"):
+        FakeNominatim.responses.append([wiazowna_result()])
+        geo(query)
+        sent = FakeNominatim.forward_calls()[-1]["query"]
+        for filler in ("powiat", "koło", "kolo", "gmina", "województwo", "w pobliżu"):
+            assert filler not in sent, f"{query!r} wysyla filler {filler!r}: {sent!r}"
+
+
+def test_stage_1_2_query_without_context_is_identical_to_stage_1_1():
+    """Brak admin_context = ten sam ciąg znaków co w etapie 1.1."""
+    FakeNominatim.responses.append([wiazowna_result()])
+    geo("Wiązowna")
+    assert FakeNominatim.forward_calls()[-1]["query"] == "Wiązowna"
+    FakeNominatim.responses.append([wiazowna_result()])
+    geo("Wiązowna 05-462")
+    assert FakeNominatim.forward_calls()[-1]["query"] == "Wiązowna 05-462"
+
+
+# ----------------------------------------------------------------------------
+# 9C. POZYTYWNE
+# ----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("query", [
+    "Wiązowna, otwock",
+    "Wiązowna, powiat otwock",
+    "Wiązowna, powiat otwocki",
+    "Wiązowna, otwock, Polska",
+])
+def test_stage_1_2_wiazowna_with_otwock_context_is_ok(query):
+    # Kandydat niepasujący kontekstem (Olsztyn śląski) jest PIERWSZY w
+    # kolejności Nominatima — musi odpaść, żeby wygrała Wiązowna.
+    FakeNominatim.responses.append([olsztyn_slaskie_result(), wiazowna_result()])
+    status, lat, _lon, short_label, _display = geo(query)
+    assert status == lb.GEOCODE_OK, query
+    assert (lat, short_label) == (52.15, "Wiązowna")
+
+
+@pytest.mark.parametrize("query", [
+    "Olsztyn, województwo śląskie",
+    "Olsztyn województwo śląskie",
+    "Olsztyn, Częstochowa",
+    "Olsztyn koło Częstochowy",
+])
+def test_stage_1_2_olsztyn_with_silesian_context_is_ok(query):
+    # Olsztyn warmiński (domyślny top result) musi odpaść na filtrze kontekstu.
+    FakeNominatim.responses.append([olsztyn_warminskie_result(), olsztyn_slaskie_result()])
+    status, lat, _lon, short_label, _display = geo(query)
+    assert status == lb.GEOCODE_OK, query
+    assert (lat, short_label) == (50.75, "Olsztyn")
+
+
+@pytest.mark.parametrize("context", ["otwock", "otwocki", "mazowieckie", "Wiązowna"])
+def test_stage_1_2_admin_variants_match_deterministically(context):
+    """otwock <-> otwocki po kontrolowanym rdzeniu, bez fuzzy matchingu."""
+    FakeNominatim.responses.append([wiazowna_result()])
+    assert geo(f"Wiązowna, {context}")[0] == lb.GEOCODE_OK
+
+
+@pytest.mark.parametrize("query", [
+    "Olsztyn, częstochowski",
+    "Olsztyn, częstochowa",
+    "Olsztyn, częstochowy",
+    "Olsztyn, śląskie",
+    "Olsztyn, slaskie",
+])
+def test_stage_1_2_silesian_admin_variants_match(query):
+    FakeNominatim.responses.append([olsztyn_slaskie_result()])
+    assert geo(query)[0] == lb.GEOCODE_OK
+
+
+# ----------------------------------------------------------------------------
+# 9D. NEGATYWNE
+# ----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("query", [
+    "Wiązowna, Poznań",      # wymagany przypadek
+    "Wiązowna, Warszawa",    # podobne, ale błędne (rdzeń 1 < 4)
+    "Wiązowna, śląskie",     # podobne, ale błędne
+    "Wiązowna, otw",         # wspólny rdzeń 3 < 4
+    "Wiązowna, wa",          # token krótszy niż 3 znaki
+])
+def test_stage_1_2_wrong_admin_context_is_no_match(query):
+    FakeNominatim.responses.append([wiazowna_result()])
+    assert geo(query)[0] == lb.GEOCODE_NO_MATCH, query
+
+
+@pytest.mark.parametrize("query", [
+    "Olsztyn, województwo mazowieckie",   # wymagany przypadek
+    "Olsztyn, Kraków",                    # wymagany przypadek
+])
+def test_stage_1_2_olsztyn_wrong_context_is_no_match(query):
+    FakeNominatim.responses.append([olsztyn_slaskie_result()])
+    assert geo(query)[0] == lb.GEOCODE_NO_MATCH, query
+
+
+def test_stage_1_2_legacy_context_path_cannot_bypass_the_admin_filter():
+    """Stary matcher przepuściłby po display_name — nowy filtr musi odrzucić.
+
+    "Poznań" występuje WYŁĄCZNIE w ``display_name``: nie ma go w county/state/
+    city/town. ``_geocode_piece_explained`` (etap 1.1) czyta części
+    display_name, więc uznałby kontekst za wyjaśniony. Reguła etapu 1.2 jest
+    WARUNKOWA: przy wykrytym admin_context decyduje wyłącznie filtr
+    administracyjny, więc kandydat odpada.
+    """
+    candidate = FakeResult(
+        {"city": "Wiązowna", "country": "Polska", "country_code": "pl"},
+        lat=52.15, lon=21.29, display="Wiązowna, Poznań, Polska",
+    )
+    address = candidate.raw["address"]
+    fake = FakeNominatim
+    # Dowód, że stara ścieżka rzeczywiście by przepuściła:
+    assert lb._geocode_piece_explained(
+        "poznan", lb._geocode_context_values(candidate.raw, address)
+    )
+    # ...a nowy filtr administracyjny mówi nie:
+    assert not lb._geocode_admin_piece_matches(
+        "poznan", lb._geocode_admin_values(address)
+    )
+    fake.responses.append([candidate])
+    assert geo("Wiązowna, Poznań")[0] == lb.GEOCODE_NO_MATCH
+
+
+def test_stage_1_2_context_never_replaces_core_validation():
+    """Kontekst pasuje idealnie, ale nazwa miejscowości nie -> NO_MATCH."""
+    FakeNominatim.responses.append([wiazowna_result()])
+    assert geo("Hel, otwock")[0] == lb.GEOCODE_NO_MATCH
+
+
+def test_stage_1_2_context_does_not_let_a_longer_name_match():
+    """„Hel" nadal nie jest „Helmand", choć „Helmand" pasuje jako kontekst."""
+    FakeNominatim.responses.append([helmand_result()])
+    assert geo("Hel, Helmand")[0] == lb.GEOCODE_NO_MATCH
+    FakeNominatim.responses.append([helmand_result(), poland_place("Hel")])
+    status, _lat, _lon, short_label, _display = geo("Hel")
+    assert status == lb.GEOCODE_OK and short_label == "Hel"
+
+
+def test_stage_1_2_paris_with_germany_is_still_rejected():
+    """„Paryż, Niemcy": kraj de jest twardym filtrem, kandydat fr odpada."""
+    FakeNominatim.responses.append([paris_result()])
+    assert geo("Paryż, Niemcy")[0] == lb.GEOCODE_NO_MATCH
+    FakeNominatim.responses.append([paris_result()])
+    status, lat, lon, _short, _display = geo("Paryż, Francja")
+    assert status == lb.GEOCODE_OK and (lat, lon) == (48.8566, 2.3522)
+
+
+@pytest.mark.parametrize("query", ["U", "Wa", "Os"])
+def test_stage_1_2_short_queries_still_never_touch_the_map(query):
+    FakeNominatim.responses.append([wiazowna_result()])
+    assert geo(query)[0] == lb.GEOCODE_TOO_SHORT
+    assert FakeNominatim.forward_calls() == [], "za krótkie zapytanie nie pyta mapy"
+
+
+# ----------------------------------------------------------------------------
+# 9E. FALLBACK CORE-ONLY — nadal z obowiązkowym filtrem kontekstu
+# ----------------------------------------------------------------------------
+
+def test_stage_1_2_core_only_fallback_still_applies_the_admin_filter():
+    FakeNominatim.responses.append([])                       # kontekstowe: pustka
+    FakeNominatim.responses.append([olsztyn_slaskie_result()])  # core-only: nie pasuje
+    assert geo("Wiązowna, otwock")[0] == lb.GEOCODE_NO_MATCH
+    queries = [call["query"] for call in FakeNominatim.forward_calls()]
+    assert queries == ["Wiązowna, otwock", "Wiązowna"]
+
+
+def test_stage_1_2_core_only_fallback_accepts_a_matching_candidate():
+    FakeNominatim.responses.append([])
+    FakeNominatim.responses.append([wiazowna_result()])
+    status, lat, _lon, short_label, _display = geo("Wiązowna, otwock")
+    assert status == lb.GEOCODE_OK
+    assert (lat, short_label) == (52.15, "Wiązowna")
+
+
+def test_stage_1_2_no_fallback_without_admin_context():
+    """Bez kontekstu pusta odpowiedź to po prostu NOT_FOUND, bez drugiej próby."""
+    FakeNominatim.responses.append([])
+    assert geo("Wiązowna")[0] == lb.GEOCODE_NOT_FOUND
+    assert len(FakeNominatim.forward_calls()) == 1
+
+
+# ----------------------------------------------------------------------------
+# 9F. SKRÓT RATUNKOWY GOŚCIA NIE GUBI KONTEKSTU
+# ----------------------------------------------------------------------------
+
+def test_stage_1_2_shortening_never_drops_admin_context():
+    assert lb.geocode_shortening_is_safe("Olsztyn koło Częstochowy") is False
+    assert lb.geocode_shortening_is_safe("Olsztyn województwo śląskie") is False
+    assert lb.geocode_shortening_is_safe("Wiązowna, otwock") is False
+    assert lb.geocode_shortening_is_safe("Hel, PL") is False
+    # Zwykły nadmiar tekstu nadal wolno skrócić.
+    assert lb.geocode_shortening_is_safe("Nowy Jork super") is True
+    assert lb.geocode_shortening_is_safe("Wiązowna") is True
+
+
+# ----------------------------------------------------------------------------
+# 9G. KOMPATYBILNOŚĆ: bez admin_context obowiązuje etap 1.1
+# ----------------------------------------------------------------------------
+
+def test_stage_1_2_legacy_context_path_is_untouched_without_admin_context():
+    """Bez wykrytego kontekstu stary matcher nadal rozstrzyga (etap 1.1)."""
+    # Ulica i numer nie są polami administracyjnymi, ale zapytanie BEZ
+    # przecinka i BEZ markera nie ma admin_context — tu decyduje dowód nazwy.
+    FakeNominatim.responses.append([wiazowna_result()])
+    assert geo("Wiązowna")[0] == lb.GEOCODE_OK
+
+
+def test_stage_1_2_suburb_is_a_context_field_and_still_explains_the_query():
+    """``suburb`` wchodzi do pól kontekstu, więc osiedle nadal działa."""
+    FakeNominatim.responses.append([wiazowna_result(suburb="Osiedle Parkowe")])
+    assert geo("Wiązowna, Osiedle Parkowe")[0] == lb.GEOCODE_OK
+    FakeNominatim.responses.append([wiazowna_result(suburb="Osiedle Parkowe")])
+    assert geo("Wiązowna, Osiedle Batory")[0] == lb.GEOCODE_NO_MATCH
+
+
+def test_stage_1_2_country_code_filter_and_context_work_together():
+    FakeNominatim.responses.append([olsztyn_slaskie_result(country_code="de")])
+    assert geo("Olsztyn, Częstochowa, Polska")[0] == lb.GEOCODE_NO_MATCH
+    FakeNominatim.responses.append([olsztyn_slaskie_result()])
+    status, lat, _lon, _short, _display = geo("Olsztyn, Częstochowa, Polska")
+    assert status == lb.GEOCODE_OK and lat == 50.75

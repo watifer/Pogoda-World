@@ -1370,6 +1370,44 @@ _GEOCODE_EXTRA_CONTEXT_FIELDS = (
 # Kod pocztowy: polski XX-XXX oraz każdy ciąg 4-10 cyfr (inne kraje).
 _GEOCODE_POSTCODE_RE = re.compile(r"(?<!\d)(?:\d{2}-\d{3}|\d{4,10})(?!\d)")
 
+# ============================================================================
+# ETAP 1.2 — LUDZKIE DOPRECYZOWANIA LOKALIZACJI
+# ============================================================================
+# Zapytanie dzielimy na trzy części: ``core`` (nazwa miejscowości),
+# ``admin_context`` (powiat/województwo/miejscowość nadrzędna) i ``country``
+# (jawny kraj, już obsługiwany w etapie 1.1).
+#
+# Kontekst administracyjny jest DODATKOWYM filtrem, nigdy zamiennikiem walidacji
+# core: kandydat musi najpierw udowodnić nazwę miejscowości (pełny token/fraza,
+# bez prefiksów — „hel" to nadal nie „helmand"), a dopiero potem zgadzać się
+# kontekstem. Reguła jest WARUNKOWA:
+#
+#   * parser wykrył admin_context  -> kandydat MUSI przejść nowy, jawny filtr
+#     administracyjny. Stary matcher kontekstu z etapu 1.1 NIE jest obejściem:
+#     nie ratuje kandydata, który nie pasuje do county/state/city/town tylko
+#     dlatego, że kontekst przewinął się w display_name,
+#   * brak admin_context           -> walidacja etapu 1.1 bez zmian.
+#
+# Filery („powiat", „koło", „województwo"...) są usuwane PRZED wysłaniem
+# zapytania do Nominatima, bo pogarszają ranking.
+_GEOCODE_ADMIN_FIELDS = (
+    "county", "state", "region", "municipality", "province", "state_district",
+    "district", "city", "town", "city_district", "suburb",
+)
+# Markery kontekstu — osobno frazy wielowyrazowe i pojedyncze tokeny. Wartości
+# są znormalizowane (casefold, bez diakrytyków), więc „woj." i „województwo"
+# i „koło" trafiają do tego samego koszyka.
+_GEOCODE_ADMIN_MARKER_PHRASES = ("w poblizu",)
+_GEOCODE_ADMIN_MARKER_TOKENS = frozenset({
+    "powiat", "wojewodztwo", "woj", "gmina", "kolo", "okolice", "near", "around",
+    "poblizu",
+})
+# Kontrolowany mechanizm rdzeni: NIE obcinamy końcówek („otwocki" nigdy nie
+# staje się „otwo") — porównujemy wspólny PREFIKS dwóch tokenów. Krótkie
+# tokeny i krótkie wspólne rdzenie są odrzucane, więc „wa" nie pasuje do niczego.
+_GEOCODE_ADMIN_STEM_MIN_TOKEN = 3
+_GEOCODE_ADMIN_STEM_MIN_COMMON = 4
+
 
 def _geocode_name_matches(query_norm, name_norm):
     """Pełna nazwa albo pełny token/fraza — bez dopasowań prefiksem.
@@ -1450,7 +1488,22 @@ def _geocode_query_country(query):
     raw = str(query or "").strip()
     if not raw:
         return raw, None
+    size, code = _geocode_country_suffix(raw)
+    if not size or not code:
+        return raw, None
+    core = " ".join(raw.replace(",", " ").split()[:-size]).rstrip(" ,").strip()
+    if not core:
+        return raw, None
+    return core, code
 
+
+def _geocode_country_suffix(raw):
+    """``(rozmiar sufiksu w tokenach, kod kraju)`` albo ``(0, None)``.
+
+    Wspólne źródło prawdy dla parserów etapu 1.1 i 1.2 — wycięte z
+    ``_geocode_query_country`` bez zmiany semantyki (najdłuższy pasujący sufiks,
+    maksymalnie ``_GEOCODE_COUNTRY_MAX_TOKENS`` tokenów).
+    """
     # Przecinek jest separatorem, nie częścią nazwy: "Hel, PL" i "Hel,PL" to ten
     # sam kraj na końcu zapytania.
     tokens = raw.replace(",", " ").split()
@@ -1462,11 +1515,141 @@ def _geocode_query_country(query):
             continue
         code = _GEOCODE_COUNTRY_ALIASES.get(key)
         if code:
-            core = " ".join(tokens[:-size]).rstrip(" ,").strip()
-            if not core:
-                return raw, None
-            return core, code
-    return raw, None
+            return size, code
+    return 0, None
+
+
+def _geocode_strip_country_suffix(raw, size):
+    """Usuwa ``size`` ostatnich tokenów, ZACHOWUJĄC strukturę przecinkową reszty.
+
+    Etap 1.1 skleja resztę spacjami (``"Wiązowna, otwock, Polska"`` zmieniłoby
+    się w ``"Wiązowna otwock"`` i podział na core/kontekst przestałby istnieć).
+    Tu odcinamy tokeny od końca łańcucha i zjadamy powstałe separatory, więc
+    zostaje ``"Wiązowna, otwock"``.
+    """
+    remaining = raw
+    for _ in range(size):
+        stripped = remaining.rstrip()
+        match = re.search(r"\S+\s*$", stripped)
+        if not match:
+            return ""
+        remaining = stripped[:match.start()].rstrip()
+        if remaining.endswith(","):
+            remaining = remaining[:-1].rstrip()
+    return remaining.rstrip(" ,")
+
+
+def _geocode_split_country(query):
+    """``(reszta zapytania z zachowanymi przecinkami, kod kraju)``.
+
+    To samo rozpoznanie sufiksu co ``_geocode_query_country``, ale rdzeń wraca
+    w postaci nadającej się do dalszego podziału na core/admin_context.
+    """
+    raw = str(query or "").strip()
+    if not raw:
+        return raw, None
+    size, code = _geocode_country_suffix(raw)
+    if not size or not code:
+        return raw, None
+    core = _geocode_strip_country_suffix(raw, size)
+    if not core:
+        return raw, None
+    return core, code
+
+
+def _geocode_clean_admin_text(text):
+    """Czyści kontekst z fillerów, zachowując oryginalną pisownię reszty.
+
+    „powiat otwocki" -> „otwocki", „województwo śląskie" -> „śląskie",
+    „koło Częstochowy" -> „Częstochowy". Frazy wielowyrazowe usuwamy pierwsze
+    (całym zakresem tokenów), żeby „w pobliżu" nie zostawiło wiszącego „w".
+
+    Porównanie idzie po znormalizowanych tokenach, ale USUWAMY oryginalne
+    słowa — dzięki temu „Częstochowy" trafia do Nominatima z właściwą
+    pisownią, a nie w postaci pozbawionej diakrytyków.
+    """
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+    tokens = cleaned.split()
+    normalized = [_normalize_location_text(token) for token in tokens]
+
+    drop = set()
+    for phrase in _GEOCODE_ADMIN_MARKER_PHRASES:
+        span = len(phrase.split())
+        for start in range(0, len(normalized) - span + 1):
+            if " ".join(normalized[start:start + span]) == phrase:
+                drop.update(range(start, start + span))
+    for index, token in enumerate(normalized):
+        if token in _GEOCODE_ADMIN_MARKER_TOKENS:
+            drop.add(index)
+
+    return " ".join(
+        token for index, token in enumerate(tokens) if index not in drop
+    ).strip(" ,")
+
+
+def _geocode_query_parse(query):
+    """Rozkłada zapytanie na ``(core, admin_context, kod kraju)``.
+
+    Kolejność: najpierw kraj (także po wielu segmentach — „Wiązowna, otwock,
+    Polska"), potem podział reszty. Z przecinkiem pierwszy segment to core, a
+    pozostałe to kontekst. Bez przecinka kontekst wykrywamy po markerze
+    („Olsztyn województwo śląskie", „Olsztyn koło Częstochowy") — marker musi
+    mieć token przed sobą i po sobie, żeby nie rozciąć nazwy własnej
+    („Kolo", „Wielkie Kolo" zostają w całości).
+    """
+    rest, country_code = _geocode_split_country(str(query or "").strip())
+    rest = rest.strip()
+    if not rest:
+        return "", [], country_code
+
+    if "," in rest:
+        segments = [segment.strip() for segment in rest.split(",")]
+        core = segments[0]
+        admin_context = []
+        for segment in segments[1:]:
+            cleaned = _geocode_clean_admin_text(segment)
+            if cleaned:
+                admin_context.append(cleaned)
+        return core, admin_context, country_code
+
+    tokens = rest.split()
+    marker_index = None
+    for index in range(1, len(tokens) - 1):
+        window = _normalize_location_text(" ".join(tokens[index:index + 2]))
+        if window in _GEOCODE_ADMIN_MARKER_PHRASES:
+            marker_index = index
+            break
+    if marker_index is None:
+        for index in range(1, len(tokens) - 1):
+            if _normalize_location_text(tokens[index]) in _GEOCODE_ADMIN_MARKER_TOKENS:
+                marker_index = index
+                break
+    if marker_index is None:
+        return rest, [], country_code
+
+    core = " ".join(tokens[:marker_index]).strip()
+    cleaned = _geocode_clean_admin_text(" ".join(tokens[marker_index:]))
+    return core, ([cleaned] if cleaned else []), country_code
+
+
+def _geocode_geocoder_query(core, admin_context):
+    """Zapytanie do Nominatima: ``core`` albo ``core, oczyszczony kontekst``.
+
+    Bez wykrytego kontekstu zwraca dokładnie to, co wysyłał etap 1.1 —
+    kontrakt sieciowy dla starych zapytań nie zmienia się ani o znak.
+    """
+    core = str(core or "").strip()
+    parts = [
+        str(part).strip() for part in (admin_context or ())
+        if str(part).strip()
+    ]
+    if not core:
+        return ", ".join(parts)
+    if not parts:
+        return core
+    return f"{core}, {', '.join(parts)}"
 
 
 def _geocode_query_is_too_short(query):
@@ -1598,14 +1781,114 @@ def _geocode_piece_explained(piece, values):
     return bool(tokens) and tokens <= corpus
 
 
-def _geocode_context_conflicts(contexts, postcode, raw, address):
+# ============================================================================
+# ETAP 1.2 — DOPASOWANIE KONTEKSTU ADMINISTRACYJNEGO
+# ============================================================================
+# Kontekst czytamy z ``raw["address"]``. ``city``/``town``/``state_district``
+# są TU wyłącznie polami kontekstu, ale NIE znikają z ``_GEOCODE_PLACE_FIELDS``
+# (dowód nazwy miejscowości w etapie 1.1): wyjęcie ich stamtąd osłabiłoby
+# walidację core, czego etap 1.2 nie robi.
+
+def _geocode_admin_values(address):
+    """Znormalizowane wartości pól administracyjnych kandydata."""
+    return [
+        normalized
+        for normalized in (
+            _normalize_location_text(address.get(field))
+            for field in _GEOCODE_ADMIN_FIELDS
+        )
+        if normalized
+    ]
+
+
+def _geocode_admin_tokens(values):
+    """Zbiór tokenów kontekstu administracyjnego."""
+    tokens = set()
+    for value in values:
+        tokens.update(value.split())
+    return tokens
+
+
+def _geocode_common_prefix_len(first, second):
+    """Długość wspólnego PREFIKSU — nie obcinamy końcówek, tylko porównujemy."""
+    common = 0
+    for left, right in zip(first, second):
+        if left != right:
+            break
+        common += 1
+    return common
+
+
+def _geocode_admin_stem_matches(token, admin_tokens):
+    """Kontrolowane dopasowanie wariantów administracyjnych, bez fuzzy matchingu.
+
+    Wspólny rdzeń musi mieć co najmniej ``_GEOCODE_ADMIN_STEM_MIN_COMMON``
+    znaków, a oba tokeny co najmniej ``_GEOCODE_ADMIN_STEM_MIN_TOKEN``. Dzięki
+    temu przechodzą odmiany typu ``otwock``/``otwocki`` czy
+    ``czestochowa``/``czestochowski``/``czestochowy``, a krótkie wartości
+    (``wa``) i przypadkowe zbieżności (``warszawa``/``wiazowna``) odpadają.
+    Porównujemy PREFIKS, więc nie da się sztucznie skrocic „otwocki" do „otwo".
+    """
+    if len(token) < _GEOCODE_ADMIN_STEM_MIN_TOKEN:
+        return False
+    for candidate in admin_tokens:
+        if len(candidate) < _GEOCODE_ADMIN_STEM_MIN_TOKEN:
+            continue
+        if _geocode_common_prefix_len(token, candidate) >= _GEOCODE_ADMIN_STEM_MIN_COMMON:
+            return True
+    return False
+
+
+def _geocode_admin_piece_matches(piece, admin_values):
+    """Czy element kontekstu jest potwierdzony polami administracyjnymi.
+
+    Najpierw pełna fraza („otwocki" w „powiat otwocki"), potem każdy token
+    osobno — dokładnie albo kontrolowanym rdzeniem. Wielowyrazowy kontekst
+    musi potwierdzić się W CAŁOŚCI: „Osiedle Batory" nie przejdzie przez samo
+    „osiedle". Brak danych administracyjnych to brak potwierdzenia, nie
+    przepustka.
+
+    Element kontekstu jest normalizowany tą samą funkcją co wartości kandydata
+    (casefold, diakrytyki, interpunkcja) — inaczej „Osiedle Parkowe" nigdy nie
+    zrównałoby się z polem ``suburb``.
+    """
+    piece = _normalize_location_text(piece)
+    if not piece:
+        return True
+    if not admin_values:
+        return False
+    if any(_geocode_name_matches(piece, value) for value in admin_values):
+        return True
+    tokens = piece.split()
+    if not tokens:
+        return True
+    admin_tokens = _geocode_admin_tokens(admin_values)
+    return all(
+        token in admin_tokens or _geocode_admin_stem_matches(token, admin_tokens)
+        for token in tokens
+    )
+
+
+def _geocode_context_conflicts(contexts, postcode, raw, address, admin_context=None):
     """True, jeśli jawny kontekst z zapytania przeczy danym kandydata.
 
     Brak danych nie jest sprzecznością (geokoder dla miejscowości nie zawsze
     wypełnia postcode), ale inna gmina, inne województwo albo inny kraj
     dyskwalifikuje kandydata — i to jest mechanizm rozstrzygania "Hel, PL".
     """
-    if contexts:
+    # ETAP 1.2: reguła jest WARUNKOWA, nie alternatywą.
+    #   * admin_context wykryty -> decyduje WYLACZNIE nowy filtr
+    #     administracyjny. Stary matcher kontekstu (czyta też display_name)
+    #     NIE ratuje kandydata, bo inaczej kontekst stalby sie miekką sugestią.
+    #   * admin_context pusty   -> walidacja etapu 1.1, bez zmian.
+    admin_context = [piece for piece in (admin_context or ()) if piece]
+
+    if admin_context:
+        admin_values = _geocode_admin_values(address)
+        for piece in admin_context:
+            if not _geocode_admin_piece_matches(piece, admin_values):
+                return True
+    elif contexts:
         values = _geocode_context_values(raw, address)
         if values:
             for piece in contexts:
@@ -1720,7 +2003,7 @@ def _geocode_matched_place_name(query_name, address, raw, postcode):
     return _geocode_candidate_evidence(query_name, address, raw, postcode)[0]
 
 
-def _geocode_select_accepted(query, candidates, country_code=None):
+def _geocode_select_accepted(query, candidates, country_code=None, admin_context=None):
     """Validated top result: ``(status, kandydat)`` dla jednego zapytania.
 
     Kolejność Nominatima ma znaczenie DOPIERO po wszystkich filtrach: bierzemy
@@ -1733,8 +2016,16 @@ def _geocode_select_accepted(query, candidates, country_code=None):
     miejscowości i bez dopasowanych ``namedetails``) i geokoder zwrócił więcej
     niż jedno rozróżnialne miejsce. To nie jest normalna odpowiedź dla
     popularnych nazw — to sygnał, że dane są za słabe, by ufać top resultowi.
+
+    ETAP 1.2 — ``admin_context`` (powiat/województwo/miejscowość nadrzędna) jest
+    dodatkowym filtrem, aplikowanym PRZED walidacją nazwy miejscowości:
+    najpierw odsiewamy kandydatów niepasujących kontekstem, potem dopiero
+    sprawdzamy klasę, kraj i dowód nazwy. Kandydat, który nie pasuje kontekstem,
+    odpada bez względu na to, jak dobrze pasuje nazwą — kontekst nie jest
+    miękką sugestią i nie da się go obejść starym matcherem kontekstu.
     """
     query_name, contexts, postcode = _geocode_query_context(query)
+    admin_context = [piece for piece in (admin_context or ()) if piece]
     accepted = []
     seen = []  # (tożsamość, kandydat) — by nie liczyć dwa razy tej samej miejscowości
     weak_count = 0
@@ -1743,6 +2034,13 @@ def _geocode_select_accepted(query, candidates, country_code=None):
         raw = getattr(location, "raw", None)
         raw = raw if isinstance(raw, dict) else {}
         address = _nominatim_address_components(raw)
+
+        # ETAP 1.2: jawny kontekst odsiewa NAJPIERW — zanim klasa, kraj i
+        # dowód nazwy. Z admin_context rządzi wyłącznie nowy filtr
+        # administracyjny; bez niego zostaje stara reguła etapu 1.1.
+        if _geocode_context_conflicts(contexts, postcode, raw, address, admin_context):
+            continue
+
         if not _geocode_candidate_is_safe(raw):
             continue
 
@@ -1755,11 +2053,10 @@ def _geocode_select_accepted(query, candidates, country_code=None):
             if candidate_country != country_code:
                 continue
 
+        # Walidacja core pozostaje głównym warunkiem: kontekst nie może
+        # sprawić, że nazwa dłuższego obiektu zacznie pasować.
         matched, strength = _geocode_candidate_evidence(query_name, address, raw, postcode)
         if not matched:
-            continue
-
-        if _geocode_context_conflicts(contexts, postcode, raw, address):
             continue
 
         identity = _geocode_candidate_identity(raw, address, matched)
@@ -1860,14 +2157,32 @@ def geocode_city_accepted(city_name, lang="pl"):
     # ETAP 1.1: jawny kraj ("Hel PL", "Paryż, Francja") jest wyłącznie z
     # zapytania — nigdy z języka UI. Rdzeń pytamy bez sufiksu kraju, a kraj
     # podajemy geokoderowi i twardo filtrujemy po country_code kandydata.
-    core_query, country_code = _geocode_query_country(query)
+    #
+    # ETAP 1.2: ten sam parser oddaje też admin_context ("Wiązowna, otwock",
+    # "Olsztyn koło Częstochowy"). Bez kontekstu zapytanie do geokodera jest
+    # identyczne jak w etapie 1.1; z kontekstem dokładamy oczyszczony z
+    # fillerów ("powiat", "koło") sufiks po przecinku.
+    core_query, admin_context, country_code = _geocode_query_parse(query)
+    if not core_query:
+        return GEOCODE_TOO_SHORT, None, None, None, None
+
+    forward_query = _geocode_geocoder_query(core_query, admin_context)
     base_status, candidates = _geocode_forward_candidates(
-        core_query, lang, country_code=country_code
+        forward_query, lang, country_code=country_code
     )
+    if base_status == GEOCODE_NOT_FOUND and admin_context and forward_query != core_query:
+        # Fallback core-only, gdy zapytanie kontekstowe wróciło pustką.
+        # Kandydaci z fallbacku NIE dostają dyspensy: filtr admin_context
+        # i twardy filtr kraju nadal obowiązują przy selekcji.
+        base_status, candidates = _geocode_forward_candidates(
+            core_query, lang, country_code=country_code
+        )
     if base_status is not None:
         return base_status, None, None, None, None
 
-    status, location = _geocode_select_accepted(core_query, candidates, country_code)
+    status, location = _geocode_select_accepted(
+        core_query, candidates, country_code, admin_context
+    )
     if status != GEOCODE_OK:
         return status, None, None, None, None
 
@@ -1965,6 +2280,15 @@ def geocode_shortening_is_safe(query):
     if len(tokens) <= 2:
         return True
     short = " ".join(tokens[:2])
+
+    # ETAP 1.2: skrót nie może zgubić ani zmienić admin_context. Inaczej
+    # "Olsztyn koło Częstochowy" stałoby się "Olsztyn koło" (kontekst znika,
+    # filler zostaje) i geokoder odpowiedziałby zupełnie innym Olsztynem.
+    _core, admin_context, _code = _geocode_query_parse(raw)
+    if admin_context:
+        _short_core, short_admin, _short_code = _geocode_query_parse(short)
+        if short_admin != admin_context:
+            return False
 
     _core, country_code = _geocode_query_country(raw)
     if country_code:
