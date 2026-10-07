@@ -12,8 +12,8 @@ import pytest
 import users_store
 from users_store import (
     norm_chat_id, now_iso, get_ws, find_row_by_chat_id, get_user,
-    load_users_map, has_access, has_access_in_map, get_lang,
-    upsert_access, set_profile, set_blocked, clear_profile, delete_user_row,
+    load_users_map, has_access, has_access_in_map, get_lang, get_report_settings,
+    upsert_access, set_profile, set_report_settings, set_blocked, clear_profile, delete_user_row,
 )
 
 # Dokładnie te nagłówki, które powstały w pkt 0 planu (zakładka Users)
@@ -24,6 +24,7 @@ USERS_HEADERS = [
     "blocked_at", "blocked_reason",
     "profile_status", "lat_round", "lon_round", "location_label", "location_source",
     "lang", "location_consent_at", "location_consent_version", "profile_updated_at",
+    "report_morning_time", "report_afternoon_time",
 ]
 
 
@@ -177,6 +178,8 @@ class TestUpsertAccess:
         assert rec["lat_round"] == "" and rec["lon_round"] == ""
         assert rec["location_label"] == "" and rec["location_source"] == ""
         assert rec["location_consent_at"] == "" and rec["location_consent_version"] == ""
+        assert rec["report_morning_time"] == ""
+        assert rec["report_afternoon_time"] == ""
 
     def test_second_upsert_updates_not_duplicates(self):
         ws = FakeWorksheet()
@@ -195,6 +198,18 @@ class TestUpsertAccess:
         assert rec["lang"] == "en"
         assert rec["created_at"] == "2026-09-30 10:00:00"  # created_at nietknięte
         assert rec["last_seen_at"] == "2026-09-30 12:00:00"
+
+    def test_legacy_access_updates_ignore_the_two_extra_report_columns(self):
+        ws = FakeWorksheet()
+        upsert_access(ws, 112, "pl", "referral", "2026-09-30 10:00:00", "v1")
+        assert set_report_settings(ws, 112, "07:30", "14:00") is True
+
+        # Zmiana dostępu używa wyłącznie kolumn access_* / lang; dodatkowe pola,
+        # których starszy kod nie znał, pozostają nietknięte.
+        upsert_access(ws, 112, "en", "admin", "2026-09-30 12:00:00", "v2")
+        rec = ws.record(112)
+        assert rec["report_morning_time"] == "07:30"
+        assert rec["report_afternoon_time"] == "14:00"
 
     def test_access_sources_enum(self):
         ws = FakeWorksheet()
@@ -244,6 +259,72 @@ def test_set_profile_never_creates_access_row_or_accepts_bad_source():
     upsert_access(ws, 999, "pl", "referral", "2026-09-30 10:00:00", "v1")
     assert set_profile(ws, 999, 1, 2, "X", "unknown", "pl", "v1", "2026-09-30 10:01:00") is False
     assert ws.record(999)["profile_status"] == "none"
+
+
+def test_users_schema_appends_only_the_two_report_time_columns():
+    assert users_store.CANONICAL_HEADERS == USERS_HEADERS
+    assert USERS_HEADERS[-2:] == ["report_morning_time", "report_afternoon_time"]
+
+
+def test_report_settings_write_and_read_both_slots_in_one_batch():
+    ws = FakeWorksheet()
+    upsert_access(ws, 345, "pl", "admin", "2026-10-07 10:00:00", "v1")
+
+    assert set_report_settings(ws, 345, "07:30", "15:00") is True
+    assert ws.calls["update_cells"] == 1
+    assert get_report_settings(load_users_map(ws), 345) == {
+        "report_morning_time": "07:30",
+        "report_afternoon_time": "15:00",
+    }
+
+
+def test_report_settings_blank_is_no_change_and_new_user_stays_unconfigured():
+    ws = FakeWorksheet()
+    upsert_access(ws, 346, "pl", "public_beta", "2026-10-07 10:00:00", "v1")
+    assert get_report_settings(load_users_map(ws), 346) == {
+        "report_morning_time": "",
+        "report_afternoon_time": "",
+    }
+    assert set_report_settings(ws, 346, "", "") is True
+    assert ws.calls["update_cells"] == 0
+    assert get_report_settings(load_users_map(ws), 346) == {
+        "report_morning_time": "",
+        "report_afternoon_time": "",
+    }
+
+
+def test_report_settings_support_explicit_off_marker():
+    ws = FakeWorksheet()
+    upsert_access(ws, 347, "en", "admin", "2026-10-07 10:00:00", "v1")
+    assert set_report_settings(ws, 347, "brak", "14:00") is True
+    assert get_report_settings(load_users_map(ws), 347) == {
+        "report_morning_time": "brak",
+        "report_afternoon_time": "14:00",
+    }
+
+
+def test_report_settings_reject_invalid_values_without_partial_write():
+    ws = FakeWorksheet()
+    upsert_access(ws, 348, "en", "admin", "2026-10-07 10:00:00", "v1")
+    assert set_report_settings(ws, 348, "08:00", "25:90") is False
+    assert ws.calls["update_cells"] == 0
+    assert get_report_settings(load_users_map(ws), 348) == {
+        "report_morning_time": "",
+        "report_afternoon_time": "",
+    }
+    assert set_report_settings(ws, 348, "8:00", "") is False
+
+
+def test_report_settings_fail_closed_if_live_headers_are_missing():
+    old_headers = USERS_HEADERS[:-2]
+    ws = FakeWorksheet(headers=old_headers)
+    upsert_access(ws, 349, "en", "admin", "2026-10-07 10:00:00", "v1")
+    assert set_report_settings(ws, 349, "08:00", "") is False
+    assert ws.calls["update_cells"] == 0
+    assert get_report_settings(load_users_map(ws), 349) == {
+        "report_morning_time": "",
+        "report_afternoon_time": "",
+    }
 
 
 # ============================================================================
