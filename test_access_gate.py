@@ -36,6 +36,7 @@ Pokrywane scenariusze:
 """
 
 import os
+import json
 
 import pytest
 import requests
@@ -321,6 +322,22 @@ class BotHarness:
             },
         }
 
+    def webapp_settings(self, chat_id, morning="", afternoon="", lang="pl"):
+        return {
+            "update_id": 300000 + len(self.sent) * 7 + len(self._updates),
+            "message": {
+                "chat": {"id": chat_id, "type": "private"},
+                "from": {"language_code": lang, "first_name": "Ala"},
+                "web_app_data": {
+                    "data": json.dumps({
+                        "type": "set_settings",
+                        "rano": morning,
+                        "wieczor": afternoon,
+                    })
+                },
+            },
+        }
+
     def run(self, update):
         """Jedna paczka update'ów przez main_bot()."""
         self._updates.append(update)
@@ -433,8 +450,31 @@ class TestStartRegistersAccessOnly:
         assert rec["lat_round"] == "" and rec["lon_round"] == ""
         assert rec["location_label"] == "" and rec["location_source"] == ""
         assert rec["location_consent_at"] == "" and rec["location_consent_version"] == ""
+        assert rec["report_morning_time"] == "" and rec["report_afternoon_time"] == ""
         # RODO: brak wiersza w legacy Formularz
         assert "100" not in bot.gc.formularz.chat_ids()
+
+    def test_report_settings_save_and_menu_read_users_not_formularz(self, bot):
+        bot.run(bot.msg(100, "/start BETAX1"))
+        legacy_row = [
+            "2026-10-07 08:00:00", "100", "Ala", "Hel", "54.6", "18.8",
+            "06:00", "16:00", "pl",
+        ]
+        bot.gc.formularz.rows.append(legacy_row[:])
+        form_snapshot = [row[:] for row in bot.gc.formularz.rows]
+
+        bot.run(bot.webapp_settings(100, morning="07:00", afternoon="brak"))
+
+        rec = bot.users.record(100)
+        assert rec["report_morning_time"] == "07:00"
+        assert rec["report_afternoon_time"] == "brak"
+        assert bot.gc.formularz.rows == form_snapshot, "ustawienia nie mogą zapisywać Formularza"
+        assert bot.has_reply(100, "Ustawienia raportów")
+
+        bot.run(bot.msg(100, "/menu"))
+        panel = bot.replies(100)[-1]
+        assert "Rano: 07:00" in panel
+        assert "06:00" not in panel and "16:00" not in panel
 
     def test_onboarding_is_short_and_points_to_city_and_data(self, bot):
         # PR2 UX cleanup: krótki onboarding, bez obietnicy automatycznych raportów
@@ -1167,25 +1207,24 @@ class TestPr2UxCleanup:
         assert re.fullmatch(r"Stan na: \d{4}-\d{2}-\d{2} \d{2}:\d{2}", stan_na), stan_na
 
     # --- /raport (pkt 13) -----------------------------------------------------
-    def test_report_for_users_only_account_does_not_promise_reports(self, bot):
+    def test_report_for_users_only_account_has_unconfigured_slots_without_defaults(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/raport"))
 
-        assert bot.has_reply(100, "GODZINY RAPORTÓW")
-        assert bot.has_reply(100, "w trakcie przenoszenia")
-        assert bot.has_reply(100, "/miasto")
-        # /menu bez sekcji lokalizacji i bez obietnicy automatycznych raportów
-        assert not bot.has_reply(100, "Obecna lokalizacja")
-        assert not bot.has_reply(100, "będą wysyłane")
-        assert bot.keyboards_for(100) == [], "konto bez Formularz nie dostaje panelu godzin"
+        panel = bot.replies(100)[-1]
+        assert "GODZINY RAPORTÓW" in panel
+        assert "Rano: —" in panel and "Popołudnie: —" in panel
+        assert "08:00" not in panel and "14:00" not in panel
+        assert "Obecna lokalizacja" not in panel
+        assert bot.keyboards_for(100), "konto Users powinno móc otworzyć istniejący panel godzin"
 
-    def test_report_for_legacy_user_shows_hours_without_location(self, bot):
+    def test_legacy_only_report_settings_are_not_read_from_formularz(self, bot):
         bot.run(bot.msg(700, "/raport"))
         panel = bot.replies(700)[-1]
         assert "GODZINY RAPORTÓW" in panel
-        assert "Rano: 08:00" in panel
-        assert "Obecna lokalizacja" not in panel
-        assert "/miasto" in panel
+        assert "w trakcie przenoszenia" in panel
+        assert "08:00" not in panel
+        assert bot.keyboards_for(700) == []
 
     # --- /info (pkt 16) --------------------------------------------------------
     def test_info_contains_tips_and_hidden_commands(self, bot):

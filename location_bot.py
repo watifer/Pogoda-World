@@ -2702,54 +2702,38 @@ def main_bot():
                         rano = (data.get("rano") or "").strip()
                         wieczor = (data.get("wieczor") or "").strip()
                         print(f"  ⚙️ Odebrano nowe godziny od {chat_id}: Rano={rano}, Popołudnie={wieczor}")
-                        
-                        # Znajdujemy wiersz użytkownika (analogicznie do GPS)
-                        rows_to_update = []
-                        for idx, r in enumerate(users_records):
-                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                                rows_to_update.append(idx + 2)
-                        
-                        if not rows_to_update:
-                            try:
-                                komorka = main_sheet.find(str(chat_id), in_column=2)
-                                rows_to_update.append(komorka.row)
-                            except Exception:
-                                print("  [DEBUG] Nie znalazłem usera do zapisu godzin!")
 
-                        # PR1: brak wiersza w Formularz = brak profilu (zapis dopiero od PR2)
-                        # POPRAWKA #7: bez dostępu cisza (bramka na wejściu pętli);
-                        # warunek zostaje jako pas bezpieczeństwa.
-                        if not rows_to_update:
+                        # Puste pola WebApp oznaczają "bez zmian"; jawne godziny lub
+                        # "brak" zapisujemy wyłącznie w Users. Formularz pozostaje legacy.
+                        settings_saved = users_store.set_report_settings(
+                            users_ws, chat_id, rano, wieczor
+                        )
+                        if not settings_saved:
+                            print(f"  ⚠️ [report settings] Nie zapisano ustawień w Users dla {chat_id}.")
                             if _chat_has_access(users_map, clean_users, chat_id):
                                 send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
                             continue
 
-                        if rows_to_update:
-                            col_rano = headers.index("Raport poranny") + 1 if "Raport poranny" in headers else None
-                            col_wieczor = headers.index("Aktualizacja") + 1 if "Aktualizacja" in headers else None
-                            
-                            for r_idx in rows_to_update:
-                                # Zapisujemy TYLKO jeśli użytkownik wybrał jakąś godzinę lub "brak"
-                                if col_rano and rano:
-                                    # Apostrof chroni przed zmianą na ułamek przez Google Sheets
-                                    zapis_rano = f"'{rano}" if rano != "brak" else rano
-                                    main_sheet.update_cell(r_idx, col_rano, zapis_rano)
-                                    
-                                if col_wieczor and wieczor:
-                                    zapis_wieczor = f"'{wieczor}" if wieczor != "brak" else wieczor
-                                    main_sheet.update_cell(r_idx, col_wieczor, zapis_wieczor)
+                        # Aktualizujemy mapę bieżącej paczki bez ponownego odczytu arkusza.
+                        user_settings = users_map.get(users_store.norm_chat_id(chat_id))
+                        if user_settings is not None:
+                            if rano:
+                                user_settings["report_morning_time"] = (
+                                    "brak" if rano.lower() == "brak" else rano
+                                )
+                            if wieczor:
+                                user_settings["report_afternoon_time"] = (
+                                    "brak" if wieczor.lower() == "brak" else wieczor
+                                )
 
-                        # Zamykamy klawiaturę WebApp i wysyłamy potwierdzenie
+                        # Zamykamy klawiaturę WebApp i wysyłamy dotychczasowe potwierdzenie.
                         ukryj_klawiature = {"remove_keyboard": True}
-                        
-                        # Próba pobrania tłumaczenia (zabezpieczenie, gdyby brakowało klucza)
                         try:
                             msg_to_send = t_ui(user_lang, "settings_saved")
                         except Exception:
                             msg_to_send = "✅ Ustawienia raportów zostały zapisane!"
-                            
                         send_reply(chat_id, msg_to_send, reply_markup=ukryj_klawiature)
-                        continue    
+                        continue
                         
                         
                         
@@ -3099,26 +3083,23 @@ def main_bot():
             elif message.get("text", "").startswith("/menu"):
                 print(f"  ⚙️ Odebrano żądanie panelu ustawień od [{user_data.get('Imię', chat_id)}]")
 
-                # PR2 UX cleanup: /raport dotyczy WYŁĄCZNIE godzin raportów, a zmiana
-                # lokalizacji jest tylko pod /miasto — dlatego nie liczymy tu miasta
-                # (odpada jedno zapytanie do geokodera). Konto bez wiersza w Formularz
-                # nie ma jeszcze automatycznych raportów: scheduler czyta Formularz
-                # i zostanie przełączony na Users dopiero w PR3. Nie obiecujemy więcej.
-                if not has_legacy_row:
+                # /raport odczytuje teraz jawne sloty z Users. Puste wartości nie
+                # otrzymują domyślnych 08:00/14:00; menu i zapis nie korzystają z Formularza.
+                report_settings = users_store.get_report_settings(users_map, chat_id)
+                if report_settings is None:
                     send_reply(chat_id, t_ui(user_lang, "menu_reports_migration"))
                     continue
 
-                # --- WYCIĄGANIE GODZIN ---
-                godz_rano = str(user_data.get("Raport poranny", "")).strip()
-                godz_wieczor = str(user_data.get("Aktualizacja", "")).strip()
-                
-                # Jeśli komórki w Google Sheets są puste, importujemy domyślne z main_card!
-                if not godz_rano: godz_rano = DEFAULT_RANO
-                if not godz_wieczor: godz_wieczor = DEFAULT_WIECZOR
-                
-                # Formatowanie widoku (wykrywanie opcji "Nie chcę")
-                disp_rano = t_ui(user_lang, "disp_off") if "nie" in godz_rano.lower() else f"{godz_rano} ⏰"
-                disp_wieczor = t_ui(user_lang, "disp_off") if "nie" in godz_wieczor.lower() else f"{godz_wieczor} ⏰"
+                godz_rano = report_settings["report_morning_time"]
+                godz_wieczor = report_settings["report_afternoon_time"]
+                disp_rano = (
+                    t_ui(user_lang, "disp_off") if godz_rano.lower() == "brak"
+                    else f"{godz_rano} ⏰" if godz_rano else "—"
+                )
+                disp_wieczor = (
+                    t_ui(user_lang, "disp_off") if godz_wieczor.lower() == "brak"
+                    else f"{godz_wieczor} ⏰" if godz_wieczor else "—"
+                )
                 
                 chat_title = message.get("chat", {}).get("title")
                 imie_z_arkusza = str(user_data.get("Imię", "")).strip()

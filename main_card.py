@@ -16,6 +16,7 @@ import requests
 import json
 import time
 import random
+import math
 from datetime import datetime, time as dt_time, timezone, timedelta
 try:
     from zoneinfo import ZoneInfo
@@ -272,13 +273,142 @@ def _load_users_from_sheet() -> list[dict]:
         
     return out
 
+
+def _load_scheduler_users_from_sheet(client=None) -> list[dict]:
+    """Czyta rekordy scheduler’a wyłącznie z zakładki Users.
+
+    Celowo ignoruje GOOGLE_SHEET_TAB i nie próbuje kart Formularz/legacy.
+    ``client`` jest opcjonalny wyłącznie po to, by testować źródło bez sieci.
+    """
+    import gspread
+    from google.oauth2.service_account import Credentials
+
+    if client is None:
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.readonly",
+        ]
+        creds_env = os.environ.get("GOOGLE_CREDS_JSON")
+        if creds_env and creds_env.startswith("{"):
+            creds_dict = json.loads(creds_env)
+            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+        else:
+            creds_path = creds_env or "credentials.json"
+            creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        client = gspread.authorize(creds)
+
+    sheet = None
+    if SHEET_ID:
+        try:
+            sheet = client.open_by_key(SHEET_ID)
+        except Exception as e:
+            print(f"[Google Sheets] Fallback: Nie udało się otworzyć po ID ({e})")
+
+    if not sheet:
+        sheet = client.open(SHEET_NAME)
+
+    # Brak zakładki Users ma przerwać ładowanie; nie ma fallbacku do Formularza.
+    worksheet = sheet.worksheet("Users")
+    values = worksheet.get_values("A1:Z")
+    if not values:
+        return []
+
+    headers = [str(header).strip().lower() for header in values[0]]
+    out = []
+    for raw_row in values[1:]:
+        row = list(raw_row) + [""] * max(0, len(headers) - len(raw_row))
+        out.append({header: row[index] for index, header in enumerate(headers)})
+    return out
+
+
+def _parse_scheduler_report_time(value: object) -> str:
+    """Zwraca HH:MM tylko dla jawnie poprawnej godziny; inaczej pusty slot."""
+    raw = str(value or "").strip()
+    if not raw or raw.lower() == "brak":
+        return ""
+    if (len(raw) != 5 or raw[2] != ":" or
+            not raw[:2].isdigit() or not raw[3:].isdigit()):
+        return ""
+    hour, minute = int(raw[:2]), int(raw[3:])
+    return raw if 0 <= hour <= 23 and 0 <= minute <= 59 else ""
+
+
+def _parse_scheduler_users(raw_rows: list[dict]) -> list[dict]:
+    """Buduje listę kompletnych, jednoznacznych użytkowników schedulera Users."""
+    normalized_ids = []
+    for row in raw_rows or []:
+        chat_id = str(row.get("chat_id", "") or "").strip()
+        if chat_id.endswith(".0"):
+            chat_id = chat_id[:-2]
+        try:
+            numeric_id = int(chat_id)
+        except (TypeError, ValueError):
+            chat_id = ""
+        else:
+            chat_id = str(numeric_id) if numeric_id else ""
+        normalized_ids.append(chat_id)
+
+    id_counts = {}
+    for chat_id in normalized_ids:
+        if chat_id:
+            id_counts[chat_id] = id_counts.get(chat_id, 0) + 1
+
+    final_users = []
+    reported_duplicates = set()
+    for row, chat_id in zip(raw_rows or [], normalized_ids):
+        if not chat_id:
+            continue
+        if id_counts.get(chat_id, 0) != 1:
+            if chat_id not in reported_duplicates:
+                print(f"[main_card] ⚠️ Pomijam zduplikowany chat_id w Users: {chat_id}")
+                reported_duplicates.add(chat_id)
+            continue
+        if str(row.get("access_status", "")).strip().lower() != "granted":
+            continue
+        if str(row.get("profile_status", "")).strip().lower() != "active":
+            continue
+
+        try:
+            lat = float(str(row.get("lat_round", "")).replace(",", ".").strip())
+            lon = float(str(row.get("lon_round", "")).replace(",", ".").strip())
+        except (TypeError, ValueError):
+            continue
+        if (not math.isfinite(lat) or not math.isfinite(lon) or
+                not -90 <= lat <= 90 or not -180 <= lon <= 180):
+            continue
+
+        morning = _parse_scheduler_report_time(row.get("report_morning_time"))
+        afternoon = _parse_scheduler_report_time(row.get("report_afternoon_time"))
+        if not morning and not afternoon:
+            continue
+
+        lang = str(row.get("lang", "") or "").strip().lower()
+        if lang in ("nb", "no"):
+            lang = "no"
+        elif lang not in ("pl", "en", "de", "fr", "es"):
+            lang = "en"
+
+        final_users.append({
+            "chat_id": chat_id,
+            "lat": lat,
+            "lon": lon,
+            "tz": _resolve_tz(lat, lon),
+            "name": str(row.get("location_label", "") or "").strip() or "Twoja okolica",
+            "lang": lang,
+            "godzina_rano": morning,
+            "godzina_wieczor": afternoon,
+        })
+    return final_users
+
+
 def _soft_delete_user(chat_id: str, reason: str = "unknown"):
     """
     Inteligentny Grabarz: deleguje do db_cleanup.mark_user_as_blocked, które
     1) oznacza access_status=blocked w zakładce Users (nowy rejestr dostępu)
        wraz z wyczyszczeniem profilu, a następnie
-    2) dodaje prefix BLOCKED_ w Formularz (legacy — dopóki scheduler czyta Formularz).
-    Odczyt użytkowników przez scheduler pozostaje BEZ ZMIAN (nadal Formularz).
+    2) dodaje prefix BLOCKED_ w Formularz dla pozostałych ścieżek legacy.
+    Scheduler raportów czyta wyłącznie Users; ten legacy marker nie jest źródłem
+    ani fallbackiem dla listy wysyłkowej.
     """
     import gspread
     from google.oauth2.service_account import Credentials
@@ -508,9 +638,8 @@ def run_send_cycle():
     
     for attempt in range(MAX_RETRIES):
         try:  # <--- TO MUSI BYĆ WCIĘTE (Tab)
-            raw = _load_users_from_sheet()
-            sklejone = wirtualne_scalanie(raw)
-            users = _parse_users(sklejone)
+            raw = _load_scheduler_users_from_sheet()
+            users = _parse_scheduler_users(raw)
             break  # Udało się, przerywamy pętlę prób
         except Exception as e: # <--- TO TEŻ WCIĘTE W RÓWNEJ LINII Z TRY
             # Sprawdzamy czy to błąd typu Rate Limit (429)
@@ -711,9 +840,8 @@ def run_smoke_test(target_chat_id: str, is_now: bool = False, is_future: bool = 
     """Admin-only path: wysyła kartę do podanego chat_id ignorując okna czasowe i cache."""
     print(f"[SMOKE TEST] Uruchamiam test dla chat_id: {target_chat_id}...")
     try:
-        raw = _load_users_from_sheet()
-        sklejone = wirtualne_scalanie(raw)    
-        users = _parse_users(sklejone)
+        raw = _load_scheduler_users_from_sheet()
+        users = _parse_scheduler_users(raw)
     except Exception as e:
         print(f"[SMOKE TEST] Błąd ładowania bazy: {e}")
         return

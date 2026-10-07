@@ -6,10 +6,12 @@ users_store.py — Rejestr dostępu i profilu użytkownika (zakładka `Users` w 
   oraz profile_* (lokalizacja; w PR1 tylko czyszczona — zapis profilu pojawił się
   w PR2 razem z PENDING_SAVE, a od PR2-UX-cleanup świadomym flow jest `/miasto`;
   `/save_location` działa dalej, ale wyłącznie jako ukryty alias techniczny).
-- STARA zakładka `Formularz` pozostaje BEZ ZMIAN jako źródło danych dla schedulera
-  (main_card.py) — scheduler NIE jest tu przełączany na Users.
+- Scheduler raportów korzysta z `Users`; ustawienia raportowe są przechowywane
+  jako `report_morning_time` i `report_afternoon_time`.
+- `Formularz` pozostaje legacy dla pozostałych ścieżek bota; PR3 nie wykonuje
+  backfillu ani zmian danych w tej zakładce.
 - Użytkownicy legacy (wiersz w Formularz, brak wiersza w Users) mają domniemany
-  dostęp — o fallback dba location_bot (_chat_has_access), nie ten moduł.
+  dostęp w ścieżkach legacy — o fallback dba location_bot (`_chat_has_access`).
 
 Konwencje techniczne:
 - Wszystkie aktualizacje są wykonywane BATCHOWO (jeden `update_cells` na operację),
@@ -52,7 +54,10 @@ CANONICAL_HEADERS = [
     "blocked_at", "blocked_reason",
     "profile_status", "lat_round", "lon_round", "location_label", "location_source",
     "lang", "location_consent_at", "location_consent_version", "profile_updated_at",
+    "report_morning_time", "report_afternoon_time",
 ]
+
+REPORT_TIME_COLS = ("report_morning_time", "report_afternoon_time")
 
 # Kolumny profilu (lokalizacja) — czyszczone przez clear_profile() / set_blocked()
 PROFILE_COLS = (
@@ -188,6 +193,17 @@ def get_lang(users_map: dict, chat_id):
     if raw in SUPPORTED_LANGS:
         return raw
     return None
+
+
+def get_report_settings(users_map: dict, chat_id):
+    """Zwraca jawne ustawienia raportów z Users; brak rekordu daje None."""
+    user = (users_map or {}).get(norm_chat_id(chat_id))
+    if not user:
+        return None
+    return {
+        col: str(user.get(col, "") or "").strip()
+        for col in REPORT_TIME_COLS
+    }
 
 
 # =====================================================================
@@ -330,6 +346,49 @@ def set_profile(
         return _update_cells_batch(ws, existing["_row"], updates)
     except Exception as e:
         print(f"  ❌ [users_store] set_profile({chat_id}): {e}")
+        return False
+
+
+def set_report_settings(ws, chat_id, morning_time="", afternoon_time="") -> bool:
+    """Zapisuje wybrane godziny w Users; puste wejście oznacza "bez zmian".
+
+    Dozwolone wartości to HH:MM (24-godzinne) oraz jawny wyłącznik ``brak``.
+    Nie wstawiamy domyślnych godzin. Jeśli kolumny raportowe nie istnieją w
+    arkuszu, zapis kończy się bez częściowej aktualizacji.
+    """
+    if ws is None:
+        return False
+    try:
+        existing = get_user(ws, chat_id)
+        if existing is None:
+            return False
+
+        updates = {}
+        for column, value in zip(REPORT_TIME_COLS, (morning_time, afternoon_time)):
+            raw = str(value or "").strip()
+            if not raw:
+                continue  # WebApp: pusta opcja to "bez zmian"
+            if raw.lower() == "brak":
+                updates[column] = "brak"
+                continue
+            if (len(raw) != 5 or raw[2] != ":" or
+                    not raw[:2].isdigit() or not raw[3:].isdigit()):
+                return False
+            hour, minute = int(raw[:2]), int(raw[3:])
+            if not (0 <= hour <= 23 and 0 <= minute <= 59):
+                return False
+            updates[column] = raw
+
+        if not updates:
+            return True
+
+        headers = _header_columns(ws)
+        if any(column not in headers for column in updates):
+            print("  ⚠️ [users_store] Brak kolumn raportowych w Users; pomijam zapis.")
+            return False
+        return _update_cells_batch(ws, existing["_row"], updates)
+    except Exception as e:
+        print(f"  ❌ [users_store] set_report_settings({chat_id}): {e}")
         return False
 
 
