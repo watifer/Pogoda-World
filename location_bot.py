@@ -1066,6 +1066,50 @@ def _contains_location_phrase(text, phrase):
     return f" {phrase} " in f" {text} "
 
 
+# ============================================================================
+# POSTCODE GATING (HOTFIX) — widoczny tylko, gdy user wpisał TEN SAM postcode
+# ============================================================================
+# Postcode z reverse/forward adresu trafia do publicznej etykiety wyłącznie,
+# gdy query użytkownika wprost go zawiera. Bez tego np. "London" dostawałby
+# "WC2N 5DU" z reverse, mimo że nikt go nie wpisał. Dopasowanie jest
+# międzynarodowe (bez regexu ograniczonego do polskich kodów numerycznych) i
+# działa na RÓWNOŚCI skompaktowanego ciągu, nigdy na "substring in query" —
+# inaczej krótki postcode pasowałby jako fragment dłuższej liczby.
+def _compact_alnum(text):
+    """Znormalizuj (casefold, bez diakrytyków) i zostaw wyłącznie [a-z0-9].
+
+    "WC2N 5DU" -> "wc2n5du", "05-462" -> "05462" — dzięki temu porównanie
+    nie zależy od spacji ani myślników w żadnym z dwóch tekstów.
+    """
+    normalized = _normalize_location_text(text)
+    return re.sub(r"[^a-z0-9]", "", normalized)
+
+
+def _query_mentions_candidate_postcode(address, query):
+    """True tylko, gdy postcode kandydata pojawia się w query jako 1-3 sąsiednie
+    tokeny, po kompakcji — RÓWNOŚĆ, nigdy podciąg większej liczby/tokenu.
+    """
+    postcode = _clean_location_component((address or {}).get("postcode"))
+    if not postcode:
+        return False
+
+    pc = _compact_alnum(postcode)
+    if not pc:
+        return False
+
+    toks = _normalize_location_text(query or "", discard_numbers=False).split()
+    toks = [token for token in toks if token]
+    if not toks:
+        return False
+
+    for n in (1, 2, 3):
+        for index in range(0, len(toks) - n + 1):
+            ngram = _compact_alnum(" ".join(toks[index:index + n]))
+            if ngram == pc:
+                return True
+    return False
+
+
 def _select_short_location_label(address, query=None, lang="pl"):
     """Select one locality/admin value for cards, payloads and stored labels."""
     locality_values = [
@@ -1209,7 +1253,14 @@ def _format_public_location_parts(raw_address, query=None, mode="city", lang="pl
     add(short_label)
     if mode == "address" and _query_explicitly_names_road(query, address):
         add(_public_road_component(address))
+    # HOTFIX: postcode gating — public tylko, gdy query wprost wymienia TEN SAM
+    # kod. ``query`` bywa ``None`` (pinezka/GPS) — wtedy postcode nigdy nie jest
+    # jawnie wpisany, więc nie wolno go pokazać tylko dlatego, że istnieje w
+    # adresie reverse/forward.
+    include_postcode = _query_mentions_candidate_postcode(address, query)
     for field in _PUBLIC_ADDRESS_FIELDS:
+        if field == "postcode" and not include_postcode:
+            continue
         value = _format_admin_component(field, address.get(field), polish=polish)
         add(value)
 
@@ -1347,6 +1398,10 @@ _GEOCODE_COUNTRY_ALIASES = {
 _GEOCODE_CITY_ALIASES = {
     "paryz": "paris",
     "nowy jork": "new york",
+    # HOTFIX: London/Londyn — wyłącznie kontrolowany wariant pełnej nazwy
+    # (patrz _geocode_query_variants), bez fuzzy/substring/prefix matchingu.
+    "london": "londyn",
+    "londyn": "london",
 }
 # Egzonimy z namedetails: tylko te klucze i dowolne name:<kod>.
 _GEOCODE_NAMEDETAILS_KEYS = ("name", "int_name", "official_name", "alt_name")
@@ -2220,6 +2275,22 @@ def geocode_city_details_status(city_name, lang="pl"):
     return lat, lon, display_location, status
 
 
+def geocode_city_labels_status(city_name, lang="pl"):
+    """Guest adapter (HOTFIX): ``(lat, lon, fallback_short, fallback_display, status)``.
+
+    Sam status + obie bezpieczne etykiety (krótka i pełna) zaakceptowanego
+    forward geokodowania — guest dostaje dokładnie te same dane, które /miasto
+    przekazuje do ``_resolve_location_labels`` jako ``fallback_short_label`` /
+    ``fallback_display_location``. Dzięki temu reverse i forward budują
+    etykiety jednym, wspólnym mechanizmem, zamiast mieszać tytuł z reverse i
+    opis z forward.
+    """
+    status, lat, lon, short_label, display_location = geocode_city_accepted(
+        city_name, lang
+    )
+    return lat, lon, short_label, display_location, status
+
+
 def geocode_city_details(city_name, lang="pl"):
     """Compatibility adapter: ``(lat, lon, safe_display_location, ok)``.
 
@@ -2302,6 +2373,23 @@ def geocode_shortening_is_safe(query):
     return True
 
 
+def _reverse_label_matches_query(short_label, query):
+    """Czy reverse short_label pasuje do rdzenia query — tym samym matcherem
+    (warianty/egzonimy + pełny token/fraza, bez prefiksów), którego używa
+    walidacja forward. Brak query albo brak rdzenia = nic do porównania, więc
+    traktujemy to jako "nie ma rozbieżności" (nie blokuje reverse).
+    """
+    if not query:
+        return True
+    core_name, _admin_context, _country_code = _geocode_query_parse(query)
+    if not core_name:
+        return True
+    variants = _geocode_query_variants(core_name)
+    if not variants:
+        return True
+    return _geocode_name_matches_any(variants, _normalize_location_text(short_label))
+
+
 def _resolve_location_labels(
     lat, lon, lang, fallback_short_label=None, fallback_display_location=None,
     query=None, mode=None,
@@ -2309,8 +2397,12 @@ def _resolve_location_labels(
     """Resolve the separate short label and display-only location description.
 
     Reverse geocoding is preferred. Safe short/display labels from structured
-    forward-geocoder fields are used only if reverse geocoding fails or has no
-    usable components. The user query itself is never used as a display fallback.
+    forward-geocoder fields are used only if reverse geocoding fails, has no
+    usable components, OR (HOTFIX) technically succeeds but names a different
+    place than the one the user typed (e.g. reverse returns an administrative
+    area like "City of Westminster" for a query of "London") while a validated
+    forward fallback for the SAME query exists. The user query itself is never
+    used as a display fallback.
     """
     if query:
         short_label, display_location, status = get_location_details_from_coords(
@@ -2322,16 +2414,26 @@ def _resolve_location_labels(
         )
     fallback_short = _clean_location_component(fallback_short_label)
     fallback_display = _clean_location_component(fallback_display_location)
+    has_forward_fallback = bool(fallback_short and fallback_display)
 
     if status == GEO_ERROR:
-        if fallback_short and fallback_display:
+        if has_forward_fallback:
             return fallback_short, fallback_display, GEO_OK
         return None, None, GEO_ERROR
 
     if status == GEO_NO_CITY:
-        if fallback_short and fallback_display:
+        if has_forward_fallback:
             return fallback_short, fallback_display, GEO_NO_CITY
         return FIELD_LOCATION_LABEL, t_ui(lang, "location_field"), GEO_NO_CITY
+
+    # status == GEO_OK: reverse odpowiedział poprawnie technicznie, ale może
+    # wskazywać inne miejsce niż to, o które pytał użytkownik (patrz docstring
+    # powyżej). Zwalidowany forward fallback dla TEGO SAMEGO zapytania wygrywa
+    # wyłącznie wtedy, gdy reverse short_label nie pasuje do rdzenia query.
+    if has_forward_fallback and query and not _reverse_label_matches_query(
+        short_label, query
+    ):
+        return fallback_short, fallback_display, GEO_OK
 
     return short_label, (display_location or short_label), GEO_OK
 
@@ -2568,7 +2670,20 @@ def main_bot():
                 # ETAP 1: skróty i wzmianka @bot dostają TEN SAM zestaw statusów
                 # co /dzien, /teraz, /trend, /miasto i prompty. Karta trybu gościa
                 # powstaje wyłącznie dla GEOCODE_OK, a do cache trafia tylko OK.
-                geocode_status_fn=lambda city, lang: geocode_city_details_status(city, lang),
+                # HOTFIX: adapter zwraca też fallback_short/fallback_display
+                # (zaakceptowany forward), żeby tytuł i opis karty gościa nie
+                # mieszały źródeł — tak samo jak /miasto i jednorazowe raporty.
+                geocode_status_fn=lambda city, lang: geocode_city_labels_status(city, lang),
+                # HOTFIX: spójny resolver etykiet (reverse preferowany, ale nie
+                # autorytatywny, gdy rozmija się z query) — DOKŁADNIE ten sam,
+                # którego używa /miasto. Callback injection: guest_bot_handler
+                # nie importuje location_bot.
+                resolve_labels_fn=lambda lat, lon, lang, q, fs, fd: _resolve_location_labels(
+                    lat, lon, lang,
+                    fallback_short_label=fs,
+                    fallback_display_location=fd,
+                    query=q,
+                ),
                 # ETAP 1.1: skrót ratunkowy (pierwsze 2 tokeny) nie może zgubić
                 # jawnego kraju ani kodu pocztowego — decyduje helper z tego pliku.
                 shortening_ok_fn=geocode_shortening_is_safe,
