@@ -104,7 +104,11 @@ def resolve_shortcut(text):
 # HELPERY TEKSTOWE I GEOKODUJĄCE
 # ============================================================================
 # --- PAMIĘĆ PODRĘCZNA (CACHE) DLA GEOMETRII I NAZW ---
-_GEO_CACHE = {}      # (lang, query_lower) -> (expiry_time, (lat, lon, full_address))
+# HOTFIX: cache przechowuje OBIE bezpieczne etykiety (krótką i pełny opis),
+# nie tylko jeden "full_address" tekst — dzięki temu tytuł karty po trafieniu
+# cache'u nadal pochodzi z tego samego, spójnego źródła co przy pierwszym
+# zapytaniu. Zapisujemy WYŁĄCZNIE dla GEOCODE_OK (patrz handle_guest_now).
+_GEO_CACHE = {}      # (lang, query_lower) -> (expiry_time, (lat, lon, fallback_short, fallback_display))
 _GEO_TTL = 3600      # 1 godzina
 
 _CITY_CACHE = {}     # (lat_rounded, lon_rounded, lang) -> (expiry_time, city_name)
@@ -222,19 +226,53 @@ def _shortening_keeps_context(query: str, country_check=None) -> bool:
     return True
 
 
+def _normalize_geocode_status_result(result):
+    """Normalizuje odpowiedź ``geocode_status_fn`` do jednego kontraktu:
+    ``(lat, lon, fallback_short, fallback_display, status)``.
+
+    Dwa wspierane kształty:
+      * NOWY (HOTFIX) — ``location_bot.geocode_city_labels_status``:
+        ``(lat, lon, fallback_short, fallback_display, status)``, 5 elementów.
+      * STARY — ``location_bot.geocode_city_details_status``:
+        ``(lat, lon, display_location, status)``, 4 elementy. Traktowany
+        wyłącznie jako opis (``fallback_display``), bez osobnej krótkiej
+        etykiety — dokładnie tak, jak działało to przed hotfixem (tytuł szedł
+        z ``get_city_fn``, nie z tego adaptera).
+
+    Każdy inny kształt to błędny kontrakt wstrzykniętej funkcji. Bezpieczne
+    zachowanie: brak współrzędnych, status NOT_FOUND — nie psujemy cache'u ani
+    karty niepoprawnym wynikiem.
+    """
+    if isinstance(result, (tuple, list)):
+        if len(result) == 5:
+            lat, lon, fallback_short, fallback_display, status = result
+            return lat, lon, fallback_short, fallback_display, (status or GEOCODE_NOT_FOUND)
+        if len(result) == 4:
+            lat, lon, fallback_display, status = result
+            return lat, lon, None, fallback_display, (status or GEOCODE_NOT_FOUND)
+    logger.warning("geocode_status_fn zwrócił niepoprawny kontrakt: %r", result)
+    return None, None, None, None, GEOCODE_NOT_FOUND
+
+
 def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn=None,
                          shortening_ok_fn=None):
-    """Geokoduje zapytanie trybu gościa i zwraca ``(lat, lon, full, used, status)``.
+    """Geokoduje zapytanie trybu gościa.
+
+    Zwraca ``(lat, lon, fallback_short, fallback_display, used_query, status)``.
 
     ETAP 1: jeśli dostarczymy ``geocode_status_fn`` (statusowy adapter z
     location_bot), kandydat jest akceptowany tylko po walidacji nazwy, a status
     decyduje o cache'u i o komunikacie. Bez niego zostaje stara ścieżka
     "bierz cokolwiek" — wyłącznie dla kompatybilności (w bocie adapter jest
     podawany zawsze, więc realnie idziemy przez statusy).
+
+    HOTFIX: ``geocode_status_fn`` może zwracać stary (4-elementowy) albo nowy
+    (5-elementowy, z osobną krótką etykietą) kontrakt — oba są obsłużone przez
+    ``_normalize_geocode_status_result``.
     """
     q = (query or "").strip()
     if not q:
-        return (None, None, None, None, GEOCODE_NOT_FOUND)
+        return (None, None, None, None, None, GEOCODE_NOT_FOUND)
 
     candidates = [q] # Zawsze zaczynamy od pełnego, wyczyszczonego zdania
     toks = q.split()
@@ -256,10 +294,12 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn
     status = GEOCODE_NOT_FOUND
     for c in uniq[:2]:
         if geocode_status_fn:
-            lat, lon, full, geo_status = geocode_status_fn(c, lang)
+            lat, lon, fallback_short, fallback_display, geo_status = (
+                _normalize_geocode_status_result(geocode_status_fn(c, lang))
+            )
             status = geo_status or GEOCODE_NOT_FOUND
             if lat and lon and status == GEOCODE_OK:
-                return (lat, lon, full, c, status)
+                return (lat, lon, fallback_short, fallback_display, c, status)
             # Druga próba ma sens wyłącznie, gdy mapa odpowiedziała, ale nazwa
             # nie pasowała albo nie znalazła nic. TOO_SHORT (nie pytamy mapy),
             # UNCERTAIN (skrót nic nie rozstrzyga) i ERROR (sieć leży) zostają.
@@ -269,9 +309,9 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn
 
         lat, lon, full = get_coords_fn(c, lang)
         if lat and lon:
-            return (lat, lon, full, c, GEOCODE_OK)
+            return (lat, lon, None, full, c, GEOCODE_OK)
 
-    return (None, None, None, None, status)
+    return (None, None, None, None, None, status)
 
 # ============================================================================
 # GŁÓWNY HANDLER TRYBU GOŚCIA
@@ -289,18 +329,33 @@ def handle_guest_now(
     get_city_fn=None,
     geocode_status_fn=None,
     shortening_ok_fn=None,
+    resolve_labels_fn=None,
 ) -> bool:
     """Tryb gościa: skróty (?d/.n/?12/?14 ...) i wzmianki @bot.
 
     ``geocode_status_fn`` (opcjonalny, ale podawany przez location_bot) zwraca
-    ``(lat, lon, display_location, status)`` z ETAP 1 — tę samą walidację co
-    /dzien, /teraz, /trend, /miasto i prompty. Karta powstaje wyłącznie dla
-    GEOCODE_OK; w grupie błąd oznacza ciszę, ale karty nie ma nigdy.
+    ETAP 1 status walidacji — tę samą walidację co /dzien, /teraz, /trend,
+    /miasto i prompty. Karta powstaje wyłącznie dla GEOCODE_OK; w grupie błąd
+    oznacza ciszę, ale karty nie ma nigdy. HOTFIX: wspiera zarówno stary
+    kontrakt ``(lat, lon, display_location, status)``, jak i nowy
+    ``(lat, lon, fallback_short, fallback_display, status)`` — oba są
+    normalizowane przez ``_geocode_best_effort``.
 
     ``shortening_ok_fn`` (opcjonalny, wstrzykiwany przez location_bot jako
     ``geocode_shortening_is_safe``) pytany jest, czy skrót ratunkowy do
     pierwszych dwóch tokenów nie gubi jawnego kraju ani kodu pocztowego.
     Stary ``get_coords_fn`` bez adaptera statusowego działa bez zmian.
+
+    ``resolve_labels_fn`` (HOTFIX, opcjonalny, callback injection — guest
+    handler NIE importuje location_bot) deleguje do
+    ``location_bot._resolve_location_labels``: ten sam resolver, który buduje
+    etykiety dla /miasto i stopki "Użyta lokalizacja". Sygnatura wywołania:
+    ``resolve_labels_fn(lat, lon, lang, used_query_or_None, fallback_short,
+    fallback_display) -> (short_label, display_location, status)``. Gdy
+    dostarczony, jest GŁÓWNYM źródłem tytułu i opisu karty gościa — bez
+    mieszania tytułu z ``get_city_fn`` i opisu z innego źródła. Bez niego
+    zostaje stara ścieżka (tytuł z ``get_city_fn``, opis z forward fallbacku)
+    — wyłącznie dla kompatybilności wstecznej.
     """
     
     text = (message.get("text") or "").strip()
@@ -354,8 +409,22 @@ def handle_guest_now(
     if loc and "latitude" in loc and "longitude" in loc:
         lat = float(loc["latitude"])
         lon = float(loc["longitude"])
-        
-        if get_city_fn:
+
+        if resolve_labels_fn:
+            # HOTFIX: pinezka/GPS nie ma forward fallbacków (brak query) —
+            # resolve_labels_fn używa WYŁĄCZNIE reverse, ale przez te same
+            # publiczne zasady formatowania (w tym brak postcode bez jawnego
+            # query użytkownika).
+            try:
+                short_label, display_location, _reverse_status = resolve_labels_fn(
+                    lat, lon, user_lang, None, None, None
+                )
+            except Exception:
+                short_label, display_location = None, None
+            if short_label:
+                oficjalna_nazwa = short_label
+                full_address = display_location or short_label
+        elif get_city_fn:
             try:
                 ckey = (round(lat, 3), round(lon, 3), user_lang)
                 city_name = _ttl_get(_CITY_CACHE, ckey)
@@ -398,19 +467,24 @@ def handle_guest_now(
             if cached_geo:
                 # W cache trafia wyłącznie GEOCODE_OK, więc trafienie to zawsze
                 # wynik zaakceptowany przez walidację nazwy (ETAP 1).
-                lat, lon, full_address = cached_geo
+                lat, lon, fallback_short, fallback_display = cached_geo
                 used_query = query
                 geo_status = GEOCODE_OK
             else:
-                lat, lon, full_address, used_query, geo_status = _geocode_best_effort(
-                    query, get_coords_fn, user_lang, geocode_status_fn, shortening_ok_fn
+                lat, lon, fallback_short, fallback_display, used_query, geo_status = (
+                    _geocode_best_effort(
+                        query, get_coords_fn, user_lang, geocode_status_fn, shortening_ok_fn
+                    )
                 )
                 # ETAP 1: cache gościa TYLKO dla wyników zwalidowanych.
                 # TOO_SHORT, NO_MATCH, UNCERTAIN, NOT_FOUND i ERROR nie wolno
                 # utrwalać — inaczej jedna literówka lub chwila awarii mapy
                 # powtarzałaby się przez godzinę.
                 if lat and lon and geo_status == GEOCODE_OK:
-                    _ttl_set(_GEO_CACHE, qkey, (lat, lon, full_address), _GEO_TTL)
+                    _ttl_set(
+                        _GEO_CACHE, qkey, (lat, lon, fallback_short, fallback_display),
+                        _GEO_TTL,
+                    )
 
             if not lat or not lon:
                 if is_private:
@@ -421,23 +495,46 @@ def handle_guest_now(
                         send_reply_fn(chat_id, status_msg)
                 return True
 
-            city_name = None
-            if get_city_fn:
+            # HOTFIX: resolve_labels_fn (gdy dostarczony) jest GŁÓWNYM źródłem
+            # etykiet — tytuł i opis pochodzą z JEDNEGO wywołania, bez mieszania
+            # reverse (get_city_fn) z forward (fallback_short/fallback_display).
+            if resolve_labels_fn:
                 try:
-                    ckey = (round(lat, 3), round(lon, 3), user_lang)
-                    city_name = _ttl_get(_CITY_CACHE, ckey)
-                    if not city_name:
-                        city_name = get_city_fn(lat, lon, user_lang)
-                        if city_name:
-                            _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
+                    short_label, display_location, _reverse_status = resolve_labels_fn(
+                        lat, lon, user_lang, used_query or query,
+                        fallback_short, fallback_display,
+                    )
                 except Exception:
-                    pass
-                    
-            if (not city_name) or ("Lokalizacja" in city_name) or ("Location" in city_name) or any(ch.isdigit() for ch in city_name):
-                city_name = (used_query or query).strip() if (used_query or query) else fallback_city
-                
-            oficjalna_nazwa = city_name
-                
+                    short_label, display_location = None, None
+                # Błąd/pustka resolve_labels_fn NIE może nadpisać poprawnego
+                # forward fallbacku — reverse jest preferowane, ale nie
+                # autorytatywne, gdy samo zawiedzie.
+                effective_used_query = (used_query or query).strip() if (used_query or query) else ""
+                oficjalna_nazwa = (
+                    short_label or fallback_short or effective_used_query or fallback_city
+                )
+                full_address = display_location or fallback_display or oficjalna_nazwa
+            else:
+                # Stara ścieżka (bez resolve_labels_fn): tytuł z reverse
+                # get_city_fn, opis z forward fallbacku — bez zmian.
+                full_address = fallback_display
+                city_name = None
+                if get_city_fn:
+                    try:
+                        ckey = (round(lat, 3), round(lon, 3), user_lang)
+                        city_name = _ttl_get(_CITY_CACHE, ckey)
+                        if not city_name:
+                            city_name = get_city_fn(lat, lon, user_lang)
+                            if city_name:
+                                _ttl_set(_CITY_CACHE, ckey, city_name, _CITY_TTL)
+                    except Exception:
+                        pass
+
+                if (not city_name) or ("Lokalizacja" in city_name) or ("Location" in city_name) or any(ch.isdigit() for ch in city_name):
+                    city_name = (used_query or query).strip() if (used_query or query) else fallback_city
+
+                oficjalna_nazwa = city_name
+
         except Exception as e:
             print(f"❌ [GuestMode] Błąd w bloku geokodowania: {e}")
             if is_private:

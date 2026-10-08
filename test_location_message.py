@@ -11,6 +11,12 @@ DISPLAY_LOCATION = (
     "Wiązowna, gmina Wiązowna, powiat otwocki, województwo mazowieckie, "
     "05-462, Polska"
 )
+# HOTFIX: postcode gating — widoczny tylko, gdy query zawiera TEN SAM kod.
+# Zapytania poniżej ("Wiązowna" bez "05-462") nie wymieniają kodu wprost, więc
+# publiczna etykieta nie może go pokazać tylko dlatego, że istnieje w adresie.
+DISPLAY_LOCATION_NO_POSTCODE = (
+    "Wiązowna, gmina Wiązowna, powiat otwocki, województwo mazowieckie, Polska"
+)
 POISON = "Biblioteka publiczna, Kościelna 41, Osiedle Parkowe"
 ADDRESS = {
     "city": "Wiązowna",
@@ -149,8 +155,10 @@ def fake_nominatim(monkeypatch):
 
 def test_reverse_uses_structured_fields_and_formats_exact_polish_label(fake_nominatim):
     fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    # HOTFIX: postcode gating — query musi wprost wymieniać TEN SAM kod, żeby
+    # był publicznie widoczny, więc dopisujemy "05-462" do zapytania.
     short_label, display_location, status = lb.get_location_details_from_coords(
-        52.15, 21.29, "pl", query="Wiązowna"
+        52.15, 21.29, "pl", query="Wiązowna 05-462"
     )
 
     assert (short_label, display_location, status) == (
@@ -163,8 +171,10 @@ def test_reverse_uses_structured_fields_and_formats_exact_polish_label(fake_nomi
 
 def test_city_query_never_shows_road_house_number_suburb_or_poi(fake_nominatim):
     fake_nominatim.results.append(_FakeLocation(ADDRESS))
+    # HOTFIX: jak wyżej — postcode w query, żeby DISPLAY_LOCATION nadal
+    # zawierał "05-462" i test mógł sprawdzać pozostałe pola bez zmian.
     short_label, display_location, status = lb.get_location_details_from_coords(
-        52.15, 21.29, "pl", query="Wiązowna"
+        52.15, 21.29, "pl", query="Wiązowna 05-462"
     )
 
     assert status == lb.GEO_OK
@@ -233,7 +243,10 @@ def test_pin_or_gps_mode_never_includes_a_road(fake_nominatim):
 
     assert status == lb.GEO_OK
     assert short_label == SHORT_LABEL
-    assert display_location == DISPLAY_LOCATION
+    # HOTFIX: pinezka/GPS nie ma query — postcode nie może pojawić się
+    # publicznie tylko dlatego, że istnieje w reverse adresie.
+    assert display_location == DISPLAY_LOCATION_NO_POSTCODE
+    assert "05-462" not in display_location
     assert "Kościelna" not in display_location
 
 
@@ -256,9 +269,11 @@ def test_missing_locality_uses_safe_administrative_components(fake_nominatim):
 
     assert status == lb.GEO_OK
     assert short_label == "powiat otwocki"
+    # HOTFIX: brak query (pin/GPS) => brak postcode, mimo że adres go ma.
     assert display_location == (
-        "powiat otwocki, województwo mazowieckie, 05-462, Polska"
+        "powiat otwocki, województwo mazowieckie, Polska"
     )
+    assert "05-462" not in display_location
     for forbidden in ("Biblioteka publiczna", "41", "Kościelna", "Osiedle Parkowe"):
         assert forbidden not in display_location
 
@@ -303,12 +318,14 @@ def test_query_is_part_of_reverse_cache_key(fake_nominatim):
 
 def test_forward_geocode_and_guest_adapter_never_return_raw_address(fake_nominatim):
     fake_nominatim.results.extend([_FakeGeocodeResult(), _FakeGeocodeResult()])
-    lat, lon, display_location, ok = lb.geocode_city_details("Wiązowna", "pl")
+    # HOTFIX: postcode gating — query musi wprost wymieniać "05-462", żeby
+    # DISPLAY_LOCATION (z postcode) nadal pasował dokładnie.
+    lat, lon, display_location, ok = lb.geocode_city_details("Wiązowna 05-462", "pl")
     assert (lat, lon, ok) == (52.229721, 21.012234, True)
     assert display_location == DISPLAY_LOCATION
     assert POISON not in display_location
 
-    lat, lon, safe_label = lb.get_coords_from_city("Wiązowna", "pl")
+    lat, lon, safe_label = lb.get_coords_from_city("Wiązowna 05-462", "pl")
     assert (lat, lon, safe_label) == (52.229721, 21.012234, DISPLAY_LOCATION)
     assert POISON not in safe_label
 
