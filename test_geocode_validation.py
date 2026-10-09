@@ -1237,7 +1237,7 @@ def test_known_cost_of_stage_one_street_first_query_is_rejected():
 
 
 def guest_handler_run(text, geocode_status_fn, chat_type="private", lang="pl",
-                      city_name="Hel", resolve_labels_fn=None):
+                      city_name="Hel", resolve_labels_fn=None, effective_lang=None):
     """Woła handle_guest_now z atrapami: (obsłużono, teksty, karty, payloady).
 
     HOTFIX: ``resolve_labels_fn`` jest opcjonalny (domyślnie ``None``, jak w
@@ -1268,6 +1268,7 @@ def guest_handler_run(text, geocode_status_fn, chat_type="private", lang="pl",
                     else lambda lat, lon, lang: city_name),
         geocode_status_fn=geocode_status_fn,
         resolve_labels_fn=resolve_labels_fn,
+        effective_lang=effective_lang,
     )
     return handled, sent, photos, payloads
 
@@ -2341,3 +2342,636 @@ def test_city_and_guest_agree_on_the_london_label_via_the_same_resolver(lang, mo
     assert city_status == guest_status == lb.GEO_OK
     assert (city_short, city_display) == (guest_short, guest_display)
     assert "Westminster" not in city_display
+
+
+# ============================================================================
+# HOTFIX PO PR42 — effective language, admin-vs-city, guest jeden resolver,
+# pinezka (city vs city_district), postcode gating. Bez prawdziwej sieci.
+# Testy są ogólne: Londyn/PL/EN to tylko przykłady regresyjne.
+# ============================================================================
+
+import types  # noqa: E402  (sekcja dopisana na końcu pliku)
+
+
+# --- 1. EFFECTIVE LANGUAGE: Users.lang > Telegram > en ----------------------
+
+def _msg(tg_lang=None, chat_id=555):
+    message = {"chat": {"id": chat_id}, "text": "x"}
+    if tg_lang is not None:
+        message["from"] = {"language_code": tg_lang}
+    return message
+
+
+@pytest.mark.parametrize("users_lang,tg_lang,expected", [
+    ("en", "pl", "en"),   # Users wygrywa z Telegramem (różne języki)
+    ("pl", "en", "pl"),
+    ("de", "fr", "de"),
+    ("fr", "de", "fr"),
+    ("nb", "pl", "no"),   # normalizacja no/nb zachowana
+    ("no", "en", "no"),
+])
+def test_effective_lang_users_lang_beats_telegram(users_lang, tg_lang, expected):
+    users_map = {"555": {"lang": users_lang}}
+    assert lb._effective_lang(_msg(tg_lang), 555, users_map) == expected
+
+
+@pytest.mark.parametrize("tg_lang,expected", [("pl", "pl"), ("en", "en"), ("de", "de")])
+def test_effective_lang_empty_or_unknown_users_lang_falls_back_to_telegram(tg_lang, expected):
+    assert lb._effective_lang(_msg(tg_lang), 555, {"555": {"lang": ""}}) == expected
+    assert lb._effective_lang(_msg(tg_lang), 555, {"555": {"lang": "xx"}}) == expected
+    assert lb._effective_lang(_msg(tg_lang), 555, {}) == expected
+
+
+def test_effective_lang_without_any_source_is_english():
+    assert lb._effective_lang(_msg(None), 555, {}) == "en"
+    assert lb._effective_lang({}, 555, None) == "en"
+    assert lb._effective_lang(_msg("ja"), 555, {}) == "en"   # nieobsługiwany -> en
+
+
+def test_effective_lang_legacy_formularz_row_only_when_no_users_record():
+    legacy = {"Chat ID": "555", "Lang": "es"}
+    assert lb._effective_lang(_msg("pl"), 555, {}, legacy_row=legacy) == "es"
+    # Rekord Users ma pierwszeństwo nad legacy wierszem.
+    users_map = {"555": {"lang": "en"}}
+    assert lb._effective_lang(_msg("pl"), 555, users_map, legacy_row=legacy) == "en"
+
+
+def test_effective_lang_group_uses_its_own_record_not_the_private_user():
+    group_id = -100555
+    users_map = {"-100555": {"lang": "de"}, "555": {"lang": "en"}}
+    # Grupa ma własny rekord -> jego język, nie język prywatnego użytkownika.
+    assert lb._effective_lang(_msg("pl", chat_id=group_id), group_id, users_map) == "de"
+    # Grupa bez rekordu -> dotychczasowy fallback Telegram/en (bez cudzego Users).
+    assert lb._effective_lang(_msg("pl", chat_id=-200), -200, users_map) == "pl"
+    assert lb._effective_lang(_msg(None, chat_id=-200), -200, users_map) == "en"
+
+
+@pytest.mark.parametrize("users_lang,tg_lang", [("en", "pl"), ("pl", "en")])
+def test_guest_uses_users_lang_not_telegram_language(users_lang, tg_lang):
+    """Telegram pl + Users en => guest en (i odwrotnie). Ogólny mechanizm."""
+    seen_langs = []
+
+    def status_fn(city, lang):
+        seen_langs.append(lang)
+        return (51.5, -0.12, "Alpha Town", "Alpha Town, Region, Country", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        seen_langs.append(("resolver", lang))
+        return (fallback_short, fallback_display, lb.GEO_OK)
+
+    users_map = {"555": {"lang": users_lang}}
+    effective = lb._effective_lang(_msg(tg_lang), 555, users_map)
+    _handled, _sent, photos, _payloads = guest_handler_run(
+        "?n Alpha", status_fn, lang=tg_lang, city_name=None,
+        resolve_labels_fn=resolver, effective_lang=effective,
+    )
+    assert seen_langs == [users_lang, ("resolver", users_lang)]
+    assert photos, "karta powinna powstać"
+
+
+@pytest.mark.parametrize("effective,tg", [("en", "pl"), ("pl", "en")])
+def test_guest_error_texts_follow_effective_lang(effective, tg):
+    """Komunikat statusu (NO_MATCH) idzie w języku effective, nie Telegrama."""
+    def status_fn(city, lang):
+        return (None, None, None, None, lb.GEOCODE_NO_MATCH)
+
+    _handled, sent, photos, _payloads = guest_handler_run(
+        "?n Alpha", status_fn, lang=tg, city_name=None, effective_lang=effective,
+    )
+    assert photos == []
+    assert sent == [i18n.t_geocode(effective, lb.GEOCODE_NO_MATCH)]
+    assert sent[0] != i18n.t_geocode(tg, lb.GEOCODE_NO_MATCH)
+
+
+def test_guest_without_override_keeps_telegram_fallback():
+    def status_fn(city, lang):
+        return (None, None, None, None, lb.GEOCODE_NO_MATCH)
+
+    _h, sent, _p, _pl = guest_handler_run(
+        "?n Alpha", status_fn, lang="pl", city_name=None,
+    )
+    assert sent == [i18n.t_geocode("pl", lb.GEOCODE_NO_MATCH)]
+
+
+@pytest.mark.parametrize("text", [
+    "?12 Alpha", "?14 Alpha", "?n Alpha", "?f Alpha",
+    ".n Alpha", ".f Alpha", ".12 Alpha", ".14 Alpha",
+    "?d Alpha", ".d Alpha", "@PogodaWorldBot Alpha",
+])
+def test_every_guest_path_uses_effective_lang(text, morning_hour):
+    """?n, ?d, ?12, ?14, .d/.n/.f i @bot — wszystkie idą tym samym resolverem."""
+    seen = []
+
+    def status_fn(city, lang):
+        seen.append(("status", lang))
+        return (51.5, -0.12, "Alpha Town", "Alpha Town, Region, Country", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        seen.append(("resolver", lang))
+        return (fallback_short, fallback_display, lb.GEO_OK)
+
+    _h, sent, photos, _p = guest_handler_run(
+        text, status_fn, lang="pl", city_name=None,
+        resolve_labels_fn=resolver, effective_lang="en",
+    )
+    assert photos, f"{text}: karta powinna powstać"
+    assert sent == []
+    assert seen and all(lang == "en" for _kind, lang in seen), seen
+
+
+# --- 2. GEOCODE CACHE KEYED BY EFFECTIVE LANG, ONLY GEOCODE_OK --------------
+
+def test_guest_cache_is_keyed_by_effective_lang(monkeypatch):
+    calls = []
+
+    def status_fn(city, lang):
+        calls.append(lang)
+        return (51.5, -0.12, "Alpha Town", "Alpha Town, Region, Country", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        return (fallback_short, fallback_display, lb.GEO_OK)
+
+    # 1) effective en (Telegram pl) -> miss, zapis pod ("en", ...)
+    guest_handler_run("?n Alpha", status_fn, lang="pl", city_name=None,
+                      resolve_labels_fn=resolver, effective_lang="en")
+    assert calls == ["en"]
+    assert ("en", "alpha") in gbh._GEO_CACHE
+    # 2) effective pl (Telegram en) -> NIE może trafić cache en
+    guest_handler_run("?n Alpha", status_fn, lang="en", city_name=None,
+                      resolve_labels_fn=resolver, effective_lang="pl")
+    assert calls == ["en", "pl"]
+    # 3) effective en ponownie -> trafienie cache, bez wywołania mapy
+    _h, _s, photos, _p = guest_handler_run(
+        "?n Alpha", status_fn, lang="pl", city_name=None,
+        resolve_labels_fn=resolver, effective_lang="en",
+    )
+    assert calls == ["en", "pl"]
+    assert photos, "cache hit nadal przechodzi przez resolver i daje kartę"
+
+
+def test_guest_cache_stores_only_geocode_ok():
+    def no_match(city, lang):
+        return (None, None, None, None, lb.GEOCODE_NO_MATCH)
+
+    guest_handler_run("?n Alpha", no_match, lang="en", city_name=None,
+                      effective_lang="en")
+    assert gbh._GEO_CACHE == {}
+
+
+# --- 3. GUEST CAPTION: TYTUŁ I OPIS Z JEDNEGO RESOLVERA ---------------------
+
+def test_guest_caption_title_and_subtitle_come_from_one_resolver_result():
+    def status_fn(city, lang):
+        return (51.5, -0.12, "Forward Short", "Forward Display, Elsewhere", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        return ("Resolver Short", "Resolver Display, Region", lb.GEO_OK)
+
+    _h, _s, photos, _p = guest_handler_run(
+        "?12 Alpha", status_fn, lang="en", city_name="City of Nowhere",
+        resolve_labels_fn=resolver, effective_lang="en",
+    )
+    _chat, title, subtitle = photos[0]
+    assert (title, subtitle) == ("Resolver Short", "Resolver Display, Region")
+    assert "Nowhere" not in title and "Forward" not in subtitle
+
+
+def test_guest_caption_does_not_mix_resolver_title_with_forward_subtitle():
+    """Resolver zwraca tytuł bez opisu: opis NIE może pochodzić z forward."""
+    def status_fn(city, lang):
+        return (51.5, -0.12, "Forward Short", "Forward Display, Elsewhere", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        return ("Resolver Short", None, lb.GEO_OK)
+
+    _h, _s, photos, _p = guest_handler_run(
+        "?12 Alpha", status_fn, lang="en", city_name=None,
+        resolve_labels_fn=resolver, effective_lang="en",
+    )
+    _chat, title, subtitle = photos[0]
+    assert title == "Resolver Short"
+    assert subtitle == "Resolver Short"
+    assert "Forward" not in subtitle
+
+
+def test_guest_caption_get_city_fn_never_feeds_the_title_when_resolver_exists():
+    def status_fn(city, lang):
+        return (51.5, -0.12, "Alpha Town", "Alpha Town, Region", lb.GEOCODE_OK)
+
+    def resolver(lat, lon, lang, used_query, fallback_short, fallback_display):
+        return (fallback_short, fallback_display, lb.GEO_OK)
+
+    _h, _s, photos, _p = guest_handler_run(
+        "?12 Alpha", status_fn, lang="en", city_name="City of Nowhere",
+        resolve_labels_fn=resolver, effective_lang="en",
+    )
+    _chat, title, subtitle = photos[0]
+    assert (title, subtitle) == ("Alpha Town", "Alpha Town, Region")
+
+
+# --- 4. ADMIN LABEL vs CITY: display-only przegrywa z place/localized -------
+
+def _greater_london_admin(lat=51.5, lon=-0.12):
+    return FakeResult(
+        {"county": "Greater London", "state": "England",
+         "country": "United Kingdom", "country_code": "gb"},
+        cls="boundary", typ="administrative", lat=lat, lon=lon,
+        name="Greater London",
+        display="Greater London, England, United Kingdom",
+    )
+
+
+def _london_city(lat=51.5074, lon=-0.1278):
+    return FakeResult(
+        {"city": "London", "state": "England",
+         "country": "United Kingdom", "country_code": "gb"},
+        lat=lat, lon=lon, display="London, United Kingdom",
+    )
+
+
+def test_fixture_admin_candidate_has_display_only_evidence_and_city_has_place():
+    q, _ctx, pc = lb._geocode_query_context("London")
+    admin = _greater_london_admin()
+    city = _london_city()
+    admin_addr = lb._nominatim_address_components(admin.raw)
+    city_addr = lb._nominatim_address_components(city.raw)
+    assert lb._geocode_candidate_evidence(q, admin_addr, admin.raw, pc)[1] == "display"
+    assert lb._geocode_candidate_evidence(q, city_addr, city.raw, pc)[1] == "place"
+
+
+def test_display_only_admin_before_place_candidate_loses_to_the_city():
+    status, chosen = lb._geocode_select_accepted(
+        "London", [_greater_london_admin(), _london_city()],
+    )
+    assert status == lb.GEOCODE_OK
+    assert chosen.raw["address"].get("city") == "London"
+
+
+def test_forward_geocoder_returns_london_not_greater_london():
+    FakeNominatim.responses.append([_greater_london_admin(), _london_city()])
+    status, lat, lon, short_label, _display = geo("London", "en")
+    assert status == lb.GEOCODE_OK
+    assert short_label == "London"
+    assert (lat, lon) == (51.5074, -0.1278)
+
+
+def test_localized_candidate_also_beats_display_only_admin():
+    localized = paris_result()   # place=Paris + namedetails name:pl
+    admin_fr = FakeResult(
+        {"state": "Paris", "country": "Francja", "country_code": "fr"},
+        cls="boundary", typ="administrative", name="Paris",
+        display="Paris, Ile-de-France, Francja",
+    )
+    status, chosen = lb._geocode_select_accepted("Paris", [admin_fr, localized])
+    assert status == lb.GEOCODE_OK
+    assert chosen.raw["address"]["city"] == "Paris"
+
+
+def test_only_display_only_candidate_still_resolves_as_before():
+    status, chosen = lb._geocode_select_accepted("London", [_greater_london_admin()])
+    assert status == lb.GEOCODE_OK
+    assert chosen.raw["name"] == "Greater London"
+
+
+def test_two_display_only_candidates_stay_uncertain():
+    a = _greater_london_admin(lat=51.5, lon=-0.12)
+    b = FakeResult(
+        {"county": "Londyn County", "country": "Kanada", "country_code": "ca"},
+        cls="boundary", typ="administrative", name="London",
+        display="London, Kanada", lat=42.98, lon=-81.25,
+    )
+    status, chosen = lb._geocode_select_accepted("London", [a, b])
+    assert status == lb.GEOCODE_UNCERTAIN and chosen is None
+
+
+def test_admin_rule_does_not_relax_hel_helmand():
+    helmand = FakeResult(
+        {"state": "Helmand", "country": "Afghanistan", "country_code": "af"},
+        cls="boundary", typ="administrative", name="Helmand",
+        display="Helmand, Afghanistan",
+    )
+    status, chosen = lb._geocode_select_accepted("Hel", [helmand])
+    assert status == lb.GEOCODE_NO_MATCH and chosen is None
+
+
+def test_admin_rule_does_not_relax_wa_western_australia():
+    wa = FakeResult(
+        {"state": "Western Australia", "country": "Australia", "country_code": "au"},
+        cls="boundary", typ="administrative", name="Western Australia",
+        display="Western Australia, Australia",
+    )
+    status, chosen = lb._geocode_select_accepted("Wa", [wa])
+    assert status == lb.GEOCODE_NO_MATCH and chosen is None
+
+
+def test_hel_still_picks_polish_hel_over_helmand_when_both_present():
+    helmand = FakeResult(
+        {"state": "Helmand", "country": "Afghanistan", "country_code": "af"},
+        cls="boundary", typ="administrative", name="Helmand",
+        display="Helmand, Afghanistan",
+    )
+    hel_pl = FakeResult(
+        {"town": "Hel", "country": "Polska", "country_code": "pl"},
+        lat=54.6, lon=18.8, display="Hel, Polska",
+    )
+    status, chosen = lb._geocode_select_accepted("Hel", [helmand, hel_pl])
+    assert status == lb.GEOCODE_OK
+    assert chosen.raw["address"]["town"] == "Hel"
+
+
+# --- 5. PINEZKA / GPS: city vs city_district; brak settlement -> fallback ---
+
+class FakeReverseNominatim:
+    """Atrapa geopy.Nominatim.reverse.
+
+    Krok 1 (bez zoom) zwraca ``payload`` (+ ``top`` na poziomie payloadu, np.
+    category). Krok 2 (zoom=10) zwraca ``payload_coarse`` albo zachowuje się
+    według ``coarse_mode``: "ok" | "none" | "typeerror" | "raise".
+    """
+    payload = {}
+    top = {}
+    payload_coarse = {}
+    coarse_mode = "ok"
+    calls = []
+
+    def __init__(self, user_agent=None):
+        pass
+
+    def reverse(self, query, language=None, zoom=None, **kwargs):
+        FakeReverseNominatim.calls.append(
+            {"query": query, "language": language, "zoom": zoom}
+        )
+        if zoom is None:
+            raw = {"address": dict(FakeReverseNominatim.payload)}
+            raw.update(FakeReverseNominatim.top)
+            return types.SimpleNamespace(raw=raw)
+        mode = FakeReverseNominatim.coarse_mode
+        if mode == "typeerror":
+            raise TypeError("reverse() got an unexpected keyword argument 'zoom'")
+        if mode == "raise":
+            raise RuntimeError("timeout")
+        if mode == "none":
+            return None
+        return types.SimpleNamespace(
+            raw={"address": dict(FakeReverseNominatim.payload_coarse)}
+        )
+
+    @classmethod
+    def reset(cls):
+        cls.payload = {}
+        cls.top = {}
+        cls.payload_coarse = {}
+        cls.coarse_mode = "ok"
+        cls.calls = []
+
+
+@pytest.fixture
+def fake_reverse(monkeypatch):
+    FakeReverseNominatim.reset()
+    monkeypatch.setattr(lb, "Nominatim", FakeReverseNominatim)
+    yield FakeReverseNominatim
+    FakeReverseNominatim.reset()
+
+
+def test_pin_city_plus_city_district_gives_city_as_short_label(fake_reverse):
+    """Przypadek A: city=X + city_district=Y (+county) => short_label = X."""
+    fake_reverse.payload = {
+        "city": "Alpha Town", "city_district": "Beta District",
+        "county": "Gamma County", "country": "Country", "country_code": "xx",
+    }
+    short, display, status = lb.get_location_details_from_coords(51.5, -0.1, "en")
+    assert status == lb.GEO_OK
+    assert short == "Alpha Town"
+    assert "Beta District" not in display
+    assert display.startswith("Alpha Town")
+
+
+def test_pin_city_district_only_is_not_promoted_to_settlement(fake_reverse):
+    """city_district/suburb nie są polami miejscowości — nie stają się short."""
+    fake_reverse.payload = {
+        "city_district": "Beta District", "county": "Gamma County",
+        "country": "Country", "country_code": "xx",
+    }
+    short, _display, status = lb.get_location_details_from_coords(51.5, -0.1, "en")
+    assert status == lb.GEO_OK
+    assert short == "Gamma County"          # jawny fallback admin, nie dzielnica
+
+
+def test_pin_without_settlement_uses_explicit_admin_fallback_no_guessing(fake_reverse):
+    """Przypadek B: brak city/town/village/locality => dotychczasowy fallback
+    (municipality > county > state). Bez aliasu borough->city i bez forward."""
+    fake_reverse.payload = {
+        "municipality": "Gamma Borough", "county": "Gamma County",
+        "state": "Delta State", "country": "Country", "country_code": "xx",
+    }
+    short, _display, status = lb.get_location_details_from_coords(51.5, -0.1, "en")
+    assert status == lb.GEO_OK
+    assert short == "Gamma Borough"
+    # Nie ma dodatkowego forward lookupu w reverse.
+    assert FakeNominatim.calls == [] and FakeNominatim.responses == []
+
+
+def test_pin_city_field_with_admin_name_stays_as_reported_no_city_guess(fake_reverse):
+    """Reverse ma city='City of Gamma' + county: zostaje raportowane pole city.
+    Nie zgadujemy nadrzędnego miasta z podobieństwa nazw (bez aliasów)."""
+    fake_reverse.payload = {
+        "city": "City of Gamma", "county": "Greater Gamma",
+        "country": "Country", "country_code": "xx",
+    }
+    short, _display, status = lb.get_location_details_from_coords(51.5, -0.1, "en")
+    assert status == lb.GEO_OK
+    assert short == "City of Gamma"
+    assert short != "Greater Gamma"
+
+
+def test_pin_resolver_uses_query_none_and_no_postcode(fake_reverse):
+    fake_reverse.payload = {
+        "city": "Alpha Town", "postcode": "12345", "country": "Country",
+        "country_code": "xx",
+    }
+    short, display, status = lb._resolve_location_labels(51.5, -0.1, "en")
+    assert status == lb.GEO_OK and short == "Alpha Town"
+    assert "12345" not in display
+    assert fake_reverse.calls[-1]["language"] == "en"
+
+
+# --- 6. POSTCODE GATING — międzynarodowe formaty, bez substring -------------
+
+@pytest.mark.parametrize("postcode,query,expected", [
+    ("WC2N 5DU", "London", False),          # UK: bez jawnego kodu
+    ("WC2N 5DU", "London WC2N5DU", True),   # UK: zwarty zapis
+    ("10115", "Berlin", False),             # DE
+    ("10115", "Berlin 10115", True),
+    ("75001", "Paris", False),              # FR
+    ("75001", "Paris 75001", True),
+    ("00-950", "Warszawa", False),          # PL z myślnikiem
+    ("00-950", "Warszawa 00950", True),
+    ("00-950", "Warszawa 00-950", True),
+    ("12345", "Alpha 123456", False),       # brak substring z większej liczby
+    ("12345", "Alpha 1234", False),
+])
+def test_postcode_gating_international_formats(postcode, query, expected):
+    address = {"city": "Alpha", "postcode": postcode, "country_code": "xx"}
+    _short, display = lb._format_public_location_parts(address, query=query, lang="en")
+    assert (postcode in display) is expected
+
+
+@pytest.mark.parametrize("postcode", ["WC2N 5DU", "10115", "75001", "00-950"])
+def test_postcode_never_shown_for_pin_query_none(postcode):
+    address = {"city": "Alpha", "postcode": postcode, "country_code": "xx"}
+    _short, display = lb._format_public_location_parts(address, query=None, lang="en")
+    assert postcode not in display
+
+
+def test_postcode_reverse_without_query_hidden_end_to_end(fake_reverse):
+    fake_reverse.payload = {"city": "Alpha", "postcode": "WC2N 5DU",
+                            "country": "Country", "country_code": "xx"}
+    _short, display, status = lb.get_location_details_from_coords(51.5, -0.1, "en")
+    assert status == lb.GEO_OK
+    assert "WC2N" not in display
+
+
+def test_postcode_forward_hidden_without_matching_query():
+    FakeNominatim.responses.append([paris_result(postcode="75008")])
+    status, _lat, _lon, _short, display = geo("Paryż", "pl")
+    assert status == lb.GEOCODE_OK
+    assert "75008" not in display
+
+
+def test_postcode_forward_visible_only_with_the_same_postcode_in_query():
+    FakeNominatim.responses.append([paris_result(postcode="75008")])
+    status, _lat, _lon, _short, display = geo("Paryż 75008", "pl")
+    assert status == lb.GEOCODE_OK
+    assert "75008" in display
+
+
+# --- 7. REGRESJE GEOKODERA (ETAP 1/1.1/1.2 + PR42) --------------------------
+
+@pytest.mark.parametrize("query", ["U", "Wa", "Os"])
+def test_short_context_free_queries_never_call_geocoder(query):
+    status, *_rest = geo(query, "pl")
+    assert status == lb.GEOCODE_TOO_SHORT
+    assert FakeNominatim.forward_calls() == []
+
+
+# --- 8. PINEZKA/GPS — KROK 2: COARSE REVERSE zoom=10 (best-effort) ----------
+# Payload POI (kawiarnia w Westminster) jak zgłoszony w specyfikacji:
+# category=amenity, address.city="City of Westminster", postcode SW1H 0RH,
+# display_name zawiera "Greater London", ale w address nie ma county.
+
+WESTMINSTER_POI_ADDRESS = {
+    "amenity": "Cafe Alpha",
+    "road": "Example Street",
+    "house_number": "1",
+    "city": "City of Westminster",
+    "postcode": "SW1H 0RH",
+    "country": "United Kingdom",
+    "country_code": "gb",
+}
+WESTMINSTER_POI_TOP = {
+    "category": "amenity", "type": "cafe",
+    "display_name": "Cafe Alpha, Example Street, City of Westminster, "
+                    "Greater London, SW1H 0RH, United Kingdom",
+}
+LONDON_COARSE_ADDRESS = {
+    "city": "London", "state": "England",
+    "country": "United Kingdom", "country_code": "gb",
+}
+
+
+def _set_westminster_poi(fake):
+    fake.payload = dict(WESTMINSTER_POI_ADDRESS)
+    fake.top = dict(WESTMINSTER_POI_TOP)
+
+
+def test_poi_pin_coarse_settlement_replaces_city_district_like_label(fake_reverse):
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.payload_coarse = dict(LONDON_COARSE_ADDRESS)
+    short, display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_OK
+    assert short == "London"
+    # Krok 2 faktycznie poszedł z zoom=10, krok 1 bez zoom.
+    assert [c["zoom"] for c in fake_reverse.calls] == [None, lb._REVERSE_COARSE_ZOOM]
+    # Pinezka: query=None => brak postcode, brak POI/road/house_number.
+    assert "SW1H" not in display and "0RH" not in display
+    assert "Example Street" not in display and "Cafe Alpha" not in display
+    assert "1" not in [p.strip() for p in display.split(",")]
+
+
+def test_poi_pin_coarse_without_settlement_keeps_step_one(fake_reverse):
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.payload_coarse = {"county": "Greater London", "country": "United Kingdom"}
+    short, display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_OK
+    assert short == "City of Westminster"     # jawny wynik kroku 1, bez zgadywania
+    assert "SW1H" not in display
+
+
+def test_poi_pin_coarse_still_poi_is_ignored(fake_reverse):
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.payload_coarse = {**LONDON_COARSE_ADDRESS, "amenity": "Cafe Beta"}
+    short, _display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_OK and short == "City of Westminster"
+
+
+@pytest.mark.parametrize("coarse_mode", ["typeerror", "raise", "none"])
+def test_poi_pin_coarse_failure_never_breaks_step_one(fake_reverse, coarse_mode):
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.coarse_mode = coarse_mode
+    short, display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_OK                 # nie ERROR
+    assert short == "City of Westminster"
+    assert "SW1H" not in display
+
+
+def test_non_poi_pin_does_not_call_coarse(fake_reverse):
+    fake_reverse.payload = {"city": "Alpha Town", "county": "Gamma County",
+                            "country": "Country", "country_code": "xx"}
+    fake_reverse.payload_coarse = dict(LONDON_COARSE_ADDRESS)
+    short, _display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_OK and short == "Alpha Town"
+    assert [c["zoom"] for c in fake_reverse.calls] == [None]
+
+
+def test_query_present_never_triggers_coarse(fake_reverse):
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.payload_coarse = dict(LONDON_COARSE_ADDRESS)
+    lb.get_location_details_from_coords(51.5, -0.12, "en", query="Westminster")
+    assert [c["zoom"] for c in fake_reverse.calls] == [None]
+
+
+def test_poi_without_settlement_gets_settlement_from_coarse(fake_reverse):
+    """Krok 1 bez miejscowości (GEO_NO_CITY) + POI => coarse może dać GEO_OK."""
+    # Bez pól admin/miejscowości/kraju/kodu pocztowego => krok 1 = GEO_NO_CITY.
+    fake_reverse.payload = {"amenity": "Cafe Alpha", "road": "Example Street"}
+    fake_reverse.payload_coarse = {"town": "Alpha Town", "country": "Country",
+                                   "country_code": "xx"}
+    short, _display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_OK and short == "Alpha Town"
+
+
+def test_poi_without_settlement_and_failed_coarse_stays_no_city(fake_reverse):
+    # Bez pól admin/miejscowości/kraju/kodu pocztowego => krok 1 = GEO_NO_CITY.
+    fake_reverse.payload = {"amenity": "Cafe Alpha", "road": "Example Street"}
+    fake_reverse.coarse_mode = "typeerror"
+    short, display, status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert status == lb.GEO_NO_CITY
+    assert short is None and display is None
+
+
+def test_resolver_pin_path_applies_coarse_and_hides_postcode(fake_reverse):
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.payload_coarse = dict(LONDON_COARSE_ADDRESS)
+    short, display, status = lb._resolve_location_labels(51.5, -0.12, "en")
+    assert status == lb.GEO_OK and short == "London"
+    assert "SW1H" not in display
+
+
+def test_coarse_does_not_apply_borough_to_city_alias(fake_reverse):
+    """Bez mapowania borough->city: samo 'City of Westminster' bez coarse zostaje
+    jako wynik kroku 1 i NIE zamienia się w 'London' ani 'Westminster'."""
+    _set_westminster_poi(fake_reverse)
+    fake_reverse.coarse_mode = "none"
+    short, _display, _status = lb.get_location_details_from_coords(51.5, -0.12, "en")
+    assert short == "City of Westminster"
+    assert short not in ("London", "Westminster")
