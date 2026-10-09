@@ -95,6 +95,9 @@ class FakeFormularz:
     def get_all_records(self, value_render_option=None):
         return [dict(zip(FORM_HEADERS, r)) for r in self.rows]
 
+    def get_all_values(self, value_render_option=None):
+        return [FORM_HEADERS[:]] + [row[:] for row in self.rows]
+
     def row_values(self, idx):
         if idx == 1:
             return FORM_HEADERS[:]
@@ -209,6 +212,7 @@ class BotHarness:
     """Patched location_bot z atrapami; rejestruje wysłane wiadomości i karty."""
 
     def __init__(self, monkeypatch, formularz_rows=None):
+        lb._reset_polling_state()
         self.gc = FakeGC(formularz_rows)
         self.sent = []        # (chat_id, text)
         self.markups = []     # reply_markup każdej wysłanej wiadomości (index = sent)
@@ -288,7 +292,9 @@ class BotHarness:
                 lb.GEO_OK,
             ),
         )
-        monkeypatch.setattr(lb, "_load_users_from_sheet", self.gc.formularz.get_all_records)
+        monkeypatch.setattr(
+            lb, "_load_future_users_from_sheet", lambda _gc: self.gc.formularz.get_all_records()
+        )
         lb.PENDING_CITY.clear()
         lb.PENDING_SAVE.clear()
         self._updates = updates
@@ -340,6 +346,10 @@ class BotHarness:
 
     def run(self, update):
         """Jedna paczka update'ów przez main_bot()."""
+        # Legacy integration tests mutate fake Sheets directly between polls;
+        # opt out of TTL staleness here. Dedicated resilience tests cover TTL.
+        lb._invalidate_form_snapshot()
+        lb._invalidate_users_snapshot()
         self._updates.append(update)
         lb.main_bot()
 
