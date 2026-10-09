@@ -3,8 +3,10 @@ import unicodedata
 import json
 import math
 import re
+import tempfile
 import requests
 import gspread
+from gspread.utils import numericise_all
 import main_card
 from i18n import (
     t_ui,
@@ -18,7 +20,7 @@ from i18n import (
 )
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
-from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, _load_users_from_sheet, DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
+from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
 from geopy.geocoders import Nominatim
 from guest_bot_handler import handle_guest_now, resolve_shortcut, iter_shortcut_keys
 from prepare_now_layout import prepare_now_layout_data
@@ -494,7 +496,9 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
     (.d/.n/.f, wzmianka @bot) ma własny send_photo_fn i pozostaje bez zmian.
     """
     try:
-        payload = build_payload_for_location(
+        payload = _timed_call(
+            "weather.build_payload",
+            build_payload_for_location,
             lat=float(lat),
             lon=float(lon),
             tz_name=_resolve_tz(float(lat), float(lon)),
@@ -506,7 +510,9 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
             else prepare_future_layout_data(payload) if card_type == "future"
             else prepare_layout_data(payload)
         )
-        image_path = image_generator.generate_weather_card(layout)
+        image_path = _timed_call(
+            "card.render", image_generator.generate_weather_card, layout
+        )
         if not image_path:
             return False
         # POPRAWKA #1: zero captionu — sama karta (nazwa lokalizacji jest
@@ -678,8 +684,10 @@ def _save_profile_from_location(
     writer (which rounds stored coordinates to three decimal places).
     """
     saved_at = users_store.now_iso()
-    saved = users_store.set_profile(
-        users_ws, chat_id, lat, lon, short_label, source, lang, PRIVACY_VERSION, saved_at
+    saved = _sheets_call(
+        "sheets.users.set_profile",
+        users_store.set_profile,
+        users_ws, chat_id, lat, lon, short_label, source, lang, PRIVACY_VERSION, saved_at,
     )
     if not saved:
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
@@ -701,6 +709,7 @@ def _save_profile_from_location(
         "location_consent_version": PRIVACY_VERSION,
         "profile_updated_at": saved_at,
     })
+    _cache_users_map(users_map)
 
     # Tylko oczyszczony display_location trafia do komunikatu; profil i karta
     # nadal używają osobnego short_label.
@@ -859,8 +868,23 @@ def _handle_forget_location(chat_id, lang, users_ws, main_sheet, users_map=None,
     # Nie pozwalamy, aby lokalizacja właśnie zapomniana wciąż czekała w RAM.
     PENDING_SAVE.pop(str(chat_id), None)
     PENDING_CITY.pop(str(chat_id), None)
-    cleared_users = users_store.clear_profile(users_ws, chat_id, users_store.now_iso())
+    cleared_at = users_store.now_iso()
+    cleared_users = _sheets_call(
+        "sheets.users.clear_profile",
+        users_store.clear_profile,
+        users_ws, chat_id, cleared_at,
+    )
+    if cleared_users:
+        user_entry = (users_map or {}).get(users_store.norm_chat_id(chat_id))
+        if user_entry is not None:
+            for field in users_store.PROFILE_COLS:
+                user_entry[field] = ""
+            user_entry["profile_status"] = "none"
+            user_entry["profile_updated_at"] = cleared_at
+        _cache_users_map(users_map or {})
+
     cleared_legacy = _clear_legacy_location(main_sheet, chat_id)
+    _invalidate_form_snapshot()
     if not had_location and (cleared_users or cleared_legacy):
         print(f"  🧹 [forget_location] {chat_id}: czyszczenie prewencyjne (brak widocznej lokalizacji)")
 
@@ -926,8 +950,14 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
     tego momentu odpowiada wyłącznie /start. Gdy nie było czego kasować,
     zostaje jedno ``no_data`` (bez drugiego komunikatu).
     """
-    users_deleted = users_store.delete_user_row(users_ws, chat_id)
+    users_deleted = _sheets_call(
+        "sheets.users.delete_user",
+        users_store.delete_user_row,
+        users_ws, chat_id,
+    )
     legacy_deleted = _delete_legacy_rows(main_sheet, chat_id)
+    if users_deleted:
+        _invalidate_users_snapshot()
 
     # Czyszczenie stanów RAM — pending nigdy nie może przetrwać kasacji danych.
     PENDING_CITY.pop(str(chat_id), None)
@@ -951,12 +981,19 @@ def _clear_legacy_location(main_sheet, chat_id):
     dla danego chat_id — jeden batch update_cells. Zwraca True, gdy coś wyczyszczono.
     """
     try:
-        headers = [str(h).strip() for h in main_sheet.row_values(1)]
+        headers = [
+            str(h).strip()
+            for h in _sheets_call(
+                "sheets.formularz.read_headers", main_sheet.row_values, 1
+            )
+        ]
         col_lat = headers.index("Lat") + 1 if "Lat" in headers else None
         col_lon = headers.index("Lon") + 1 if "Lon" in headers else None
         col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
 
-        col_values = main_sheet.col_values(2)
+        col_values = _sheets_call(
+            "sheets.formularz.read_chat_ids", main_sheet.col_values, 2
+        )
         cells = []
         for i, val in enumerate(col_values):
             if str(val).strip() == str(chat_id):
@@ -969,12 +1006,14 @@ def _clear_legacy_location(main_sheet, chat_id):
                     cells.append(gspread.Cell(row=row, col=col_miasto, value=""))
 
         if cells:
-            main_sheet.update_cells(cells)
+            _sheets_call("sheets.formularz.write_cells", main_sheet.update_cells, cells)
+            _invalidate_form_snapshot()
             rows = len({c.row for c in cells})
             print(f"  🧹 [forget_location] Wyczyszczono lokalizację w {rows} wierszach legacy (Formularz) dla {chat_id}.")
             return True
         return False
     except Exception as e:
+        _raise_if_sheets_429(e)
         print(f"  ❌ [forget_location] Błąd czyszczenia legacy: {e}")
         alert_admin(f"❌ /forget_location ({chat_id}): błąd czyszczenia Formularz: {e}")
         return False
@@ -987,18 +1026,22 @@ def _delete_legacy_rows(main_sheet, chat_id):
     indeksy nie rozjechały się w trakcie usuwania. Zwraca liczbę usuniętych wierszy.
     """
     try:
-        col_values = main_sheet.col_values(2)
+        col_values = _sheets_call(
+            "sheets.formularz.read_chat_ids", main_sheet.col_values, 2
+        )
         cid = str(chat_id)
         targets = [
             i + 1 for i, val in enumerate(col_values)
             if str(val).strip() in (cid, f"BLOCKED_{cid}")
         ]
         for row in sorted(targets, reverse=True):
-            main_sheet.delete_rows(row)
+            _sheets_call("sheets.formularz.delete_row", main_sheet.delete_rows, row)
+            _invalidate_form_snapshot()
         if targets:
             print(f"  🗑 [delete_me] Usunięto {len(targets)} wierszy legacy (Formularz) dla {chat_id}.")
         return len(targets)
     except Exception as e:
+        _raise_if_sheets_429(e)
         print(f"  ❌ [delete_me] Błąd usuwania wierszy legacy: {e}")
         alert_admin(f"❌ /delete_me ({chat_id}): błąd usuwania wierszy Formularz: {e}")
         return 0
@@ -1361,7 +1404,9 @@ def _coarse_reverse_settlement(geolocator, lat, lon, lang):
     co dotąd, w trybie city (bez road/house_number), bez postcode (query=None).
     """
     try:
-        location = geolocator.reverse(
+        location = _timed_call(
+            "nominatim.reverse.coarse",
+            geolocator.reverse,
             f"{lat}, {lon}", language=lang, zoom=_REVERSE_COARSE_ZOOM,
         )
     except Exception:
@@ -1408,7 +1453,9 @@ def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None)
 
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
-        location = geolocator.reverse(f"{lat}, {lon}", language=lang)
+        location = _timed_call(
+            "nominatim.reverse", geolocator.reverse, f"{lat}, {lon}", language=lang
+        )
         if not location:
             return None, None, GEO_ERROR
 
@@ -2286,7 +2333,9 @@ def _geocode_forward_candidates(query, lang="pl", country_code=None):
     results = None
     for extra in attempts:
         try:
-            results = geolocator.geocode(
+            results = _timed_call(
+                "nominatim.forward",
+                geolocator.geocode,
                 query,
                 exactly_one=False,
                 limit=GEOCODE_CANDIDATE_LIMIT,
@@ -2610,7 +2659,155 @@ GUEST_SHORTCUT_PREFIXES = tuple(iter_shortcut_keys())
 TELEGRAM_TOKEN = os.environ.get("TG_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
+
+def _env_number(name, default, cast):
+    try:
+        return cast(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return cast(default)
+
+
+PERF_SLOW_MS = max(0.0, _env_number("BOT_PERF_SLOW_MS", 500, float))
+PERF_EVERY_N = max(0, _env_number("BOT_PERF_EVERY_N", 20, int))
+SHEETS_CACHE_TTL_SECONDS = max(1.0, _env_number("BOT_SHEETS_CACHE_TTL_SECONDS", 30, float))
+SHEETS_BACKOFF_SECONDS = (30, 60, 120)
+_PERF_COUNTS = {}
+_SHEETS_SUCCESSFUL_CALLS = 0
+_SHEETS_BACKOFF_ATTEMPTS = 0
+_GOOGLE_CLIENT = None
+_POLL_RUNTIME = {"client": None, "offset": None}
+_FORM_SNAPSHOT = {
+    "client": None, "loaded_at": 0.0, "worksheet": None,
+    "users_records": [], "headers": [], "clean_users": [],
+}
+_USERS_SNAPSHOT = {
+    "client": None, "loaded_at": 0.0, "worksheet": None, "users_map": {},
+}
+
+
+class SheetsRateLimitError(RuntimeError):
+    """Google Sheets/API 429 — przerwij bieżącą paczkę i odrocz polling."""
+
+    def __init__(self, operation, original):
+        self.operation = operation
+        self.original = original
+        super().__init__(f"{operation}: {original}")
+
+
+def _is_sheets_429(exc):
+    if isinstance(exc, SheetsRateLimitError):
+        return True
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        status = getattr(exc, "status_code", None)
+    if status is None:
+        status = getattr(exc, "code", None)
+    if status == 429:
+        return True
+    # gspread/google-api-client versions differ in their response/status attributes.
+    text = str(exc).lower()
+    return "429" in text or "quota exceeded" in text or "resource has been exhausted" in text
+
+
+def _log_perf(stage, started_at, slow=True):
+    elapsed_ms = (time.perf_counter() - started_at) * 1000.0
+    sample = _PERF_COUNTS.get(stage, 0) + 1
+    _PERF_COUNTS[stage] = sample
+    if (slow and elapsed_ms >= PERF_SLOW_MS) or (PERF_EVERY_N and sample % PERF_EVERY_N == 0):
+        # Intentionally only stage + elapsed time: no user IDs, queries, or coordinates.
+        print(f"⏱ PERF stage={stage} duration_ms={elapsed_ms:.1f} sample={sample}")
+
+
+def _timed_call(stage, function, *args, _perf_slow=True, **kwargs):
+    started_at = time.perf_counter()
+    try:
+        return function(*args, **kwargs)
+    finally:
+        _log_perf(stage, started_at, slow=_perf_slow)
+
+
+def _sheets_call(stage, function, *args, **kwargs):
+    """Measure one Sheets operation and turn any HTTP 429 into a poll-level signal."""
+    global _SHEETS_SUCCESSFUL_CALLS
+    started_at = time.perf_counter()
+    try:
+        result = function(*args, **kwargs)
+        _SHEETS_SUCCESSFUL_CALLS += 1
+        return result
+    except SheetsRateLimitError:
+        raise
+    except Exception as exc:
+        if _is_sheets_429(exc):
+            raise SheetsRateLimitError(stage, exc) from exc
+        raise
+    finally:
+        _log_perf(stage, started_at)
+
+
+def _raise_if_sheets_429(exc):
+    """Do not let a broad legacy handler swallow a quota signal."""
+    if isinstance(exc, SheetsRateLimitError):
+        raise exc
+    if _is_sheets_429(exc):
+        raise SheetsRateLimitError("sheets.operation", exc) from exc
+
+
+def _offset_file_path():
+    configured = os.environ.get("BOT_OFFSET_FILE")
+    if configured:
+        return os.path.abspath(os.path.expanduser(configured))
+    state_home = os.environ.get("XDG_STATE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".local", "state"
+    )
+    return os.path.join(state_home, "pogoda-world", "location_bot_offset.json")
+
+
+def _read_local_offset():
+    try:
+        with open(_offset_file_path(), "r", encoding="utf-8") as offset_file:
+            payload = json.load(offset_file)
+        value = payload.get("offset") if isinstance(payload, dict) else payload
+        if isinstance(value, bool):
+            raise ValueError("offset must be an integer")
+        return int(value)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        print(f"  ⚠️ Nie mogę odczytać lokalnego offsetu; spróbuję Bot_State: {exc}")
+        return None
+
+
+def _write_local_offset(offset):
+    path = _offset_file_path()
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, temp_path = tempfile.mkstemp(prefix=".location-bot-offset-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as offset_file:
+            json.dump({"offset": int(offset)}, offset_file)
+            offset_file.flush()
+            os.fsync(offset_file.fileno())
+        os.replace(temp_path, path)
+    finally:
+        try:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        except OSError:
+            pass
+
+
+def _read_offset_from_sheets(gc):
+    state_sheet = gc.open("Pogoda_Users").worksheet("Bot_State")
+    value = state_sheet.acell("B1").value
+    return int(value) if value else 0
+
+
 def get_google_client():
+    """Create one reusable gspread client; no API request is made just by caching it."""
+    global _GOOGLE_CLIENT
+    if _GOOGLE_CLIENT is not None:
+        return _GOOGLE_CLIENT
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive.readonly"
@@ -2620,23 +2817,227 @@ def get_google_client():
         creds = Credentials.from_service_account_info(json.loads(creds_json), scopes=scopes)
     else:
         creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
-    return gspread.authorize(creds)
+    _GOOGLE_CLIENT = gspread.authorize(creds)
+    return _GOOGLE_CLIENT
+
+
+def _reset_runtime_for_client(gc):
+    global _POLL_RUNTIME, _FORM_SNAPSHOT, _USERS_SNAPSHOT
+    if _POLL_RUNTIME["client"] is gc:
+        return
+    _POLL_RUNTIME = {"client": gc, "offset": None}
+    _FORM_SNAPSHOT = {
+        "client": gc, "loaded_at": 0.0, "worksheet": None,
+        "users_records": [], "headers": [], "clean_users": [],
+    }
+    _USERS_SNAPSHOT = {
+        "client": gc, "loaded_at": 0.0, "worksheet": None, "users_map": {},
+    }
+
+
+def _reset_polling_state(clear_client=False):
+    """Internal reset hook for isolated tests and controlled process reinitialization."""
+    global _POLL_RUNTIME, _FORM_SNAPSHOT, _USERS_SNAPSHOT
+    global _SHEETS_BACKOFF_ATTEMPTS, _SHEETS_SUCCESSFUL_CALLS, _GOOGLE_CLIENT
+    _POLL_RUNTIME = {"client": None, "offset": None}
+    _FORM_SNAPSHOT = {
+        "client": None, "loaded_at": 0.0, "worksheet": None,
+        "users_records": [], "headers": [], "clean_users": [],
+    }
+    _USERS_SNAPSHOT = {
+        "client": None, "loaded_at": 0.0, "worksheet": None, "users_map": {},
+    }
+    _SHEETS_BACKOFF_ATTEMPTS = 0
+    _SHEETS_SUCCESSFUL_CALLS = 0
+    if clear_client:
+        _GOOGLE_CLIENT = None
+
 
 def get_offset(gc):
+    """Load persisted offset locally; bootstrap from Bot_State only once if absent."""
+    local_offset = _timed_call("offset.local_read", _read_local_offset)
+    if local_offset is not None:
+        return local_offset
+
+    if gc is None:
+        raise RuntimeError("Google client is required to bootstrap Bot_State offset")
+    offset = _sheets_call("sheets.offset.bootstrap_read", _read_offset_from_sheets, gc)
     try:
-        state_sheet = gc.open("Pogoda_Users").worksheet("Bot_State")
-        val = state_sheet.acell('B1').value
-        return int(val) if val else 0
-    except Exception as e:
-        print(f"  ⚠️ Błąd odczytu pamięci bota: {e}")
-        return 0
+        _timed_call("offset.local_write", _write_local_offset, offset)
+    except OSError as exc:
+        # Continue with the known in-memory offset; never replace a failed read by zero.
+        print(f"  ⚠️ Nie udało się utrwalić lokalnego offsetu: {exc}")
+    return offset
+
 
 def save_offset(gc, offset):
+    """Persist the Telegram offset atomically in local state (Bot_State is migration-only)."""
     try:
-        state_sheet = gc.open("Pogoda_Users").worksheet("Bot_State")
-        state_sheet.update_acell('B1', offset)
-    except Exception as e:
-        print(f"  ⚠️ Błąd zapisu pamięci bota: {e}")
+        _timed_call("offset.local_write", _write_local_offset, offset)
+        return True
+    except Exception as exc:
+        print(f"  ⚠️ Błąd lokalnego zapisu offsetu: {exc}")
+        return False
+
+
+def _runtime_offset(gc):
+    _reset_runtime_for_client(gc)
+    if _POLL_RUNTIME["offset"] is None:
+        # A 429 propagates; caller must not poll Telegram with offset=0.
+        _POLL_RUNTIME["offset"] = _timed_call("offset.load", get_offset, gc)
+    return _POLL_RUNTIME["offset"]
+
+
+def _set_runtime_offset(gc, offset):
+    _reset_runtime_for_client(gc)
+    _POLL_RUNTIME["offset"] = int(offset)
+
+
+def _snapshot_fresh(snapshot, gc):
+    return (
+        snapshot.get("client") is gc
+        and snapshot.get("loaded_at", 0.0) > 0
+        and time.monotonic() - snapshot["loaded_at"] < SHEETS_CACHE_TTL_SECONDS
+    )
+
+
+def _load_form_snapshot(gc):
+    global _FORM_SNAPSHOT
+    _reset_runtime_for_client(gc)
+    if _snapshot_fresh(_FORM_SNAPSHOT, gc):
+        return _FORM_SNAPSHOT
+
+    worksheet = _FORM_SNAPSHOT.get("worksheet")
+    if worksheet is None:
+        worksheet = _sheets_call(
+            "sheets.formularz.open",
+            lambda: gc.open("Pogoda_Users").worksheet("Formularz"),
+        )
+    _FORM_SNAPSHOT["client"] = gc
+    _FORM_SNAPSHOT["worksheet"] = worksheet
+    values = _sheets_call(
+        "sheets.formularz.read",
+        worksheet.get_all_values,
+        value_render_option="UNFORMATTED_VALUE",
+    )
+    if not values:
+        raw_headers = []
+        users_records = []
+    else:
+        raw_headers = list(values[0])
+        if len(raw_headers) != len(set(raw_headers)):
+            # Keep the former get_all_records duplicate-header safeguard.
+            raise ValueError("Duplicate headers in Formularz")
+        users_records = [
+            dict(zip(raw_headers, numericise_all(row))) for row in values[1:]
+        ]
+    headers = [str(header).strip() for header in raw_headers]
+    clean_users = wirtualne_scalanie(users_records)
+    _FORM_SNAPSHOT = {
+        "client": gc,
+        "loaded_at": time.monotonic(),
+        "worksheet": worksheet,
+        "users_records": users_records,
+        "headers": headers,
+        "clean_users": clean_users,
+    }
+    return _FORM_SNAPSHOT
+
+
+def _load_users_snapshot(gc):
+    global _USERS_SNAPSHOT
+    _reset_runtime_for_client(gc)
+    if _snapshot_fresh(_USERS_SNAPSHOT, gc):
+        return _USERS_SNAPSHOT
+
+    users_ws = _USERS_SNAPSHOT.get("worksheet")
+    if users_ws is None:
+        users_ws = _sheets_call("sheets.users.open", users_store.get_ws, gc)
+        # Retain the handle even if the values read is rate-limited; retrying after
+        # backoff should not reopen the spreadsheet unnecessarily.
+        _USERS_SNAPSHOT["client"] = gc
+        _USERS_SNAPSHOT["worksheet"] = users_ws
+    users_map = _sheets_call("sheets.users.read", users_store.load_users_map, users_ws)
+    _USERS_SNAPSHOT = {
+        "client": gc,
+        "loaded_at": time.monotonic(),
+        "worksheet": users_ws,
+        "users_map": users_map,
+    }
+    return _USERS_SNAPSHOT
+
+
+def _load_future_users_from_sheet(gc):
+    """Strict, timed version of main_card's legacy loader for /future.
+
+    Preserve its configured spreadsheet/tab fallback order, but let 429 escape
+    immediately instead of silently trying another Sheets read in this poll.
+    """
+    sheet = None
+    sheet_id = getattr(main_card, "SHEET_ID", "")
+    sheet_name = getattr(main_card, "SHEET_NAME", "Pogoda_Users")
+    tab_from_env = getattr(main_card, "SHEET_TAB_ENV", "")
+
+    if sheet_id:
+        try:
+            sheet = _sheets_call(
+                "sheets.legacy_future.open_by_key", gc.open_by_key, sheet_id
+            )
+        except Exception as exc:
+            _raise_if_sheets_429(exc)
+            print(f"[Google Sheets] Fallback: Nie udało się otworzyć po ID ({exc})")
+
+    if not sheet:
+        sheet = _sheets_call("sheets.legacy_future.open", gc.open, sheet_name)
+
+    tab_candidates = ([tab_from_env] if tab_from_env else []) + [
+        "Formularz", "Form_Responses4", "Arkusz1", "Sheet1"
+    ]
+    worksheet = None
+    errors = []
+    for tab in tab_candidates:
+        try:
+            worksheet = _sheets_call(
+                "sheets.legacy_future.open_tab", sheet.worksheet, tab
+            )
+            break
+        except gspread.exceptions.WorksheetNotFound:
+            errors.append(tab)
+
+    if worksheet is None:
+        raise RuntimeError(f"Krytyczny błąd: Brak zakładek. Odrzucone: {', '.join(errors)}")
+
+    values = _sheets_call(
+        "sheets.legacy_future.read", worksheet.get_values, "A1:Z"
+    )
+    if not values:
+        return []
+
+    headers = values[0]
+    return [
+        dict(zip(headers, list(row) + [""] * max(0, len(headers) - len(row))))
+        for row in values[1:]
+    ]
+
+
+def _cache_users_map(users_map):
+    if _USERS_SNAPSHOT.get("client") is _POLL_RUNTIME.get("client"):
+        _USERS_SNAPSHOT["users_map"] = users_map
+        _USERS_SNAPSHOT["loaded_at"] = time.monotonic()
+
+
+def _invalidate_form_snapshot():
+    _FORM_SNAPSHOT["loaded_at"] = 0.0
+
+
+def _invalidate_users_snapshot():
+    _USERS_SNAPSHOT["loaded_at"] = 0.0
+
+
+def _form_update_cell(main_sheet, row, col, value):
+    result = _sheets_call("sheets.formularz.write_cell", main_sheet.update_cell, row, col, value)
+    _invalidate_form_snapshot()
+    return result
 
 def send_reply(chat_id, text, reply_markup=None):
     payload = {
@@ -2666,7 +3067,17 @@ def send_reply(chat_id, text, reply_markup=None):
                 powod = classify_block_reason(response_data.get("description", ""))
             except Exception:
                 powod = "unknown"
-            mark_user_as_blocked(gc, chat_id, reason=powod)
+            try:
+                _sheets_call(
+                    "sheets.blocked_user_cleanup",
+                    mark_user_as_blocked,
+                    gc,
+                    chat_id,
+                    reason=powod,
+                )
+            finally:
+                _invalidate_users_snapshot()
+                _invalidate_form_snapshot()
             
     except requests.exceptions.RequestException as e:
         print(f"⚠️ Błąd sieci podczas wysyłania wiadomości (Timeout/DNS): {e}")
@@ -2693,15 +3104,20 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode="Markdown", card_ca
         
         
 
-def main_bot():
+def _main_bot_iteration(gc, offset):
     print("🤖 Uruchamiam system nasłuchiwania (Location Bot)...")
-    gc = get_google_client()
-    offset = get_offset(gc)
-    
+
     try:
-        # Timeout w 'params' to Long Polling (dla Telegrama). 
+        # Timeout w 'params' to Long Polling (dla Telegrama).
         # Timeout=10 to zabezpieczenie gniazda sieciowego dla Pythona.
-        resp = requests.get(f"{BASE_URL}/getUpdates", params={"offset": offset, "timeout": 5}, timeout=10)
+        resp = _timed_call(
+            "telegram.getUpdates",
+            requests.get,
+            f"{BASE_URL}/getUpdates",
+            params={"offset": offset, "timeout": 5},
+            timeout=10,
+            _perf_slow=False,  # Long-poll duration is expected; sample every N calls.
+        )
         data = resp.json()
     except Exception as e:
         print(f"  ⚠️ Błąd sieci podczas nasłuchiwania Telegrama: {e}")
@@ -2714,20 +3130,16 @@ def main_bot():
     updates = data["result"]
     print(f"  📬 Pobrano {len(updates)} nowych operacji do przetworzenia.")
     
-    main_sheet = gc.open("Pogoda_Users").worksheet("Formularz")
-    users_records = main_sheet.get_all_records(value_render_option='UNFORMATTED_VALUE')
-    
-    # --- PANCERNE NAGŁÓWKI DLA NOWYCH REJESTRACJI I PINEZEK ---
-    raw_headers = main_sheet.row_values(1)
-    headers = [str(h).strip() for h in raw_headers]
-    
-    clean_users = wirtualne_scalanie(users_records)
-
-    # --- PR1 (RODO/access): rejestr dostępu z zakładki Users ---
-    # Jeden odczyt na całą paczkę update'ów. Przy awarii Users bot degraduje się
-    # do trybu legacy (access = obecność wiersza w Formularz).
-    users_ws = users_store.get_ws(gc)
-    users_map = users_store.load_users_map(users_ws)
+    # Read each tab as one snapshot per TTL window. If either read gets a 429,
+    # the exception aborts this iteration before further Sheets calls.
+    form_snapshot = _load_form_snapshot(gc)
+    users_snapshot = _load_users_snapshot(gc)
+    main_sheet = form_snapshot["worksheet"]
+    users_records = form_snapshot["users_records"]
+    headers = form_snapshot["headers"]
+    clean_users = form_snapshot["clean_users"]
+    users_ws = users_snapshot["worksheet"]
+    users_map = users_snapshot["users_map"]
 
     highest_update_id = offset
 
@@ -2831,7 +3243,9 @@ def main_bot():
                     else prepare_layout_data(payload)
                 ),
                 
-                render_png_fn=image_generator.generate_weather_card,
+                render_png_fn=lambda layout: _timed_call(
+                    "card.render", image_generator.generate_weather_card, layout
+                ),
                 
                 send_photo_fn=lambda c_id, path, city_name, f_address: send_photo(
                     c_id, 
@@ -2914,8 +3328,15 @@ def main_bot():
                                 rows_to_update.append(idx + 2)
                         if not rows_to_update:
                             try:
-                                rows_to_update.append(main_sheet.find(str(chat_id), in_column=2).row)
-                            except Exception:
+                                cell = _sheets_call(
+                                    "sheets.formularz.find",
+                                    main_sheet.find,
+                                    str(chat_id),
+                                    in_column=2,
+                                )
+                                rows_to_update.append(cell.row)
+                            except Exception as e:
+                                _raise_if_sheets_429(e)
                                 print("  [DEBUG-WEBAPP] Nie znalazłem usera legacy w bazie!")
 
                         if rows_to_update:
@@ -2923,10 +3344,11 @@ def main_bot():
                             col_lon = headers.index("Lon") + 1
                             col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
                             for r_idx in rows_to_update:
-                                main_sheet.update_cell(r_idx, col_lat, lat)
-                                main_sheet.update_cell(r_idx, col_lon, lon)
+                                _form_update_cell(main_sheet, r_idx, col_lat, lat)
+                                _form_update_cell(main_sheet, r_idx, col_lon, lon)
                                 if col_miasto:
-                                    main_sheet.update_cell(r_idx, col_miasto, short_label)
+                                    _form_update_cell(main_sheet, r_idx, col_miasto, short_label)
+                            _invalidate_form_snapshot()
 
                         ukryj_klawiature = {"remove_keyboard": True}
                         send_reply(
@@ -2941,8 +3363,10 @@ def main_bot():
 
                         # Puste pola WebApp oznaczają "bez zmian"; jawne godziny lub
                         # "brak" zapisujemy wyłącznie w Users. Formularz pozostaje legacy.
-                        settings_saved = users_store.set_report_settings(
-                            users_ws, chat_id, rano, wieczor
+                        settings_saved = _sheets_call(
+                            "sheets.users.set_report_settings",
+                            users_store.set_report_settings,
+                            users_ws, chat_id, rano, wieczor,
                         )
                         if not settings_saved:
                             print(f"  ⚠️ [report settings] Nie zapisano ustawień w Users dla {chat_id}.")
@@ -2961,6 +3385,7 @@ def main_bot():
                                 user_settings["report_afternoon_time"] = (
                                     "brak" if wieczor.lower() == "brak" else wieczor
                                 )
+                        _cache_users_map(users_map)
 
                         # Zamykamy klawiaturę WebApp i wysyłamy dotychczasowe potwierdzenie.
                         ukryj_klawiature = {"remove_keyboard": True}
@@ -2973,6 +3398,8 @@ def main_bot():
                         
                         
                         
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu lokalizacji z GPS. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji GPS (WebApp) dla {chat_id}: {e}")
@@ -2994,11 +3421,8 @@ def main_bot():
                 priv_lang = _resolve_privacy_lang(message, chat_id, users_map, clean_users)
                 print(f"  🛡 Komenda prywatności {priv_cmd} od {chat_id}")
                 _handle_privacy(chat_id, priv_cmd, priv_lang, users_ws, main_sheet, users_map, clean_users)
-                # Odświeżamy RAM po operacjach zapisu (kasacja / czyszczenie profilu)
-                if priv_cmd in ("/delete_me", "/forget_location"):
-                    fresh_map = users_store.load_users_map(users_ws)
-                    if fresh_map:
-                        users_map = fresh_map
+                # Mutacje aktualizują lub unieważniają snapshot lokalnie; samo
+                # /delete_me jedynie pyta o potwierdzenie i nie wymaga odczytu.
                 continue
 
             # ==============================================================
@@ -3020,9 +3444,6 @@ def main_bot():
                 )
                 if consumed:
                     print(f"  🗑 Odpowiedź na potwierdzenie usunięcia danych od {chat_id}")
-                    fresh_map = users_store.load_users_map(users_ws)
-                    if fresh_map:
-                        users_map = fresh_map
                     # POPRAWKA #7 (Z7 — wyłącznie RAM): po hard delete usuwamy
                     # czat także z bieżącej mapy Users i z listy legacy w pamięci,
                     # żeby kolejne update'y z TEJ SAMEJ paczki nie widziały
@@ -3033,6 +3454,9 @@ def main_bot():
                             u for u in clean_users
                             if str(u.get("Chat ID", "")).strip() != str(chat_id)
                         ]
+                        _cache_users_map(users_map)
+                        _FORM_SNAPSHOT["clean_users"] = clean_users
+                        _invalidate_form_snapshot()
                     continue
 
             # ==============================================================
@@ -3124,9 +3548,11 @@ def main_bot():
                 print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Zapisuję access w Users (ID: {chat_id}, źródło: {access_source})")
 
                 try:
-                    zapisano = users_store.upsert_access(
+                    zapisano = _sheets_call(
+                        "sheets.users.upsert_access",
+                        users_store.upsert_access,
                         users_ws, chat_id, wykryty_jezyk, access_source,
-                        users_store.now_iso(), PRIVACY_VERSION
+                        users_store.now_iso(), PRIVACY_VERSION,
                     )
                     if not zapisano:
                         raise RuntimeError("upsert_access nie zapisał wiersza (brak zakładki Users?)")
@@ -3142,6 +3568,7 @@ def main_bot():
                         "lang": wykryty_jezyk,
                         "profile_status": "none",
                     }
+                    _cache_users_map(users_map)
 
                     # Onboarding PR1: privacy-first, bez klawiatury GPS
                     # (zapis lokalizacji dopiero od PR2 przez /save_location).
@@ -3149,6 +3576,8 @@ def main_bot():
 
                     continue  # Rejestracja zrobiona, pomijamy resztę pętli dla tej wiadomości
 
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
                     print(f"  [DEBUG] ❌ Błąd przy zapisie access: {e}")
                     alert_admin(f"❌ Błąd zapisu access (Users) dla {chat_id}: {e}")
@@ -3250,14 +3679,19 @@ def main_bot():
                                 break
                     
                     if not user_row_index:
-                        komorka = main_sheet.find(str(chat_id), in_column=2)
+                        komorka = _sheets_call(
+                            "sheets.formularz.find",
+                            main_sheet.find,
+                            str(chat_id),
+                            in_column=2,
+                        )
                         user_row_index = komorka.row
                     
                     col_lat = headers.index("Lat") + 1
                     col_lon = headers.index("Lon") + 1
                     
-                    main_sheet.update_cell(user_row_index, col_lat, lat)
-                    main_sheet.update_cell(user_row_index, col_lon, lon)
+                    _form_update_cell(main_sheet, user_row_index, col_lat, lat)
+                    _form_update_cell(main_sheet, user_row_index, col_lon, lon)
                     
                     city = get_city_from_coords(lat, lon, user_lang)
                     if city == "Lokalizacja w terenie" or not city:
@@ -3266,12 +3700,16 @@ def main_bot():
                     if "Miasto" in headers:
                         try:
                             col_miasto = headers.index("Miasto") + 1
-                            main_sheet.update_cell(user_row_index, col_miasto, city)
+                            _form_update_cell(main_sheet, user_row_index, col_miasto, city)
                         except Exception as e:
+                            _raise_if_sheets_429(e)
                             print(f"  [DEBUG] Nie udało się zapisać miasta do arkusza: {e}")
                             
+                    _invalidate_form_snapshot()
                     #send_reply(chat_id, f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca. ")
                     send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city))
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.")
                     alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
@@ -3388,6 +3826,8 @@ def main_bot():
                     if not parsed_list:
                         send_reply(chat_id, t_ui(user_lang, "missing_loc"))
                         continue
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
                     continue
@@ -3426,6 +3866,8 @@ def main_bot():
                     if not parsed_list:
                         send_reply(chat_id, t_ui(user_lang, "missing_loc"))
                         continue
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
                     send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
                     continue
@@ -3471,7 +3913,7 @@ def main_bot():
 
                 send_reply(chat_id, t_ui(user_lang, "prep_future"))
                 try:
-                    raw = _load_users_from_sheet()
+                    raw = _load_future_users_from_sheet(gc)
                     sklejone = wirtualne_scalanie(raw)
                     users = _parse_users(sklejone)
                     user = next((u for u in users if str(u["chat_id"]) == str(chat_id)), None)
@@ -3482,7 +3924,10 @@ def main_bot():
                             send_reply(chat_id, "❌ Wystąpił problem wewnętrzny. Karta nie została wysłana.")
                     else:
                         send_reply(chat_id, "❌ Najpierw musisz ustawić lokalizację (wyślij Pinezkę).")
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
+                    _raise_if_sheets_429(e)
                     import traceback
                     traceback.print_exc() 
 
@@ -3644,14 +4089,19 @@ def main_bot():
                                 real_row_index = idx + 2  
                                 break
                     if not real_row_index:
-                        komorka = main_sheet.find(str(chat_id), in_column=2)
+                        komorka = _sheets_call(
+                            "sheets.formularz.find",
+                            main_sheet.find,
+                            str(chat_id),
+                            in_column=2,
+                        )
                         real_row_index = komorka.row
 
                     # Czysta aktualizacja współrzędnych i nazwy w Arkuszu (bez żadnych stanów techniczych!)
                     col_lat = headers.index("Lat") + 1
                     col_lon = headers.index("Lon") + 1
-                    main_sheet.update_cell(real_row_index, col_lat, lat)
-                    main_sheet.update_cell(real_row_index, col_lon, lon)
+                    _form_update_cell(main_sheet, real_row_index, col_lat, lat)
+                    _form_update_cell(main_sheet, real_row_index, col_lon, lon)
                     
                     krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
                     if krotka_nazwa in (FIELD_LOCATION_LEGACY, "", None, "Nieznana miejscowość"):
@@ -3660,14 +4110,17 @@ def main_bot():
 
                     if "Miasto" in headers:
                         col_miasto = headers.index("Miasto") + 1
-                        main_sheet.update_cell(real_row_index, col_miasto, krotka_nazwa)
+                        _form_update_cell(main_sheet, real_row_index, col_miasto, krotka_nazwa)
                         
+                    _invalidate_form_snapshot()
                     safe_display = _md_safe(fallback_display_location) or _md_safe(krotka_nazwa)
                     sukces_msg = t_ui(
                         user_lang, "search_success", display_location=safe_display
                     )
                     send_reply(chat_id, sukces_msg)
                     
+                except SheetsRateLimitError:
+                    raise
                 except Exception as e:
                     send_reply(chat_id, t_ui(user_lang, "search_err"))
                     alert_admin(f"❌ Błąd aktualizacji miasta: {e}")
@@ -3675,19 +4128,60 @@ def main_bot():
                 # Jeśli geokodowanie się nie udało, nie przywracamy stanu. User może kliknąć /miasto z menu jeszcze raz.
                 send_reply(chat_id, t_ui(user_lang, "search_fail"))
 
+        except SheetsRateLimitError:
+            # Confirm already completed updates, but leave the failed update pending.
+            # save_offset is local/atomic, so this does not issue another Sheets call.
+            failed_update_offset = int(update["update_id"])
+            if failed_update_offset > offset:
+                save_offset(gc, failed_update_offset)
+                _set_runtime_offset(gc, failed_update_offset)
+            raise
         except Exception as e:
             print(f"❌ Krytyczny błąd podczas przetwarzania wiadomości od {chat_id}: {e}")
-            
-    save_offset(gc, highest_update_id)
+
+    if highest_update_id > offset:
+        save_offset(gc, highest_update_id)
+        _set_runtime_offset(gc, highest_update_id)
     print("✅ Pamięć bota zaktualizowana. Koniec pracy.")
 
-import time
+
+def _handle_sheets_429(exc):
+    global _SHEETS_BACKOFF_ATTEMPTS
+    index = min(_SHEETS_BACKOFF_ATTEMPTS, len(SHEETS_BACKOFF_SECONDS) - 1)
+    delay = SHEETS_BACKOFF_SECONDS[index]
+    _SHEETS_BACKOFF_ATTEMPTS += 1
+    print(
+        f"⚠️ Google Sheets 429 (stage={exc.operation}); wstrzymuję polling na {delay}s. "
+        "Offset zachowany, dalsze odczyty w tej iteracji pominięte."
+    )
+    time.sleep(delay)
+
+
+def main_bot():
+    """Run one poll; turn Sheets 429 into a controlled delay, never an offset=0 poll."""
+    global _SHEETS_BACKOFF_ATTEMPTS
+    calls_before = _SHEETS_SUCCESSFUL_CALLS
+    try:
+        gc = get_google_client()
+        offset = _runtime_offset(gc)
+        _main_bot_iteration(gc, offset)
+    except SheetsRateLimitError as exc:
+        _handle_sheets_429(exc)
+        return True
+    else:
+        # Reset only after a successful Google Sheets operation, not just an idle Telegram poll.
+        if _SHEETS_SUCCESSFUL_CALLS > calls_before:
+            _SHEETS_BACKOFF_ATTEMPTS = 0
+        return False
+
 
 if __name__ == "__main__":
     print("🚀 Startuje całodobowy nasłuch...")
     while True:
         try:
-            main_bot()
+            backed_off = main_bot()
         except Exception as e:
             print(f"⚠️ Krytyczny błąd w głównej pętli: {e}")
-        time.sleep(2)
+            backed_off = False
+        if not backed_off:
+            time.sleep(2)
