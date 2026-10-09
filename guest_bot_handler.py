@@ -313,6 +313,17 @@ def _geocode_best_effort(query: str, get_coords_fn, lang: str, geocode_status_fn
 
     return (None, None, None, None, None, status)
 
+_GUEST_LANGS = ("pl", "en", "de", "fr", "es", "no")
+
+
+def _normalize_guest_lang(raw):
+    """Normalizuje język z location_bot do obsługiwanego kodu albo None."""
+    code = str(raw or "").strip().lower()
+    if code in ("nb", "no"):
+        return "no"
+    return code if code in _GUEST_LANGS else None
+
+
 # ============================================================================
 # GŁÓWNY HANDLER TRYBU GOŚCIA
 # ============================================================================
@@ -330,6 +341,7 @@ def handle_guest_now(
     geocode_status_fn=None,
     shortening_ok_fn=None,
     resolve_labels_fn=None,
+    effective_lang=None,
 ) -> bool:
     """Tryb gościa: skróty (?d/.n/?12/?14 ...) i wzmianki @bot.
 
@@ -345,6 +357,10 @@ def handle_guest_now(
     ``geocode_shortening_is_safe``) pytany jest, czy skrót ratunkowy do
     pierwszych dwóch tokenów nie gubi jawnego kraju ani kodu pocztowego.
     Stary ``get_coords_fn`` bez adaptera statusowego działa bez zmian.
+
+    ``effective_lang`` (HOTFIX, opcjonalny) — język ustalony przez location_bot
+    (Users.lang > Telegram > en). Gdy podany, guest NIE wybiera języka z
+    Telegrama; używa go do tekstów, etykiet i klucza cache.
 
     ``resolve_labels_fn`` (HOTFIX, opcjonalny, callback injection — guest
     handler NIE importuje location_bot) deleguje do
@@ -384,11 +400,14 @@ def handle_guest_now(
     if not (is_mention or is_shortcut):
         return False
         
-    # --- BEZPIECZNE POBRANIE JĘZYKA ---
-    raw_l = (message.get("from", {}) or {}).get("language_code", "en")[:2].lower()
-    user_lang = "no" if raw_l in ("no", "nb") else raw_l
-    if user_lang not in ("pl", "en", "de", "fr", "es", "no"):
-        user_lang = "en"
+    # --- JĘZYK: effective_lang (Users > Telegram > en) ma pierwszeństwo ---
+    user_lang = _normalize_guest_lang(effective_lang)
+    if user_lang is None:
+        # Brak override (stare wywołania): dotychczasowy fallback z Telegrama.
+        raw_l = str((message.get("from", {}) or {}).get("language_code") or "en")[:2].lower()
+        user_lang = "no" if raw_l in ("no", "nb") else raw_l
+        if user_lang not in _GUEST_LANGS:
+            user_lang = "en"
         
     reply = message.get("reply_to_message") or {}
     loc = reply.get("location")
@@ -509,11 +528,19 @@ def handle_guest_now(
                 # Błąd/pustka resolve_labels_fn NIE może nadpisać poprawnego
                 # forward fallbacku — reverse jest preferowane, ale nie
                 # autorytatywne, gdy samo zawiedzie.
+                # Tytuł i opis pochodzą z JEDNEJ pary: wynik resolvera albo
+                # para forward (short, display). Nigdy tytuł z jednego źródła
+                # i opis z drugiego.
                 effective_used_query = (used_query or query).strip() if (used_query or query) else ""
-                oficjalna_nazwa = (
-                    short_label or fallback_short or effective_used_query or fallback_city
-                )
-                full_address = display_location or fallback_display or oficjalna_nazwa
+                if short_label:
+                    oficjalna_nazwa = short_label
+                    full_address = display_location or short_label
+                elif fallback_short and fallback_display:
+                    oficjalna_nazwa = fallback_short
+                    full_address = fallback_display
+                else:
+                    oficjalna_nazwa = fallback_short or effective_used_query or fallback_city
+                    full_address = fallback_display or oficjalna_nazwa
             else:
                 # Stara ścieżka (bez resolve_labels_fn): tytuł z reverse
                 # get_city_fn, opis z forward fallbacku — bez zmian.

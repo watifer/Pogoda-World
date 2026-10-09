@@ -131,7 +131,7 @@ def get_user_lang(message):
     """
     Bezpiecznie wyciąga język z danych Telegrama (dla osób spoza bazy).
     """
-    user_lang = (message.get("from", {}) or {}).get("language_code", "en")[:2].lower()
+    user_lang = str((message.get("from", {}) or {}).get("language_code") or "en")[:2].lower()
     
     if user_lang in ("no", "nb"):
         return "no"
@@ -149,6 +149,34 @@ def _norm_lang(raw):
     if raw in ("pl", "en", "de", "fr", "es"):
         return raw
     return None
+
+
+def _legacy_user_row(clean_users, chat_id):
+    """Wiersz legacy z zakładki Formularz dla chat_id (albo None)."""
+    for u in clean_users or ():
+        if str(u.get("Chat ID", "")).strip() == str(chat_id):
+            return u
+    return None
+
+
+def _effective_lang(message, chat_id, users_map=None, legacy_row=None):
+    """JEDNO źródło języka tekstów i etykiet (komendy, prompty, guest, WebApp).
+
+    Priorytet: 1) Users.lang tego chat_id (także grupy — własny rekord grupy,
+    nigdy język prywatnego użytkownika); 2) legacy wiersz Formularz (tylko gdy
+    brak rekordu Users); 3) Telegram ``message.from.language_code``; 4) en.
+
+    Users.lang wygrywa nawet wtedy, gdy różni się od języka Telegrama. Język
+    interfejsu NIE służy do wnioskowania kraju — to wyłącznie wybór tekstów.
+    """
+    lang = users_store.get_lang(users_map, chat_id)
+    if lang:
+        return lang
+    if legacy_row:
+        lang = _norm_lang(legacy_row.get("Lang", legacy_row.get("Język", "")))
+        if lang:
+            return lang
+    return get_user_lang(message)
 
 
 def _is_guest_trigger(text, bot_username):
@@ -691,16 +719,10 @@ def _save_profile_from_location(
 # ==============================================================
 def _resolve_privacy_lang(message, chat_id, users_map, clean_users):
     """Język dla komend prywatności: Users -> Formularz (legacy) -> Telegram."""
-    lang = users_store.get_lang(users_map, chat_id)
-    if lang:
-        return lang
-    for u in clean_users:
-        if str(u.get("Chat ID", "")).strip() == str(chat_id):
-            lang = _norm_lang(u.get("Lang", u.get("Język", "")))
-            if lang:
-                return lang
-            break
-    return get_user_lang(message)
+    return _effective_lang(
+        message, chat_id, users_map,
+        legacy_row=_legacy_user_row(clean_users, chat_id),
+    )
 
 
 def _handle_privacy(chat_id, cmd, lang, users_ws, main_sheet, users_map, clean_users):
@@ -1290,11 +1312,87 @@ def format_public_location_label(raw_address, query=None, mode="city", lang="pl"
     return display_location
 
 
+# HOTFIX (pinezka/GPS) — krok 2 reverse: coarse zoom, best-effort.
+# Wynik POI (kawiarnia, sklep, budynek) w metropolii często niesie jako "city"
+# nazwę dzielnicy/borough. Zamiast mapować borough->city, pytamy DODATKOWO
+# o zgrubny wynik (zoom=10) i używamy go WYŁĄCZNIE, gdy zawiera prawdziwe pole
+# miejscowości i nie jest POI. W każdym innym przypadku zostaje wynik kroku 1.
+_REVERSE_COARSE_ZOOM = 10
+_REVERSE_POI_CATEGORIES = frozenset({
+    "amenity", "shop", "tourism", "leisure", "office", "building", "man_made",
+})
+_REVERSE_POI_ADDRESS_FIELDS = (
+    "amenity", "shop", "tourism", "building", "house_number", "road",
+)
+
+
+def _reverse_is_poi_category(raw):
+    """Kategoria/klasa OSM z najwyższego poziomu payloadu wskazuje POI."""
+    if not isinstance(raw, dict):
+        return False
+    for key in ("category", "class"):
+        value = _clean_location_component(raw.get(key)).casefold()
+        if value in _REVERSE_POI_CATEGORIES:
+            return True
+    return False
+
+
+def _reverse_has_poi_address_fields(address):
+    return any(_clean_location_component(address.get(f)) for f in _REVERSE_POI_ADDRESS_FIELDS)
+
+
+def _reverse_has_settlement(address):
+    return any(_clean_location_component(address.get(f)) for f in _LOCALITY_ADDRESS_FIELDS)
+
+
+def _reverse_needs_coarse(raw, address):
+    """Kiedy uruchomić krok 2: wynik POI albo adres POI bez miejscowości."""
+    if _reverse_is_poi_category(raw):
+        return True
+    return _reverse_has_poi_address_fields(address) and not _reverse_has_settlement(address)
+
+
+def _coarse_reverse_settlement(geolocator, lat, lon, lang):
+    """Krok 2 (best-effort): ``(short, display)`` albo None — nigdy wyjątek.
+
+    Brak ``zoom`` w geopy (TypeError), timeout, wyjątek, pusty wynik, wynik
+    nadal POI albo bez pola miejscowości => None, a wywołujący zostaje przy
+    wyniku kroku 1. Etykieta idzie przez ten sam formatter i allowlistę pól
+    co dotąd, w trybie city (bez road/house_number), bez postcode (query=None).
+    """
+    try:
+        location = geolocator.reverse(
+            f"{lat}, {lon}", language=lang, zoom=_REVERSE_COARSE_ZOOM,
+        )
+    except Exception:
+        return None
+    if not location:
+        return None
+    raw = getattr(location, "raw", None)
+    if not isinstance(raw, dict):
+        return None
+    address = _nominatim_address_components(raw)
+    if not address or _reverse_is_poi_category(raw) or _reverse_has_poi_address_fields(address):
+        return None
+    if not _reverse_has_settlement(address):
+        return None
+    short_label, display_location = _format_public_location_parts(
+        address, query=None, mode="city", lang=lang
+    )
+    if not short_label or not display_location:
+        return None
+    return short_label, display_location
+
+
 def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None):
     """Reverse geocode to ``(short_label, display_location, status)``.
 
     Only structured Nominatim address fields are cached/returned. The formatted
     ``location.address`` string is intentionally never read or exposed.
+
+    Krok 1: reverse jak dotąd. Krok 2 (tylko pinezka/GPS, tj. bez query, gdy
+    krok 1 wskazuje POI): coarse reverse zoom=10 — używany tylko, gdy daje
+    pole miejscowości. Błąd kroku 2 nigdy nie psuje wyniku kroku 1.
     """
     try:
         lat_value, lon_value = float(lat), float(lon)
@@ -1314,7 +1412,8 @@ def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None)
         if not location:
             return None, None, GEO_ERROR
 
-        address = _nominatim_address_components(getattr(location, "raw", {}) or {})
+        raw_location = getattr(location, "raw", {}) or {}
+        address = _nominatim_address_components(raw_location)
         effective_mode = mode or _location_mode_for_query(query, address)
         short_label, display_location = _format_public_location_parts(
             address, query=query, mode=effective_mode, lang=lang
@@ -1324,6 +1423,17 @@ def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None)
         else:
             # Do not fall back to the formatted Nominatim address or the query.
             result = (None, None, GEO_NO_CITY)
+
+        # HOTFIX krok 2: tylko pinezka/GPS (bez query), tylko dla POI/adresu
+        # bez miejscowości. Sukces = pole miejscowości z coarse reverse; w
+        # przeciwnym razie zostaje wynik kroku 1 (także GEO_NO_CITY).
+        if not query_key and _reverse_needs_coarse(raw_location, address):
+            try:
+                coarse = _coarse_reverse_settlement(geolocator, lat, lon, lang)
+            except Exception:
+                coarse = None
+            if coarse:
+                result = (coarse[0], coarse[1], GEO_OK)
 
         _GEO_DETAILS_CACHE[key] = (time.time() + _GEO_DETAILS_TTL, result)
         return result
@@ -2083,7 +2193,6 @@ def _geocode_select_accepted(query, candidates, country_code=None, admin_context
     admin_context = [piece for piece in (admin_context or ()) if piece]
     accepted = []
     seen = []  # (tożsamość, kandydat) — by nie liczyć dwa razy tej samej miejscowości
-    weak_count = 0
 
     for location in candidates:
         raw = getattr(location, "raw", None)
@@ -2122,15 +2231,26 @@ def _geocode_select_accepted(query, candidates, country_code=None, admin_context
         ):
             continue
         seen.append((identity, location))
-        accepted.append(location)
-        if strength == _GEOCODE_EVIDENCE_DISPLAY:
-            weak_count += 1
+        accepted.append((location, strength))
 
     if not accepted:
         return GEOCODE_NO_MATCH, None
-    if weak_count == len(accepted) and len(accepted) > 1:
+
+    # HOTFIX (admin vs city): kandydat, którego JEDYNYM dowodem jest display
+    # (np. "Greater London" z nazwy, bez pól miejscowości), nie wygrywa, gdy w
+    # tych samych wynikach jest kandydat z dowodem place/localized (np. London
+    # z address.city). Poza tym kolejność Nominatima bez zmian.
+    strong = [
+        location for location, strength in accepted
+        if strength != _GEOCODE_EVIDENCE_DISPLAY
+    ]
+    if strong:
+        return GEOCODE_OK, strong[0]
+
+    # Same słabe dowody (tylko display): dotychczasowy bezpiecznik UNCERTAIN.
+    if len(accepted) > 1:
         return GEOCODE_UNCERTAIN, None
-    return GEOCODE_OK, accepted[0]
+    return GEOCODE_OK, accepted[0][0]
 
 
 def _geocode_forward_candidates(query, lang="pl", country_code=None):
@@ -2663,9 +2783,17 @@ def main_bot():
             # więc tutaj docierają wyłącznie czaty z dostępem.
             # ETAP 1: guest_bot_handler nadal sam nic nie wie o geokoderze —
             # dostaje tylko statusowy adapter z tego pliku.
+            # HOTFIX (effective language): jeden język dla guesta — Users.lang
+            # tego chat_id (grupa = własny rekord grupy), potem Telegram, en.
+            # Przekazywany PRZED handle_guest_now jako override.
+            guest_lang = _effective_lang(
+                message, chat_id, users_map,
+                legacy_row=_legacy_user_row(clean_users, chat_id),
+            )
             is_guest = handle_guest_now(
                 message=message,
-                bot_username=BOT_USERNAME, 
+                bot_username=BOT_USERNAME,
+                effective_lang=guest_lang,
                 get_coords_fn=get_coords_from_city,
                 # ETAP 1: skróty i wzmianka @bot dostają TEN SAM zestaw statusów
                 # co /dzien, /teraz, /trend, /miasto i prompty. Karta trybu gościa
@@ -2728,18 +2856,11 @@ def main_bot():
             if wad and wad.get("data"):
                 
                 # --- SZYBKIE POBRANIE JĘZYKA Z BAZY DLA WEBAPP ---
-                user_lang = "en"  # Domyślnie angielski (globalny fallback)
-                for u in clean_users:
-                    if str(u.get("Chat ID", "")).strip() == str(chat_id):
-                        lang_z_bazy = str(u.get("Lang", u.get("Język", ""))).strip().lower()
-                        if lang_z_bazy in ("pl", "en", "de", "fr", "es", "no", "nb"):
-                            user_lang = "no" if lang_z_bazy in ("no", "nb") else lang_z_bazy
-                        break
-                if user_lang == "en":
-                    # PR1: język może być zapisany w zakładce Users (nowa rejestracja)
-                    lang_z_users = users_store.get_lang(users_map, chat_id)
-                    if lang_z_users:
-                        user_lang = lang_z_users
+                # Wspólny effective_lang: Users.lang > legacy Formularz > Telegram > en.
+                user_lang = _effective_lang(
+                    message, chat_id, users_map,
+                    legacy_row=_legacy_user_row(clean_users, chat_id),
+                )
                 # -------------------------------------------------
                 
                 raw_data = wad.get("data", "")
@@ -2927,16 +3048,10 @@ def main_bot():
                     user_row_index = i + 2
                     user_data = u
                     break 
-            # --- BEZPIECZNE POBIERANIE JĘZYKA Z BAZY ---
-            user_lang = "en" # Domyślnie angielski
-            if user_data:
-                raw_l = str(user_data.get("Lang", user_data.get("Język", ""))).strip().lower()
-                if raw_l in ("pl", "en", "de", "fr", "es", "no", "nb"):
-                    user_lang = "no" if raw_l in ("no", "nb") else raw_l
-            else:
-                # PR1: język może być w zakładce Users (nowa rejestracja), inaczej Telegram
-                lang_z_users = users_store.get_lang(users_map, chat_id)
-                user_lang = lang_z_users if lang_z_users else get_user_lang(message)
+            # --- JĘZYK (effective_lang): Users.lang > legacy Formularz > Telegram > en ---
+            user_lang = _effective_lang(
+                message, chat_id, users_map, legacy_row=user_data,
+            )
 
 
             # ==============================================================
