@@ -69,6 +69,25 @@ SUPPORTED_LANGS = ("pl", "en", "de", "fr", "es", "no")
 LOCATION_SOURCES = ("gps", "city", "webapp")
 
 
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Rozpoznaje 429 Google API, które nie może być zamienione na brak rekordu."""
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        status = getattr(exc, "status_code", None)
+    if status == 429:
+        return True
+
+    text = str(exc).lower()
+    return "429" in text or "quota exceeded" in text or "resource has been exhausted" in text
+
+
+def _reraise_rate_limit(exc: Exception) -> None:
+    """Zachowuje dotychczasowe fallbacki, ale udostępnia 429 warstwie pollera."""
+    if _is_rate_limit_error(exc):
+        raise exc
+
+
 def now_iso() -> str:
     """Aktualny czas UTC w formacie czytelnym w Google Sheets (spójny z resztą bazy)."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
@@ -93,6 +112,7 @@ def get_ws(gc, title: str = SHEET_TITLE, tab: str = USERS_TAB):
     try:
         return gc.open(title).worksheet(tab)
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ⚠️ [users_store] Nie mogę otworzyć zakładki {title}/{tab}: {e}")
         return None
 
@@ -132,6 +152,7 @@ def find_row_by_chat_id(ws, chat_id):
             if norm_chat_id(val) == needle:
                 return i + 1  # col_values[0] = wiersz nagłówków
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ⚠️ [users_store] find_row_by_chat_id({chat_id}): {e}")
     return None
 
@@ -146,6 +167,7 @@ def get_user(ws, chat_id):
             if norm_chat_id(d.get("chat_id")) == needle:
                 return d
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ⚠️ [users_store] get_user({chat_id}): {e}")
     return None
 
@@ -166,6 +188,7 @@ def load_users_map(ws) -> dict:
                 out[cid] = d
         return out
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ⚠️ [users_store] load_users_map: {e}")
         return {}
 
@@ -284,6 +307,7 @@ def upsert_access(ws, chat_id, lang, source, now_iso_str, privacy_ver) -> bool:
         return _update_cells_batch(ws, existing["_row"], updates)
 
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ❌ [users_store] upsert_access({chat_id}): {e}")
         return False
 
@@ -345,6 +369,7 @@ def set_profile(
         }
         return _update_cells_batch(ws, existing["_row"], updates)
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ❌ [users_store] set_profile({chat_id}): {e}")
         return False
 
@@ -388,6 +413,7 @@ def set_report_settings(ws, chat_id, morning_time="", afternoon_time="") -> bool
             return False
         return _update_cells_batch(ws, existing["_row"], updates)
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ❌ [users_store] set_report_settings({chat_id}): {e}")
         return False
 
@@ -416,6 +442,7 @@ def set_blocked(ws, chat_id, reason, now_iso_str, clear_profile=True) -> bool:
         return _update_cells_batch(ws, existing["_row"], updates)
 
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ❌ [users_store] set_blocked({chat_id}): {e}")
         return False
 
@@ -438,6 +465,7 @@ def clear_profile(ws, chat_id, now_iso_str) -> bool:
         return _update_cells_batch(ws, existing["_row"], updates)
 
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ❌ [users_store] clear_profile({chat_id}): {e}")
         return False
 
@@ -456,5 +484,6 @@ def delete_user_row(ws, chat_id) -> bool:
         ws.delete_rows(row)
         return True
     except Exception as e:
+        _reraise_rate_limit(e)
         print(f"  ❌ [users_store] delete_user_row({chat_id}): {e}")
         return False

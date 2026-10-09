@@ -71,6 +71,8 @@ def mark_user_as_blocked(gc, chat_id, reason="unknown"):
         else:
             print(f"ℹ️ [Users] Brak wiersza {chat_id} w zakładce Users (użytkownik legacy) — pomijam.")
     except Exception as e:
+        # Propagate quota errors so the poller can back off before legacy access.
+        users_store._reraise_rate_limit(e)
         print(f"⚠️ [Users] Błąd oznaczania blocked: {e}")
 
     # --- KROK 2: legacy BLOCKED_ w Formularz (fallback, bez zmian) ---
@@ -92,4 +94,6 @@ def mark_user_as_blocked(gc, chat_id, reason="unknown"):
             print(f"✅ Oznaczono {len(cells_to_update)} wierszy jako BLOCKED. Limit zwolniony.")
 
     except Exception as e:
+        # Do not try any further Sheets work in this cycle after an API 429.
+        users_store._reraise_rate_limit(e)
         print(f"❌ Błąd podczas miękkiego usuwania: {e}")
