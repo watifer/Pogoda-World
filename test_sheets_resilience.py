@@ -407,3 +407,60 @@ def test_users_store_does_not_swallow_429_as_empty_map():
 
     with pytest.raises(FakeGoogle429):
         users_store.load_users_map(users)
+
+
+def test_rate_limit_detection_accepts_http_429_without_text_match():
+    error = FakeGoogle429("temporary API failure")
+
+    assert users_store._is_rate_limit_error(error) is True
+
+
+def test_rate_limit_detection_accepts_403_google_rate_limit_reason():
+    response = SimpleNamespace(
+        status_code=403,
+        json=lambda: {"error": {"errors": [{"reason": "rateLimitExceeded"}]}},
+    )
+    error = Exception("Google API error")
+    error.response = response
+
+    assert users_store._is_rate_limit_error(error) is True
+
+
+def test_rate_limit_detection_rejects_unrelated_403_reason():
+    response = SimpleNamespace(
+        status_code=403,
+        json=lambda: {"error": {"errors": [{"reason": "forbidden"}]}},
+    )
+    error = Exception("Google API error")
+    error.response = response
+
+    assert users_store._is_rate_limit_error(error) is False
+
+
+def test_rate_limit_detection_uses_semantic_text_fallback():
+    assert users_store._is_rate_limit_error(Exception("The quota exceeded the limit")) is True
+
+
+def test_rate_limit_detection_ignores_unrelated_429_text():
+    assert users_store._is_rate_limit_error(Exception("received 429 items from the endpoint")) is False
+
+
+def test_rate_limit_reraise_keeps_the_original_request_frame():
+    def sheets_request():
+        raise FakeGoogle429("temporary API failure")
+
+    try:
+        sheets_request()
+    except FakeGoogle429 as error:
+        with pytest.raises(FakeGoogle429) as caught:
+            users_store._reraise_rate_limit(error)
+    else:
+        pytest.fail("expected the request to raise")
+
+    traceback_names = []
+    traceback = caught.value.__traceback__
+    while traceback is not None:
+        traceback_names.append(traceback.tb_frame.f_code.co_name)
+        traceback = traceback.tb_next
+
+    assert "sheets_request" in traceback_names

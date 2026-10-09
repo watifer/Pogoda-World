@@ -70,7 +70,7 @@ LOCATION_SOURCES = ("gps", "city", "webapp")
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
-    """Rozpoznaje 429 Google API, które nie może być zamienione na brak rekordu."""
+    """Recognize HTTP rate limits without treating arbitrary mentions of 429 as one."""
     response = getattr(exc, "response", None)
     status = getattr(response, "status_code", None)
     if status is None:
@@ -78,14 +78,38 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     if status == 429:
         return True
 
-    text = str(exc).lower()
-    return "429" in text or "quota exceeded" in text or "resource has been exhausted" in text
+    if status == 403 and response is not None:
+        response_json = getattr(response, "json", None)
+        if callable(response_json):
+            try:
+                body = response_json()
+            except Exception:
+                body = None
+
+            error = body.get("error") if isinstance(body, dict) else None
+            errors = error.get("errors") if isinstance(error, dict) else None
+            if isinstance(errors, (list, tuple)):
+                rate_limit_reasons = {
+                    "ratelimitexceeded",
+                    "userratelimitexceeded",
+                    "quotaexceeded",
+                }
+                for item in errors:
+                    reason = item.get("reason") if isinstance(item, dict) else None
+                    if isinstance(reason, str) and reason.casefold() in rate_limit_reasons:
+                        return True
+
+    text = str(exc).casefold()
+    return any(
+        phrase in text
+        for phrase in ("quota exceeded", "resource has been exhausted", "rate limit")
+    )
 
 
 def _reraise_rate_limit(exc: Exception) -> None:
-    """Zachowuje dotychczasowe fallbacki, ale udostępnia 429 warstwie pollera."""
+    """Propagate rate limits with the original request traceback intact."""
     if _is_rate_limit_error(exc):
-        raise exc
+        raise exc.with_traceback(exc.__traceback__)
 
 
 def now_iso() -> str:
