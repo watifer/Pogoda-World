@@ -99,7 +99,10 @@ STRINGS = {
     "coast_beach_now": "Wybrzeże: wiatr od wody {wind} km/h — na otwartym brzegu mocniej.",
     "coast_beach_now_gust": "Wybrzeże: wiatr od wody {wind} km/h, porywy do {gust} km/h — na otwartym brzegu mocniej.",
     "coast_beach_soon": "Wybrzeże: w ciągu 1-2 h wiatr od wody (do {gust} km/h) — na plaży mocniej.",
-    "coast_beach_from": "Wybrzeże: od ok. {hh}:00 wiatr od wody (do {gust} km/h)."
+    "coast_beach_from": "Wybrzeże: od ok. {hh}:00 wiatr od wody (do {gust} km/h).",
+    "moon_full_today_clear": "Dziś pełnia Księżyca o godz. {time}. Niebo może być tej nocy wyraźnie jaśniejsze.",
+    "moon_full_today": "Dziś pełnia Księżyca o godz. {time}.",
+    "moon_new_today": "Dziś nów Księżyca ({time}) — noc będzie wyjątkowo ciemna."
   },
   "en": {
     "report_morning": "morning report",
@@ -188,7 +191,10 @@ STRINGS = {
     "coast_beach_now": "Coast: onshore wind {wind} km/h — stronger on the open shore.",
     "coast_beach_now_gust": "Coast: onshore wind {wind} km/h, gusts up to {gust} km/h — stronger on the open shore.",
     "coast_beach_soon": "Coast: onshore wind in 1-2 h (up to {gust} km/h) — stronger on the beach.",
-    "coast_beach_from": "Coast: from around {hh}:00 onshore wind (up to {gust} km/h)."
+    "coast_beach_from": "Coast: from around {hh}:00 onshore wind (up to {gust} km/h).",
+    "moon_full_today_clear": "Full moon today at {time}. The sky may be noticeably brighter tonight.",
+    "moon_full_today": "Full moon today at {time}.",
+    "moon_new_today": "New moon today ({time}) — the night will be exceptionally dark."
   },
   "fr": {
     "report_morning": "rapport du matin",
@@ -277,7 +283,10 @@ STRINGS = {
     "coast_beach_now": "Côte : vent de mer {wind} km/h — plus fort sur le rivage ouvert.",
     "coast_beach_now_gust": "Côte : vent de mer {wind} km/h, rafales jusqu'à {gust} km/h — plus fort sur le rivage ouvert.",
     "coast_beach_soon": "Côte : vent de mer d'ici 1-2 h (jusqu'à {gust} km/h) — plus fort sur la plage.",
-    "coast_beach_from": "Côte : à partir d'env. {hh}:00, vent de mer (jusqu'à {gust} km/h)."
+    "coast_beach_from": "Côte : à partir d'env. {hh}:00, vent de mer (jusqu'à {gust} km/h).",
+    "moon_full_today_clear": "Pleine lune aujourd'hui à {time}. Le ciel pourrait être nettement plus lumineux cette nuit.",
+    "moon_full_today": "Pleine lune aujourd'hui à {time}.",
+    "moon_new_today": "Nouvelle lune aujourd'hui ({time}) — la nuit sera exceptionnellement sombre."
   },
   "de": {
     "report_morning": "Morgenbericht",
@@ -366,7 +375,10 @@ STRINGS = {
     "coast_beach_now": "Küste: auflandiger Wind {wind} km/h — am offenen Ufer stärker.",
     "coast_beach_now_gust": "Küste: auflandiger Wind {wind} km/h, Böen bis {gust} km/h — am offenen Ufer stärker.",
     "coast_beach_soon": "Küste: auflandiger Wind in 1-2 Std. (bis {gust} km/h) — am Strand stärker.",
-    "coast_beach_from": "Küste: ab ca. {hh}:00 Uhr auflandiger Wind (bis {gust} km/h)."
+    "coast_beach_from": "Küste: ab ca. {hh}:00 Uhr auflandiger Wind (bis {gust} km/h).",
+    "moon_full_today_clear": "Heute Vollmond um {time} Uhr. Der Himmel kann in dieser Nacht deutlich heller sein.",
+    "moon_full_today": "Heute Vollmond um {time} Uhr.",
+    "moon_new_today": "Heute Neumond ({time} Uhr) — die Nacht wird besonders dunkel sein."
 
   },
   "es": {
@@ -456,7 +468,10 @@ STRINGS = {
     "coast_beach_now": "Costa: viento del mar {wind} km/h — más fuerte en la orilla abierta.",
     "coast_beach_now_gust": "Costa: viento del mar {wind} km/h, rachas de hasta {gust} km/h — más fuerte en la orilla abierta.",
     "coast_beach_soon": "Costa: viento del mar en 1-2 h (hasta {gust} km/h) — más fuerte en la playa.",
-    "coast_beach_from": "Costa: desde aprox. las {hh}:00, viento del mar (hasta {gust} km/h)."
+    "coast_beach_from": "Costa: desde aprox. las {hh}:00, viento del mar (hasta {gust} km/h).",
+    "moon_full_today_clear": "Hoy luna llena a las {time}. El cielo puede verse claramente más iluminado esta noche.",
+    "moon_full_today": "Hoy luna llena a las {time}.",
+    "moon_new_today": "Hoy luna nueva ({time}) — la noche será excepcionalmente oscura."
   },
   "no": {
     "report_morning": "morgenrapport",
@@ -545,7 +560,10 @@ STRINGS = {
     "coast_beach_now": "Kyst: pålandsvind {wind} km/h — sterkere på åpen strand.",
     "coast_beach_now_gust": "Kyst: pålandsvind {wind} km/h, vindkast opptil {gust} km/h — sterkere på åpen strand.",
     "coast_beach_soon": "Kyst: pålandsvind om 1-2 t (opptil {gust} km/h) — sterkere på stranden.",
-    "coast_beach_from": "Kyst: fra ca. {hh}:00 pålandsvind (opptil {gust} km/h)."
+    "coast_beach_from": "Kyst: fra ca. {hh}:00 pålandsvind (opptil {gust} km/h).",
+    "moon_full_today_clear": "Fullmåne i dag kl. {time}. Himmelen kan bli merkbart lysere i natt.",
+    "moon_full_today": "Fullmåne i dag kl. {time}.",
+    "moon_new_today": "Nymåne i dag ({time}) — natten vil bli ekstra mørk."
   }
 }
 
@@ -2005,6 +2023,29 @@ REPLACEMENTS = {
 # =====================================================================
 # GŁÓWNA FUNKCJA TŁUMACZĄCA
 # =====================================================================
+_PARAMETERIZED_TIME_I18N_KEYS = (
+    "moon_full_today_clear",
+    "moon_full_today",
+    "moon_new_today",
+)
+
+
+def _translate_parameterized_time_key(snippet: str, lang: str):
+    """Rozpoznaje pełne komunikaty oparte na kluczach STRINGS z placeholderem {time}."""
+    s = (snippet or "").strip()
+    if not s:
+        return None
+    for key in _PARAMETERIZED_TIME_I18N_KEYS:
+        pl_tpl = STRINGS["pl"].get(key)
+        if not pl_tpl or "{time}" not in pl_tpl:
+            continue
+        pat_str = "^" + re.escape(pl_tpl).replace(re.escape("{time}"), r"(?P<time>\d{1,2}:\d{2})") + "$"
+        m = re.match(pat_str, s, flags=re.IGNORECASE)
+        if m:
+            return t(lang, key, time=m.group("time"))
+    return None
+
+
 def translate_weather_text(text: str, lang: str = "pl") -> str:
     """
     Surgically translates dynamically generated Polish weather phrases, 
@@ -2026,6 +2067,10 @@ def translate_weather_text(text: str, lang: str = "pl") -> str:
     def translate_snippet(snippet: str) -> str:
         if not isinstance(snippet, str) or not snippet.strip():
             return snippet or ""
+
+        param_translated = _translate_parameterized_time_key(snippet, lang)
+        if param_translated is not None:
+            return param_translated
             
         is_upper = snippet.strip()[0].isupper()
 
