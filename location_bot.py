@@ -3073,6 +3073,58 @@ GUEST_SHORTCUT_PREFIXES = tuple(iter_shortcut_keys())
 
 TELEGRAM_TOKEN = os.environ.get("TG_TOKEN")
 BASE_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+BOT_ID = None
+
+
+def _bot_user_id():
+    """Zwraca numeryczne ID tego bota (z BOT_ID lub prefiksu TG_TOKEN) albo None."""
+    for candidate in (
+        BOT_ID,
+        os.environ.get("TG_BOT_ID"),
+        TELEGRAM_TOKEN,
+        os.environ.get("TG_TOKEN"),
+        os.environ.get("TELEGRAM_BOT_TOKEN"),
+    ):
+        raw = str(candidate or "").strip()
+        if not raw:
+            continue
+        prefix = raw.split(":", 1)[0].strip() if ":" in raw else raw
+        if prefix.isdigit():
+            return int(prefix)
+    return None
+
+
+def _is_reply_to_bot(message) -> bool:
+    """True, gdy wiadomość odpowiada na komunikat wysłany przez TEGO bota."""
+    if not isinstance(message, dict):
+        return False
+    reply = message.get("reply_to_message")
+    if not isinstance(reply, dict) or not reply:
+        return False
+    reply_from = reply.get("from")
+    if not isinstance(reply_from, dict) or not reply_from:
+        return False
+    if reply_from.get("is_bot") is False:
+        return False
+
+    bot_id = _bot_user_id()
+    from_id = reply_from.get("id")
+    if bot_id is not None and from_id is not None:
+        try:
+            if int(str(from_id).strip()) == bot_id:
+                return True
+        except (TypeError, ValueError):
+            return False
+
+    expected_username = str(BOT_USERNAME or "").strip().lstrip("@").lower()
+    from_username = str(reply_from.get("username") or "").strip().lstrip("@").lower()
+    if from_username and expected_username:
+        return from_username == expected_username
+
+    if bot_id is not None and from_id is not None:
+        return False
+
+    return reply_from.get("is_bot") is True
 
 
 def _env_number(name, default, cast):
@@ -4074,9 +4126,13 @@ def _main_bot_iteration(gc, offset):
             if "location" in message:
                 # D4: w czacie prywatnym, w trakcie flow /miasto (ctx=save_profile),
                 # przyjmujemy pinezkę także bez "Odpowiedz" — bot sam o nią prosił.
+                # W czacie prywatnym i w grupie pinezka wysłana jako odpowiedź
+                # na komunikat tego bota jest świadomym zapisem lokalizacji.
                 pin_ctx = _take_pending_city_ctx(chat_id, consume=False)
                 pin_in_city_flow = (pin_ctx == CTX_SAVE_PROFILE and int(chat_id) > 0)
-                if not message.get("reply_to_message") and not pin_in_city_flow:
+                pin_reply_to_bot = _is_reply_to_bot(message)
+                should_save_pin_profile = pin_reply_to_bot or pin_in_city_flow
+                if not message.get("reply_to_message") and not should_save_pin_profile:
                     print(f"  [DEBUG] Ignoruję pinezkę od {chat_id} - to zwykła rozmowa na czacie.")
                     continue
                 lat = message["location"]["latitude"]
@@ -4084,8 +4140,9 @@ def _main_bot_iteration(gc, offset):
                 print(f"  📍 Odebrano współrzędne od [{user_data.get('Imię', chat_id)}]: {lat}, {lon}")
 
                 # PR2 UX cleanup: konto Users nie zapisuje pinezki automatycznie —
-                # dostaje raport jednorazowy, CHYBA że pinezka przyszła w flow
-                # /miasto (wtedy jest świadomym zapisem profilu, bez karty).
+                # dostaje raport jednorazowy, CHYBA że pinezka przyszła jako
+                # odpowiedź na komunikat bota albo w flow /miasto w czacie
+                # prywatnym (wtedy jest świadomym zapisem profilu, bez karty).
                 # Legacy-only zachowuje historyczne działanie Formularz bez migracji.
                 if not _is_legacy_only_user(users_map, clean_users, chat_id):
                     # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
@@ -4095,7 +4152,7 @@ def _main_bot_iteration(gc, offset):
                     if geo_status == GEO_ERROR:
                         send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
                         continue
-                    if pin_in_city_flow:
+                    if should_save_pin_profile:
                         PENDING_CITY.pop(str(chat_id), None)
                         _save_profile_from_location(
                             chat_id, users_ws, users_map, lat, lon, short_label, user_lang, "gps",
