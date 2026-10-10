@@ -2169,6 +2169,27 @@ UI_TEXTS = {
         "delete_confirm_no": "Nie, nie chcę",
         "delete_cancelled": "OK, nic nie usuwam.\nTwoje dane pozostają w bazie i dalej masz dostęp do prognoz pogody.",
         "menu_reports_migration": "⚙️ *GODZINY RAPORTÓW*\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\nAutomatyczne raporty dla nowych profili są w trakcie przenoszenia do nowej wersji bota.\n\nNa ten moment możesz w każdej chwili wywołać prognozę ręcznie:\n\n/dzien\n/teraz\n/trend\n\nSwoje miejsce zapiszesz tutaj:\n/miasto\n",
+        # --- PR3 GRUPY: konwersacyjna zmiana godzin raportów (/raport) -------
+        # Te same ekrany w grupie i w czacie prywatnym. Słowa sterujące
+        # ({yes}, {no}, {off}) pochodzą z REPORT_WORDS, więc ekran pokazuje
+        # dokładnie to słowo, które dialog potem akceptuje w odpowiedzi.
+        "report_dialog": "⚙️ *GODZINY RAPORTÓW*\n\nTwoje godziny raportów:\n\nRano: {morning}\nPopołudnie: {afternoon}\n\nCzy zachować te ustawienia? Wpisz „{yes}” albo „{no}”.",
+        "report_ask_morning": "🌅 Wpisz godzinę raportu porannego od {lo} do {hi}\nalbo wpisz „{off}”, jeśli nie chcesz raportu porannego.",
+        "report_ask_afternoon": "🌇 Wpisz godzinę raportu popołudniowego od {lo} do {hi}\nalbo wpisz „{off}”, jeśli nie chcesz raportu popołudniowego.",
+        "report_bad_time": "⚠️ To nie jest godzina z zakresu {lo}–{hi}.\n\nWpisz godzinę w formacie GG:MM, np. {example}, albo „{off}”, aby wyłączyć ten raport.",
+        "report_bad_answer": "⚠️ Nie zrozumiałem odpowiedzi. Wpisz „{yes}”, aby zachować obecne godziny, albo „{no}”, aby je zmienić.",
+        "report_kept": "✅ Zachowano obecne godziny raportów:\nrano {morning}, popołudnie {afternoon}.",
+        "report_saved": "✅ Ustawiono godziny raportów:\n\n{lines}\n\n{next}",
+        "report_line_morning": "Raport poranny: {value}",
+        "report_line_afternoon": "Raport popołudniowy: {value}",
+        "report_slot_off": "wyłączony",
+        "report_next_morning": "Oczekuj raportu porannego o {time}.",
+        "report_next_afternoon": "Oczekuj raportu popołudniowego o {time}.",
+        "report_both_off": "🔕 Wyłączono oba raporty pogodowe.",
+        "report_no_perm": "⛔ Tylko administrator tej grupy może zmieniać godziny raportów.",
+        "report_perm_error": "⚠️ Nie udało się sprawdzić Twoich uprawnień w tej grupie. Spróbuj ponownie za chwilę.",
+        "report_cancelled": "Anulowano zmianę godzin raportów.",
+        "report_save_err": "⚠️ Nie udało się zapisać godzin raportów. Spróbuj ponownie za chwilę.",
     },
     "en": {
         "menu_header": "⚙️ *REPORT HOURS* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n📅 *Your schedule:*\n├ Morning: {disp_rano}\n└ Afternoon: {disp_wieczor}\n\n⏰ *How to change the hours?*\nClick the button below.\n\n🌍 *Your location is managed separately:*\n/city\n",
@@ -2241,6 +2262,24 @@ UI_TEXTS = {
         "delete_confirm_no": "No, I do not",
         "delete_cancelled": "OK, I am not deleting anything.\nYour data stays in the database and you keep access to the weather forecasts.",
         "menu_reports_migration": "⚙️ *REPORT HOURS*\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\nAutomatic reports for new profiles are being moved to the new version of the bot.\n\nFor now you can request a forecast manually at any time:\n\n/day\n/now\n/trend\n\nYou can save your place here:\n/city\n",
+        # --- PR3 GROUPS: conversational report-hour change (/report) ---------
+        "report_dialog": "⚙️ *REPORT HOURS*\n\nYour report hours:\n\nMorning: {morning}\nAfternoon: {afternoon}\n\nKeep these settings? Type \"{yes}\" or \"{no}\".",
+        "report_ask_morning": "🌅 Type the morning report time between {lo} and {hi}\nor type \"{off}\" if you do not want a morning report.",
+        "report_ask_afternoon": "🌇 Type the afternoon report time between {lo} and {hi}\nor type \"{off}\" if you do not want an afternoon report.",
+        "report_bad_time": "⚠️ That is not a time between {lo} and {hi}.\n\nType it as HH:MM, for example {example}, or \"{off}\" to disable this report.",
+        "report_bad_answer": "⚠️ I did not understand that. Type \"{yes}\" to keep the current hours or \"{no}\" to change them.",
+        "report_kept": "✅ Kept the current report hours:\nmorning {morning}, afternoon {afternoon}.",
+        "report_saved": "✅ Report hours set:\n\n{lines}\n\n{next}",
+        "report_line_morning": "Morning report: {value}",
+        "report_line_afternoon": "Afternoon report: {value}",
+        "report_slot_off": "disabled",
+        "report_next_morning": "Expect the morning report at {time}.",
+        "report_next_afternoon": "Expect the afternoon report at {time}.",
+        "report_both_off": "🔕 Both weather reports are disabled.",
+        "report_no_perm": "⛔ Only a group administrator can change the report hours.",
+        "report_perm_error": "⚠️ I could not check your permissions in this group. Please try again in a moment.",
+        "report_cancelled": "Cancelled the report hours change.",
+        "report_save_err": "⚠️ I could not save the report hours. Please try again in a moment.",
     },
     "de": {
     "menu_header": "⚙️ *BERICHTSZEITEN* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n📅 *Dein Zeitplan:*\n├ Morgen: {disp_rano}\n└ Nachmittag: {disp_wieczor}\n\n⏰ *Wie ändere ich die Zeiten?*\nKlicke auf die Schaltfläche unten.\n\n🌍 *Dein Standort wird separat verwaltet:*\n/city\n",
@@ -2311,6 +2350,24 @@ UI_TEXTS = {
     "delete_confirm_no": "Nein, möchte ich nicht",
     "delete_cancelled": "OK, ich lösche nichts.\nDeine Daten bleiben in der Datenbank und du behältst den Zugang zu den Wetterprognosen.",
     "menu_reports_migration": "⚙️ *BERICHTSZEITEN*\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\nAutomatische Berichte für neue Profile werden gerade in die neue Version des Bots überführt.\n\nMomentan kannst du eine Prognose jederzeit manuell anfordern:\n\n/day\n/now\n/trend\n\nDeinen Ort speicherst du hier:\n/city\n",
+    # --- PR3 GRUPPEN: Berichtszeiten im Dialog ändern (/report) --------------
+    "report_dialog": "⚙️ *BERICHTSZEITEN*\n\nDeine Berichtszeiten:\n\nMorgens: {morning}\nNachmittags: {afternoon}\n\nDiese Einstellungen behalten? Schreibe \"{yes}\" oder \"{no}\".",
+    "report_ask_morning": "🌅 Schreibe die Zeit für den Morgenbericht von {lo} bis {hi}\noder \"{off}\", wenn du keinen Morgenbericht möchtest.",
+    "report_ask_afternoon": "🌇 Schreibe die Zeit für den Nachmittagsbericht von {lo} bis {hi}\noder \"{off}\", wenn du keinen Nachmittagsbericht möchtest.",
+    "report_bad_time": "⚠️ Das ist keine Zeit zwischen {lo} und {hi}.\n\nSchreibe sie als HH:MM, z. B. {example}, oder \"{off}\", um diesen Bericht zu deaktivieren.",
+    "report_bad_answer": "⚠️ Ich habe das nicht verstanden. Schreibe \"{yes}\", um die Zeiten zu behalten, oder \"{no}\", um sie zu ändern.",
+    "report_kept": "✅ Die aktuellen Berichtszeiten bleiben unverändert:\nmorgens {morning}, nachmittags {afternoon}.",
+    "report_saved": "✅ Berichtszeiten gespeichert:\n\n{lines}\n\n{next}",
+    "report_line_morning": "Morgenbericht: {value}",
+    "report_line_afternoon": "Nachmittagsbericht: {value}",
+    "report_slot_off": "deaktiviert",
+    "report_next_morning": "Der Morgenbericht kommt um {time}.",
+    "report_next_afternoon": "Der Nachmittagsbericht kommt um {time}.",
+    "report_both_off": "🔕 Beide Wetterberichte sind deaktiviert.",
+    "report_no_perm": "⛔ Nur ein Gruppenadministrator darf die Berichtszeiten ändern.",
+    "report_perm_error": "⚠️ Ich konnte deine Rechte in dieser Gruppe nicht prüfen. Versuche es in einem Moment erneut.",
+    "report_cancelled": "Änderung der Berichtszeiten abgebrochen.",
+    "report_save_err": "⚠️ Die Berichtszeiten konnten nicht gespeichert werden. Versuche es in einem Moment erneut.",
     },
     "es": {
         "menu_header": "⚙️ *HORAS DE INFORMES* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n📅 *Tu horario:*\n├ Mañana: {disp_rano}\n└ Tarde: {disp_wieczor}\n\n⏰ *¿Cómo cambiar las horas?*\nHaz clic en el botón de abajo.\n\n🌍 *La ubicación se gestiona por separado:*\n/city\n",
@@ -2383,6 +2440,24 @@ UI_TEXTS = {
         "delete_confirm_no": "No, no quiero",
         "delete_cancelled": "Vale, no borro nada.\nTus datos siguen en la base de datos y conservas el acceso a los pronósticos del tiempo.",
         "menu_reports_migration": "⚙️ *HORAS DE INFORMES*\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\nLos informes automáticos para perfiles nuevos se están migrando a la nueva versión del bot.\n\nPor ahora puedes pedir el pronóstico manualmente cuando quieras:\n\n/day\n/now\n/trend\n\nGuarda tu lugar aquí:\n/city\n",
+        # --- PR3 GRUPOS: cambio de horas de informes en conversación ---------
+        "report_dialog": "⚙️ *HORAS DE INFORMES*\n\nTus horas de informes:\n\nMañana: {morning}\nTarde: {afternoon}\n\n¿Mantener estos ajustes? Escribe \"{yes}\" o \"{no}\".",
+        "report_ask_morning": "🌅 Escribe la hora del informe de la mañana entre {lo} y {hi}\no escribe \"{off}\" si no quieres informe por la mañana.",
+        "report_ask_afternoon": "🌇 Escribe la hora del informe de la tarde entre {lo} y {hi}\no escribe \"{off}\" si no quieres informe por la tarde.",
+        "report_bad_time": "⚠️ No es una hora entre {lo} y {hi}.\n\nEscríbela como HH:MM, por ejemplo {example}, o \"{off}\" para desactivar este informe.",
+        "report_bad_answer": "⚠️ No he entendido la respuesta. Escribe \"{yes}\" para mantener las horas actuales o \"{no}\" para cambiarlas.",
+        "report_kept": "✅ Se mantienen las horas actuales de los informes:\nmañana {morning}, tarde {afternoon}.",
+        "report_saved": "✅ Horas de informes guardadas:\n\n{lines}\n\n{next}",
+        "report_line_morning": "Informe de la mañana: {value}",
+        "report_line_afternoon": "Informe de la tarde: {value}",
+        "report_slot_off": "desactivado",
+        "report_next_morning": "Espera el informe de la mañana a las {time}.",
+        "report_next_afternoon": "Espera el informe de la tarde a las {time}.",
+        "report_both_off": "🔕 Los dos informes del tiempo están desactivados.",
+        "report_no_perm": "⛔ Solo un administrador del grupo puede cambiar las horas de los informes.",
+        "report_perm_error": "⚠️ No he podido comprobar tus permisos en este grupo. Inténtalo de nuevo en un momento.",
+        "report_cancelled": "Cambio de las horas de informes cancelado.",
+        "report_save_err": "⚠️ No se han podido guardar las horas de los informes. Inténtalo de nuevo en un momento.",
     },
     "fr": {
         "menu_header": "⚙️ *HEURES DES BULLETINS* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n📅 *Votre planning :*\n├ Matin : {disp_rano}\n└ Après-midi : {disp_wieczor}\n\n⏰ *Comment modifier les heures ?*\nCliquez sur le bouton ci-dessous.\n\n🌍 *Votre position est gérée séparément :*\n/city\n",
@@ -2455,6 +2530,24 @@ UI_TEXTS = {
         "delete_confirm_no": "Non, je ne veux pas",
         "delete_cancelled": "OK, je ne supprime rien.\nVos données restent en base et vous gardez l'accès aux prévisions météo.",
         "menu_reports_migration": "⚙️ *HEURES DES BULLETINS*\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\nLes bulletins automatiques pour les nouveaux profils sont en cours de migration vers la nouvelle version du bot.\n\nPour l'instant, vous pouvez demander une prévision manuellement à tout moment :\n\n/day\n/now\n/trend\n\nEnregistrez votre lieu ici :\n/city\n",
+        # --- PR3 GROUPES : modification des heures des bulletins (/report) ---
+        "report_dialog": "⚙️ *HEURES DES BULLETINS*\n\nVos heures de bulletins :\n\nMatin : {morning}\nAprès-midi : {afternoon}\n\nConserver ces réglages ? Écrivez « {yes} » ou « {no} ».",
+        "report_ask_morning": "🌅 Écrivez l'heure du bulletin du matin entre {lo} et {hi}\nou écrivez « {off} » si vous ne voulez pas de bulletin le matin.",
+        "report_ask_afternoon": "🌇 Écrivez l'heure du bulletin de l'après-midi entre {lo} et {hi}\nou écrivez « {off} » si vous ne voulez pas de bulletin l'après-midi.",
+        "report_bad_time": "⚠️ Ce n'est pas une heure entre {lo} et {hi}.\n\nÉcrivez-la au format HH:MM, par exemple {example}, ou « {off} » pour désactiver ce bulletin.",
+        "report_bad_answer": "⚠️ Je n'ai pas compris la réponse. Écrivez « {yes} » pour conserver les heures actuelles ou « {no} » pour les modifier.",
+        "report_kept": "✅ Heures des bulletins conservées :\nmatin {morning}, après-midi {afternoon}.",
+        "report_saved": "✅ Heures des bulletins enregistrées :\n\n{lines}\n\n{next}",
+        "report_line_morning": "Bulletin du matin : {value}",
+        "report_line_afternoon": "Bulletin de l'après-midi : {value}",
+        "report_slot_off": "désactivé",
+        "report_next_morning": "Attendez le bulletin du matin à {time}.",
+        "report_next_afternoon": "Attendez le bulletin de l'après-midi à {time}.",
+        "report_both_off": "🔕 Les deux bulletins météo sont désactivés.",
+        "report_no_perm": "⛔ Seul un administrateur du groupe peut modifier les heures des bulletins.",
+        "report_perm_error": "⚠️ Je n'ai pas pu vérifier vos droits dans ce groupe. Réessayez dans un instant.",
+        "report_cancelled": "Modification des heures des bulletins annulée.",
+        "report_save_err": "⚠️ Les heures des bulletins n'ont pas pu être enregistrées. Réessayez dans un instant.",
     },
     "no": {
         "menu_header": "⚙️ *RAPPORTTIDER* | {name}\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\n📅 *Timeplanen din:*\n├ Morgen: {disp_rano}\n└ Ettermiddag: {disp_wieczor}\n\n⏰ *Hvordan endre tidene?*\nKlikk på knappen nedenfor.\n\n🌍 *Posisjonen din administreres separat:*\n/city\n",
@@ -2527,6 +2620,24 @@ UI_TEXTS = {
         "delete_confirm_no": "Nei, jeg vil ikke",
         "delete_cancelled": "OK, jeg sletter ingenting.\nDataene dine blir værende i databasen og du har fortsatt tilgang til værmeldingene.",
         "menu_reports_migration": "⚙️ *RAPPORTTIDER*\n〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️〰️\nAutomatiske rapporter for nye profiler flyttes til den nye versjonen av botten.\n\nForeløpig kan du be om en melding manuelt når som helst:\n\n/day\n/now\n/trend\n\nLagre stedet ditt her:\n/city\n",
+        # --- PR3 GRUPPER: endre rapporttider i samtale (/report) -------------
+        "report_dialog": "⚙️ *RAPPORTTIDER*\n\nDine rapporttider:\n\nMorgen: {morning}\nEttermiddag: {afternoon}\n\nVil du beholde disse innstillingene? Skriv «{yes}» eller «{no}».",
+        "report_ask_morning": "🌅 Skriv tidspunktet for morgenrapporten mellom {lo} og {hi}\neller skriv «{off}» hvis du ikke vil ha morgenrapport.",
+        "report_ask_afternoon": "🌇 Skriv tidspunktet for ettermiddagsrapporten mellom {lo} og {hi}\neller skriv «{off}» hvis du ikke vil ha ettermiddagsrapport.",
+        "report_bad_time": "⚠️ Det er ikke et tidspunkt mellom {lo} og {hi}.\n\nSkriv det som HH:MM, for eksempel {example}, eller «{off}» for å slå av denne rapporten.",
+        "report_bad_answer": "⚠️ Jeg forsto ikke svaret. Skriv «{yes}» for å beholde tidene eller «{no}» for å endre dem.",
+        "report_kept": "✅ Beholdt gjeldende rapporttider:\nmorgen {morning}, ettermiddag {afternoon}.",
+        "report_saved": "✅ Rapporttider lagret:\n\n{lines}\n\n{next}",
+        "report_line_morning": "Morgenrapport: {value}",
+        "report_line_afternoon": "Ettermiddagsrapport: {value}",
+        "report_slot_off": "deaktivert",
+        "report_next_morning": "Forvent morgenrapporten kl. {time}.",
+        "report_next_afternoon": "Forvent ettermiddagsrapporten kl. {time}.",
+        "report_both_off": "🔕 Begge værrapportene er slått av.",
+        "report_no_perm": "⛔ Bare en gruppeadministrator kan endre rapporttidene.",
+        "report_perm_error": "⚠️ Jeg klarte ikke å sjekke rettighetene dine i denne gruppen. Prøv igjen om litt.",
+        "report_cancelled": "Endring av rapporttider avbrutt.",
+        "report_save_err": "⚠️ Klarte ikke å lagre rapporttidene. Prøv igjen om litt.",
     }
 }
 
@@ -2535,6 +2646,52 @@ def t_ui(lang: str, key: str, **kwargs) -> str:
     lang = lang if lang in UI_TEXTS else "pl"
     text = UI_TEXTS[lang].get(key, UI_TEXTS["pl"].get(key, key))
     return text.format(**kwargs)
+
+
+# =====================================================================
+# 3B. SŁOWA STERUJĄCE DIALOGIEM GODZIN RAPORTÓW (PR3 — GRUPY)
+# =====================================================================
+# Dialog /raport (/report) zbiera odpowiedzi zwykłym tekstem, bez klawiatury
+# i bez WebApp. Jedno słowo na język i na akcję, bo:
+#   • ekran pokazuje dokładnie to słowo, które dialog potem akceptuje
+#     (użytkownik przepisuje to, co widzi — zero zgadywania),
+#   • słowo „wyłączające” jest tłumaczone (PL „brak”), a nie techniczne.
+# Wartości są porównywane po normalizacji (małe litery, jednoświatowe
+# odstępy) — wielkość liter i spacje na klawiaturze telefonu nie mają znaczenia.
+REPORT_WORDS = {
+    "pl": {"off": "brak", "yes": "tak", "no": "nie", "cancel": "anuluj"},
+    "en": {"off": "none", "yes": "yes", "no": "no", "cancel": "cancel"},
+    "de": {"off": "keine", "yes": "ja", "no": "nein", "cancel": "abbrechen"},
+    "fr": {"off": "aucun", "yes": "oui", "no": "non", "cancel": "annuler"},
+    "es": {"off": "ninguno", "yes": "sí", "no": "no", "cancel": "cancelar"},
+    "no": {"off": "ingen", "yes": "ja", "no": "nei", "cancel": "avbryt"},
+}
+
+# Synonimy techniczne akceptowane w KAŻDYM języku: angielskie słowa na
+# telefonach z innym językiem, krótkie formy oraz historyczny „brak”.
+REPORT_WORD_TECHNICAL = {
+    "off": ("off", "brak", "none"),
+    "yes": ("tak", "y", "j"),
+    "no": ("n",),
+    "cancel": (),
+}
+
+
+def report_word(lang: str, kind: str) -> str:
+    """Słowo pokazywane użytkownikowi w komunikacie dialogu /raport."""
+    fallback = REPORT_WORDS["pl"]
+    words = REPORT_WORDS.get(lang, fallback)
+    return str(words.get(kind) or fallback.get(kind) or "")
+
+
+def report_words(lang: str, kind: str) -> tuple:
+    """Wszystkie słowa akceptowane przez dialog /raport: lokalne + techniczne."""
+    out = []
+    for word in (report_word(lang, kind),) + tuple(REPORT_WORD_TECHNICAL.get(kind, ())):
+        word = str(word or "").strip().lower()
+        if word and word not in out:
+            out.append(word)
+    return tuple(out)
 
 # =====================================================================
 # 4. STATUSY WALIDACJI ZAPYTANIA DO GEOKODERA (ETAP 1)
