@@ -60,52 +60,6 @@
             letter-spacing: 0.5px;
         }
 
-        #ui-hours-title {
-            color: var(--title-today);
-            font-size: 15px;
-            margin-bottom: 20px;
-            line-height: 1.4;
-        }
-
-        hr {
-            border: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
-            margin: 24px 0;
-        }
-
-        label {
-            display: block;
-            margin: 16px 0 6px;
-            text-align: left;
-            font-weight: 600;
-            font-size: 14px;
-            color: var(--accent-purple);
-        }
-
-        select {
-            width: 100%;
-            padding: 14px 16px;
-            border-radius: 14px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            background-color: var(--input-bg);
-            color: var(--text-main);
-            font-size: 15px;
-            font-weight: 500;
-            outline: none;
-            transition: border-color 0.2s;
-            cursor: pointer;
-        }
-
-        select:focus {
-            border-color: var(--title-today);
-        }
-
-        option {
-            background-color: rgb(41, 57, 104);
-            color: rgb(230, 235, 245);
-        }
-
         button {
             width: 100%;
             padding: 16px 20px;
@@ -126,65 +80,25 @@
         }
 
         #gps-button {
-            background: rgba(255, 255, 255, 0.15);
-            color: var(--text-main);
+            background-color: #22c55e;
+            color: #000000;
             border: 1px solid rgba(255, 255, 255, 0.25);
             margin-bottom: 5px;
         }
 
         #gps-button:hover {
-            background: rgba(255, 255, 255, 0.22);
+            background-color: #22c55e;
             border-color: var(--accent-purple);
         }
 
-        #save-settings-button {
-            background-color: var(--title-future);
-            color: rgb(20, 30, 55);
-            margin-top: 25px;
-            box-shadow: 0 4px 15px rgba(138, 226, 160, 0.25);
-        }
-
-        #save-settings-button:hover {
-            background-color: rgb(155, 235, 175);
-            box-shadow: 0 6px 20px rgba(138, 226, 160, 0.4);
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- SEKCJA 1: LOKALIZACJA -->
         <h3 id="ui-title">Panel sterowania</h3>
-        <button id="gps-button">📍 <span id="gps-text">Zaktualizuj przez GPS</span></button>
+        <button id="gps-button">📍 <span id="gps-text">Aktualizuj przez GPS</span></button>
 
-        <hr>
-
-        <!-- SEKCJA 2: GODZINY RAPORTÓW -->
-        <h3 id="ui-hours-title">Wybierz godziny raportów (domyślnie o 8:00 i 14:00)</h3>
-
-        <label id="ui-morning">Raport poranny</label>
-        <select id="rano">
-            <option value="" id="opt-rano-none">(bez zmian)</option>
-            <option value="05:00">05:00</option>
-            <option value="06:00">06:00</option>
-            <option value="07:00">07:00</option>
-            <option value="08:00">08:00</option>
-            <option value="09:00">09:00</option>
-            <option value="10:00">10:00</option>
-            <option value="11:00">11:00</option>
-            <option value="brak" id="opt-rano-off">Nie chcę rano</option>
-        </select>
-
-        <label id="ui-evening">Aktualizacja popołudniowa</label>
-        <select id="wieczor">
-            <option value="" id="opt-wiecz-none">(bez zmian)</option>
-            <option value="13:00">13:00</option>
-            <option value="14:00">14:00</option>
-            <option value="15:00">15:00</option>
-            <option value="16:00">16:00</option>
-            <option value="brak" id="opt-wiecz-off">Nie chcę popołudniu</option>
-        </select>
-
-        <button id="save-settings-button">💾 <span id="save-text">Zapisz ustawienia raportów</span></button>
     </div>
 
     <script>
@@ -199,69 +113,27 @@
         const translations = {
             "pl": { 
                 title: "Panel sterowania", 
-                btnGps: "Zaktualizuj przez GPS", 
-                hoursTitle: "Wybierz godziny raportów (domyślnie o 8:00 i 14:00)",
-                morning: "Raport poranny", 
-                evening: "Aktualizacja popołudniowa", 
-                btnSave: "Zapisz ustawienia raportów",
-                optNoChange: "(bez zmian)",
-                optOffMorn: "Nie chcę rano",
-                optOffEve: "Nie chcę popołudniu"
+                btnGps: "Aktualizuj przez GPS",
             },
             "en": { 
                 title: "Control Panel", 
                 btnGps: "Update via GPS", 
-                hoursTitle: "Choose report hours (default at 8:00 and 14:00)",
-                morning: "Morning report", 
-                evening: "Afternoon update", 
-                btnSave: "Save report settings",
-                optNoChange: "(no change)",
-                optOffMorn: "Turn off morning report",
-                optOffEve: "Turn off afternoon update"
             },
             "de": { 
                 title: "Bedienfeld", 
                 btnGps: "Mit GPS aktualisieren", 
-                hoursTitle: "Berichtszeiten wählen (Standard um 8:00 und 14:00)",
-                morning: "Morgenbericht", 
-                evening: "Nachmittags-Update", 
-                btnSave: "Berichtseinstellungen speichern",
-                optNoChange: "(keine Änderung)",
-                optOffMorn: "Morgens deaktivieren",
-                optOffEve: "Nachmittags deaktivieren"
             },
             "fr": { 
                 title: "Panneau de configuration", 
                 btnGps: "Mettre à jour via GPS", 
-                hoursTitle: "Choisissez les heures (par défaut à 8:00 et 14:00)",
-                morning: "Rapport matinal", 
-                evening: "Mise à jour l'après-midi", 
-                btnSave: "Enregistrer les paramètres",
-                optNoChange: "(aucun changement)",
-                optOffMorn: "Désactiver le matin",
-                optOffEve: "Désactiver l'après-midi"
             },
             "es": { 
                 title: "Panel de control", 
                 btnGps: "Actualizar vía GPS", 
-                hoursTitle: "Elige las horas de reporte (por defecto a las 8:00 y 14:00)",
-                morning: "Reporte matutino", 
-                evening: "Actualización de tarde", 
-                btnSave: "Guardar ajustes de reporte",
-                optNoChange: "(sin cambios)",
-                optOffMorn: "Desactivar por la mañana",
-                optOffEve: "Desactivar por la tarde"
             },
             "no": { 
                 title: "Kontrollpanel", 
                 btnGps: "Oppdater via GPS", 
-                hoursTitle: "Velg rapporttider (standard kl. 8:00 og 14:00)",
-                morning: "Morgenrapport", 
-                evening: "Ettermiddagsoppdatering", 
-                btnSave: "Lagre rapportinnstillinger",
-                optNoChange: "(ingen endring)",
-                optOffMorn: "Slå av morgenrapport",
-                optOffEve: "Slå av ettermiddagsoppdatering"
             }
         };
 
@@ -269,16 +141,6 @@
         
         document.getElementById("ui-title").innerText = t.title;
         document.getElementById("gps-text").innerText = t.btnGps;
-        document.getElementById("ui-hours-title").innerText = t.hoursTitle;
-        document.getElementById("ui-morning").innerText = t.morning;
-        document.getElementById("ui-evening").innerText = t.evening;
-        document.getElementById("save-text").innerText = t.btnSave;
-
-        document.getElementById("opt-rano-none").innerText = t.optNoChange;
-        document.getElementById("opt-wiecz-none").innerText = t.optNoChange;
-        document.getElementById("opt-rano-off").innerText = t.optOffMorn;
-        document.getElementById("opt-wiecz-off").innerText = t.optOffEve;
-
         document.getElementById("gps-button").addEventListener("click", () => {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
@@ -297,14 +159,6 @@
             }
         });
 
-        document.getElementById("save-settings-button").addEventListener("click", () => {
-            const payload = JSON.stringify({
-                type: "set_settings",
-                rano: document.getElementById("rano").value,
-                wieczor: document.getElementById("wieczor").value
-            });
-            tg.sendData(payload);
-        });
     </script>
 </body>
 </html>
