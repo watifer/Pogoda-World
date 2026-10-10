@@ -89,8 +89,20 @@ PENDING_DELETE_TTL_SEC = 300
 # zachowanie, a potem zbiera dwie odpowiedzi („brak” wyłącza slot).
 # Stan żyje WYŁĄCZNIE w RAM (jak PENDING_CITY): wygasa po TTL, a po restarcie
 # procesu znika. Nic nie trafia do arkusza ani do nowej bazy.
-# Format: { str(chat_id): {"user_id": str, "stage": str, "morning": str|None,
-#                          "afternoon": str|None, "expires_ts": float} }
+#
+# KLUCZ jest stabilny przez cały dialog i składa się z dwóch elementów:
+#   "<chat_id>:<admin_user_id>"
+# Etap i czas wygaśnięcia są POLAMI WARTOŚCI (zmieniają się przy przejściu
+# confirm -> morning -> afternoon), nigdy częścią klucza — dzięki temu
+# przejścia, timeout i anulowanie zawsze trafiają na ten sam wpis:
+#   { "<chat_id>:<admin_user_id>": {
+#         "chat_id": str,          # powtórzone dla czytelności logów
+#         "user_id": str,          # autor dialogu (administrator / właściciel)
+#         "stage": "confirm" | "morning" | "afternoon",
+#         "morning": "HH:MM" | "brak" | None,
+#         "afternoon": "HH:MM" | "brak" | None,
+#         "expires_at": float,     # epoch seconds; po tym czasie stan znika
+#     } }
 PENDING_REPORT = {}
 PENDING_REPORT_TTL_SEC = 600   # 10 minut na przejście całego dialogu
 
@@ -365,7 +377,7 @@ def _prune_expired_pending(now_ts=None):
         if now_ts >= float(exp or 0):
             PENDING_DELETE.pop(key, None)
     for key, entry in list(PENDING_REPORT.items()):
-        if now_ts >= float((entry or {}).get("expires_ts", 0) or 0):
+        if now_ts >= float((entry or {}).get("expires_at", 0) or 0):
             PENDING_REPORT.pop(key, None)
 
 
@@ -449,37 +461,60 @@ def _delete_answer_is_confirmation(chat_id, delete_cmd, text, lang) -> bool:
 # samym stylu co PENDING_CITY: słownik w RAM, TTL, brak ogólnego frameworka
 # stanów. Zapis do Users następuje DOPIERO po ostatniej odpowiedzi — nigdy
 # w środku dialogu i nigdy na odpowiedź innej osoby niż jego autor.
+def _norm_report_user_id(user_id):
+    """Identyfikator autora dialogu w formie klucza (brak id -> "")."""
+    return "" if user_id is None else str(user_id).strip()
+
+
+def _report_state_key(chat_id, user_id):
+    """STABILNY klucz stanu: czat + autor dialogu.
+
+    ``stage`` i ``expires_at`` są polami WARTOŚCI, więc przejście
+    confirm -> morning -> afternoon, odnowienie TTL oraz anulowanie zawsze
+    operują na tym samym wpisie — klucz nie zmienia się w trakcie dialogu.
+    """
+    return f"{users_store.norm_chat_id(chat_id)}:{_norm_report_user_id(user_id)}"
+
+
 def _set_pending_report(chat_id, user_id, stage, morning=None, afternoon=None,
                         now_ts=None):
-    """Zakłada (albo nadpisuje) dialog godzin raportów dla czatu."""
+    """Zakłada (albo nadpisuje) wpis dialogu pod niezmiennym kluczem czat+autor."""
     now_ts = time.time() if now_ts is None else float(now_ts)
+    key = _report_state_key(chat_id, user_id)
     entry = {
-        "user_id": "" if user_id is None else str(user_id),
+        "chat_id": users_store.norm_chat_id(chat_id),
+        "user_id": _norm_report_user_id(user_id),
         "stage": str(stage),
         "morning": morning,
         "afternoon": afternoon,
-        "expires_ts": now_ts + PENDING_REPORT_TTL_SEC,
+        "expires_at": now_ts + PENDING_REPORT_TTL_SEC,
     }
-    PENDING_REPORT[str(chat_id)] = entry
+    # Jeden aktywny dialog na czat: wpisy INNYCH osób z tego samego czatu
+    # znikają, gdy ktoś zaczyna nowy dialog (ponowne /raport kasuje poprzedni
+    # stan — także wtedy, gdy rozpoczął go inny administrator).
+    prefix = f"{users_store.norm_chat_id(chat_id)}:"
+    for stale_key in [k for k in PENDING_REPORT if k.startswith(prefix) and k != key]:
+        PENDING_REPORT.pop(stale_key, None)
+    PENDING_REPORT[key] = entry
     return entry
 
 
-def _get_pending_report(chat_id, now_ts=None):
-    """Zwraca aktywny dialog albo None (brak wpisu / po TTL)."""
-    key = str(chat_id)
+def _get_pending_report(chat_id, user_id, now_ts=None):
+    """Zwraca aktywny dialog (czat + autor) albo None (brak wpisu / po TTL)."""
+    key = _report_state_key(chat_id, user_id)
     entry = PENDING_REPORT.get(key)
     if not entry:
         return None
     now_ts = time.time() if now_ts is None else float(now_ts)
-    if now_ts >= float(entry.get("expires_ts", 0) or 0):
+    if now_ts >= float(entry.get("expires_at", 0) or 0):
         PENDING_REPORT.pop(key, None)
         return None
     return entry
 
 
-def _clear_pending_report(chat_id):
-    """Kończy dialog bez dotykania danych w Users."""
-    PENDING_REPORT.pop(str(chat_id), None)
+def _clear_pending_report(chat_id, user_id):
+    """Kończy dialog bez dotykania danych w Users (klucz czat + autor)."""
+    PENDING_REPORT.pop(_report_state_key(chat_id, user_id), None)
 
 
 _REPORT_TIME_RE = re.compile(r"^(\d{1,2})\s*:\s*(\d{2})$")
@@ -625,7 +660,7 @@ def _save_report_settings(chat_id, lang, users_ws, users_map, pending):
         users_store.set_report_settings,
         users_ws, chat_id, morning, afternoon,
     )
-    _clear_pending_report(chat_id)
+    _clear_pending_report(chat_id, pending.get("user_id"))
     if not saved:
         send_reply(chat_id, t_ui(lang, "report_save_err"))
         return
@@ -669,7 +704,8 @@ def _handle_report_slot_answer(chat_id, lang, users_ws, users_map, pending,
         pending[slot] = parsed
 
     if stage == STAGE_REPORT_MORNING:
-        pending["stage"] = STAGE_REPORT_AFTERNOON
+        # Ten sam klucz (czat + autor): zmienia się wyłącznie pole stage,
+        # a TTL liczy się od nowa od ostatniej odpowiedzi.
         _set_pending_report(chat_id, pending.get("user_id"),
                             STAGE_REPORT_AFTERNOON,
                             morning=pending.get("morning"),
@@ -700,29 +736,30 @@ def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) 
     if head in REPORT_COMMAND_HEADS:
         argument = (_split_command(text, REPORT_COMMAND_HEADS) or "").strip()
         if _norm_answer(argument) in REPORT_CANCEL_ANSWERS:
-            _clear_pending_report(chat_id)
+            _clear_pending_report(chat_id, user_id)
             send_reply(chat_id, t_ui(lang, "report_cancelled"))
             return True
         # Ponowne /raport w trakcie dialogu: stary stan znika, startujemy
         # od aktualnych wartości zapisanych w Users.
         return _start_report_dialog(chat_id, user_id, lang, users_map)
 
-    pending = _get_pending_report(chat_id)
+    # Klucz = czat + autor, więc odpowiedź innej osoby po prostu NIE znajdzie
+    # tego stanu (nie ma czego przejmować) i nie zmieni niczyich danych.
+    pending = _get_pending_report(chat_id, user_id)
     if not pending or not text:
         return False
-
-    # Cudza wiadomość nie przejmuje dialogu (i nie kasuje go nikomu).
-    if str(pending.get("user_id") or "") != str("" if user_id is None else user_id):
+    # Pas bezpieczeństwa: wpis musi należeć dokładnie do tego autora.
+    if str(pending.get("user_id") or "") != _norm_report_user_id(user_id):
         return False
     if text.startswith("/"):
         # Inna komenda właściciela kończy dialog — bez zostawiania
         # niewidocznego stanu, który przechwyci kolejny wpisany tekst.
-        _clear_pending_report(chat_id)
+        _clear_pending_report(chat_id, user_id)
         return False
 
     answer = _norm_answer(text)
     if answer in REPORT_CANCEL_ANSWERS:
-        _clear_pending_report(chat_id)
+        _clear_pending_report(chat_id, user_id)
         send_reply(chat_id, t_ui(lang, "report_cancelled"))
         return True
 
@@ -733,7 +770,7 @@ def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) 
             # „tak”: godziny zostają dokładnie takie, jakie są — zapisujemy
             # wyłącznie nowe ustawienia, i to dopiero na końcu dialogu.
             settings = users_store.get_report_settings(users_map, chat_id) or {}
-            _clear_pending_report(chat_id)
+            _clear_pending_report(chat_id, user_id)
             send_reply(chat_id, t_ui(
                 lang, "report_kept",
                 morning=_report_slot_display(settings.get("report_morning_time"), lang),
@@ -741,7 +778,7 @@ def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) 
             ))
             return True
         if answer in report_words(lang, "no"):
-            pending["stage"] = STAGE_REPORT_MORNING
+            # Ten sam klucz (czat + autor), nowy etap i nowy TTL.
             _set_pending_report(chat_id, pending.get("user_id"),
                                 STAGE_REPORT_MORNING)
             send_reply(chat_id, t_ui(
@@ -762,7 +799,7 @@ def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) 
         )
 
     # Nieznany etap (np. po zmianie kodów w RAM): nie zgadujemy, kończymy stan.
-    _clear_pending_report(chat_id)
+    _clear_pending_report(chat_id, user_id)
     return False
 
 

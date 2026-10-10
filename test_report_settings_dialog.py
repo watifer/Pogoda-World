@@ -86,6 +86,11 @@ def last(bot, chat_id):
     return bot.replies(chat_id)[-1]
 
 
+def pending_report(chat_id, user_id):
+    """Wpis dialogu odczytany stabilnym kluczem (czat + autor)."""
+    return lb.PENDING_REPORT[lb._report_state_key(chat_id, user_id)]
+
+
 # ============================================================================
 # A. ADMINISTRATOR GRUPY
 # ============================================================================
@@ -102,10 +107,10 @@ class TestGroupAdminDialog:
         assert "Popołudnie: 14:00" in panel
         assert "Czy zachować te ustawienia?" in panel
         # Stan dialogu: czat + autor + etap + czas wygaśnięcia.
-        pending = lb.PENDING_REPORT[str(GROUP)]
+        pending = lb.PENDING_REPORT[lb._report_state_key(GROUP, ADMIN)]
         assert pending["stage"] == lb.STAGE_REPORT_CONFIRM
         assert pending["user_id"] == str(ADMIN)
-        assert pending["expires_ts"] > time.time()
+        assert pending["expires_at"] > time.time()
 
     def test_yes_keeps_hours_without_touching_users(self, bot, as_admin):
         before = seed_chat(bot, GROUP, user_id=ADMIN)
@@ -128,7 +133,7 @@ class TestGroupAdminDialog:
         assert "raportu porannego" in prompt
         assert "05:00" in prompt and "10:00" in prompt
         assert "brak" in prompt
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_MORNING
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
 
     def test_full_flow_saves_both_slots_only_at_the_end(self, bot, as_admin):
         seed_chat(bot, GROUP, user_id=ADMIN)
@@ -184,11 +189,11 @@ class TestGroupAdminDialog:
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "07:30", user_id=ADMIN))
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_AFTERNOON
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_AFTERNOON
 
         # Ponowne /raport: stary stan znika, zaczynamy od wartości z Users.
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        pending = lb.PENDING_REPORT[str(GROUP)]
+        pending = pending_report(GROUP, ADMIN)
         assert pending["stage"] == lb.STAGE_REPORT_CONFIRM
         assert pending["morning"] is None and pending["afternoon"] is None
         assert "Rano: 08:00" in last(bot, GROUP)
@@ -228,7 +233,7 @@ class TestGroupAdminDialog:
         bot.run(bot.msg(GROUP, "może", user_id=ADMIN))
 
         assert "Nie zrozumiałem odpowiedzi" in last(bot, GROUP)
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_CONFIRM
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_CONFIRM
 
 
 # ============================================================================
@@ -250,17 +255,17 @@ class TestGroupPermissions:
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_MORNING
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
 
         # Odpowiedź zwykłego członka: zero zmian stanu i zero zapisów.
         bot.run(bot.msg(GROUP, "brak", user_id=MEMBER))
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_MORNING
-        assert lb.PENDING_REPORT[str(GROUP)]["user_id"] == str(ADMIN)
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
+        assert pending_report(GROUP, ADMIN)["user_id"] == str(ADMIN)
         assert bot.gc.users.record(GROUP) == before
 
         # Dopiero odpowiedź administratora przesuwa dialog dalej.
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN, chat_type="group"))
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_AFTERNOON
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_AFTERNOON
         assert bot.gc.users.record(GROUP) == before, "zapis dopiero po obu slotach"
 
     def test_api_error_blocks_change_and_shows_safe_message(self, bot, api_error):
@@ -305,7 +310,7 @@ class TestValidation:
         bot.run(bot.msg(GROUP, value, user_id=ADMIN))
 
         assert "raportu popołudniowego" in last(bot, GROUP)
-        assert lb.PENDING_REPORT[str(GROUP)]["morning"] == expected
+        assert pending_report(GROUP, ADMIN)["morning"] == expected
 
     @pytest.mark.parametrize("value", [
         "04:59", "10:01", "11:00", "12:00", "16:00", "24:00", "25:00",
@@ -320,7 +325,7 @@ class TestValidation:
 
         # Błędna wartość: powtórzone to samo pytanie, bez przejścia dalej.
         assert "raportu porannego" in last(bot, GROUP)
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_MORNING
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
         assert bot.gc.users.record(GROUP) == before
 
     @pytest.mark.parametrize("value,expected", [
@@ -353,7 +358,7 @@ class TestValidation:
         bot.run(bot.msg(GROUP, value, user_id=ADMIN))
 
         assert "raportu popołudniowego" in last(bot, GROUP)
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_AFTERNOON
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_AFTERNOON
         assert bot.gc.users.record(GROUP) == before
 
     @pytest.mark.parametrize("word", ["brak", "off"])
@@ -363,7 +368,7 @@ class TestValidation:
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
         bot.run(bot.msg(GROUP, word, user_id=ADMIN))
-        assert lb.PENDING_REPORT[str(GROUP)]["morning"] == "brak"
+        assert pending_report(GROUP, ADMIN)["morning"] == "brak"
         bot.run(bot.msg(GROUP, "14:00", user_id=ADMIN))
 
         record = bot.gc.users.record(GROUP)
@@ -379,7 +384,7 @@ class TestValidation:
         bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "   ", user_id=ADMIN))
 
-        assert lb.PENDING_REPORT[str(GROUP)]["stage"] == lb.STAGE_REPORT_MORNING
+        assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
         assert bot.gc.users.record(GROUP) == before
 
     def test_parser_is_the_single_source_of_truth_for_both_prompts(self):
@@ -395,12 +400,114 @@ class TestValidation:
 # D. STAN DIALOGU
 # ============================================================================
 class TestDialogState:
+    """Klucz stanu = chat_id + admin_user_id; stage i expires_at to pola wartości."""
+
+    def test_state_key_is_chat_id_plus_admin_user_id(self, bot, as_admin):
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+
+        assert list(lb.PENDING_REPORT) == [f"{GROUP}:{ADMIN}"]
+        entry = lb.PENDING_REPORT[f"{GROUP}:{ADMIN}"]
+        # Klucz NIE niesie ani etapu, ani czasu wygaśnięcia — to pola wartości.
+        assert entry["chat_id"] == str(GROUP)
+        assert entry["user_id"] == str(ADMIN)
+        assert entry["stage"] == lb.STAGE_REPORT_CONFIRM
+        assert isinstance(entry["expires_at"], float)
+        assert entry["morning"] is None and entry["afternoon"] is None
+
+    def test_key_stays_the_same_across_all_stages(self, bot, as_admin):
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+        key_confirm = list(lb.PENDING_REPORT)[0]
+        expires_confirm = pending_report(GROUP, ADMIN)["expires_at"]
+
+        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        key_morning = list(lb.PENDING_REPORT)[0]
+        entry = pending_report(GROUP, ADMIN)
+        assert entry["stage"] == lb.STAGE_REPORT_MORNING
+        assert key_morning == key_confirm, "przejście confirm -> morning nie zmienia klucza"
+        assert entry["expires_at"] >= expires_confirm, "TTL liczy się od nowa"
+
+        bot.run(bot.msg(GROUP, "08:26", user_id=ADMIN))
+        key_afternoon = list(lb.PENDING_REPORT)[0]
+        entry = pending_report(GROUP, ADMIN)
+        assert entry["stage"] == lb.STAGE_REPORT_AFTERNOON
+        assert key_afternoon == key_confirm, "przejście morning -> afternoon nie zmienia klucza"
+        assert entry["morning"] == "08:26"
+        assert len(lb.PENDING_REPORT) == 1, "jeden wpis na czat"
+
+    def test_rejected_value_keeps_the_same_entry(self, bot, as_admin):
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        key = list(lb.PENDING_REPORT)[0]
+
+        for bad in ("04:59", "10:01", "abc"):
+            bot.run(bot.msg(GROUP, bad, user_id=ADMIN))
+            assert list(lb.PENDING_REPORT) == [key]
+            assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
+            assert pending_report(GROUP, ADMIN)["morning"] is None
+
+    def test_member_finds_no_state_under_any_key(self, bot, as_admin):
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+
+        assert lb._get_pending_report(GROUP, MEMBER) is None
+        assert lb._get_pending_report(GROUP, 999) is None
+        assert lb._get_pending_report(PRIVATE, ADMIN) is None
+        assert lb._get_pending_report(GROUP, ADMIN) is not None
+
+    def test_second_admin_gets_own_key_and_closes_the_previous_one(self, bot, monkeypatch):
+        monkeypatch.setattr(lb, "_telegram_chat_member_status",
+                            lambda chat_id, user_id: "administrator")
+        other_admin = 333
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+        assert list(lb.PENDING_REPORT) == [f"{GROUP}:{ADMIN}"]
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=other_admin))
+        # Jeden aktywny dialog na czat — nowy właściciel, własny klucz.
+        assert list(lb.PENDING_REPORT) == [f"{GROUP}:{other_admin}"]
+        assert lb._get_pending_report(GROUP, ADMIN) is None
+
+    def test_timeout_removes_the_entry_under_the_same_key(self, bot, as_admin):
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+        key = list(lb.PENDING_REPORT)[0]
+        pending_report(GROUP, ADMIN)["expires_at"] = time.time() - 1
+
+        assert lb._get_pending_report(GROUP, ADMIN) is None
+        assert lb.PENDING_REPORT == {}
+        assert key == f"{GROUP}:{ADMIN}"
+
+        # Po wygaśnięciu wpis znika także przy okazji zwykłego sprzątania RAM.
+        lb._set_pending_report(GROUP, ADMIN, lb.STAGE_REPORT_CONFIRM)
+        pending_report(GROUP, ADMIN)["expires_at"] = time.time() - 1
+        lb._prune_expired_pending()
+        assert lb.PENDING_REPORT == {}
+
+    def test_cancel_clears_exactly_the_owners_entry(self, bot, as_admin):
+        seed_chat(bot, GROUP, user_id=ADMIN)
+
+        bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        assert len(lb.PENDING_REPORT) == 1
+
+        bot.run(bot.msg(GROUP, "/raport anuluj", user_id=ADMIN))
+        assert lb.PENDING_REPORT == {}
+        assert lb._get_pending_report(GROUP, ADMIN) is None
 
     def test_expired_dialog_ends_without_saving(self, bot, as_admin):
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        lb.PENDING_REPORT[str(GROUP)]["expires_ts"] = time.time() - 1
+        pending_report(GROUP, ADMIN)["expires_at"] = time.time() - 1
 
         bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
 
@@ -415,7 +522,7 @@ class TestDialogState:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        assert lb.PENDING_REPORT.get(str(GROUP))
+        assert lb.PENDING_REPORT.get(lb._report_state_key(GROUP, ADMIN))
 
         bot.run(bot.msg(GROUP, "/info", user_id=ADMIN))
         assert lb.PENDING_REPORT == {}
@@ -426,7 +533,7 @@ class TestDialogState:
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "/info", user_id=MEMBER))
 
-        assert lb.PENDING_REPORT[str(GROUP)]["user_id"] == str(ADMIN)
+        assert pending_report(GROUP, ADMIN)["user_id"] == str(ADMIN)
 
     def test_pending_state_is_never_persisted_to_sheets(self, bot, as_admin):
         seed_chat(bot, GROUP, user_id=ADMIN)
@@ -438,7 +545,7 @@ class TestDialogState:
         assert list(bot.gc.users.grid[0]) == headers, "żadnych nowych kolumn stanu"
         values = [str(cell) for row in bot.gc.users.grid[1:] for cell in row]
         assert not any(word in value for value in values
-                       for word in ("confirm", "morning", "afternoon", "expires_ts"))
+                       for word in ("confirm", "morning", "afternoon", "expires_at"))
 
 
 # ============================================================================
