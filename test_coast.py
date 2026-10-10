@@ -9,9 +9,11 @@ Sprawdza rozdzielenie trybów:
 Uruchomienie: pytest test_coast.py -v
 """
 
+import json
 import sys
 import types
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -279,7 +281,107 @@ class TestGuards:
 
 
 # ═══════════════════════════════════════
-# 4. WERSJONOWANIE SYGNATURY
+# 4. GEOMETRIA SEKTORÓW I CACHE
+# ═══════════════════════════════════════
+
+class TestSeaSectors:
+    @pytest.mark.parametrize("bearing", [0, 0.0, 90, 180, 270, 359.999, 360, -0.001, 720])
+    def test_full_turn_contains_every_bearing(self, bearing):
+        assert cd.bearing_in_sector(bearing, 0.0, 360.0)
+
+    @pytest.mark.parametrize("bearing,expected", [
+        (0, True), (360, True), (90, False), (180, False), (270, False),
+    ])
+    def test_zero_width_is_not_a_full_turn(self, bearing, expected):
+        assert cd.bearing_in_sector(bearing, 0.0, 0.0) is expected
+
+    @pytest.mark.parametrize("sector,bearing,expected", [
+        ((350, 10), 350, True), ((350, 10), 0, True),
+        ((350, 10), 10, True), ((350, 10), 180, False),
+        ((90, 200), 90, True), ((90, 200), 150, True),
+        ((90, 200), 200, True), ((90, 200), 300, False),
+    ])
+    def test_wrap_and_ordinary_sectors(self, sector, bearing, expected):
+        assert cd.bearing_in_sector(bearing, *sector) is expected
+
+    @pytest.mark.parametrize("at_sea,expected", [
+        (lambda bearing: True, [(0.0, 360.0)]),
+        (lambda bearing: bearing in (0, 10, 340, 350), [(340.0, 20.0)]),
+        (lambda bearing: 90 <= bearing < 180, [(90.0, 180.0)]),
+    ])
+    def test_compute_signature_keeps_full_turn_and_other_sectors(self, monkeypatch, at_sea, expected):
+        """Przechodzi przez cały compute_signature bez opcjonalnego stosu geo."""
+        idx = cd.CoastIndex.__new__(cd.CoastIndex)
+        idx._tree = types.SimpleNamespace(query=lambda bbox: [object()])
+        idx.is_coastal_bbox_precheck = lambda lat, lon, radius: True
+        idx.is_ocean = lambda lat, lon: at_sea(lon)
+        monkeypatch.setattr(cd, "box", lambda *args: object())
+        monkeypatch.setattr(cd, "_geod", lambda: types.SimpleNamespace(
+            fwd=lambda lon, lat, bearing, dist: (bearing, lat, 0.0),
+        ))
+
+        sig = idx.compute_signature(54.608, 18.801, sample_radii_km=(1.0,))
+        assert sig.is_coastal and sig.distance_to_ocean_km == 1.0
+        assert sig.sea_sectors == expected
+        if expected == [(0.0, 360.0)]:
+            assert sig.sea_sectors != [(0.0, 0.0)]
+
+    @pytest.mark.parametrize("bearing", [0, 90, 180, 270])
+    def test_full_turn_marine_storm_in_every_direction(self, bearing):
+        full = _sig(distance_km=1.0, sectors=[(0.0, 360.0)])
+        assert get_coastal_alert_mode(
+            full, 60.0, 90.0, bearing, "America/New_York", JANUARY_NY
+        ) == MODE_MARINE_STORM
+
+    def test_full_turn_from_shipped_ocean_dataset_if_available(self):
+        """Runtime Helu; test bez sieci, pomijany bez lokalnego datasetu/stosu geo."""
+        shp = Path(__file__).parent / "data/natural_earth/ne_50m_ocean/ne_50m_ocean.shp"
+        if not cd.GEO_STACK_AVAILABLE or not shp.is_file():
+            pytest.skip("Brak lokalnego ne_50m_ocean lub opcjonalnego stosu geo")
+        sig = cd.CoastIndex(str(shp)).compute_signature(54.608, 18.801)
+        assert sig.sea_sectors == [(0.0, 360.0)]
+        for bearing in (0, 90, 180, 270):
+            assert get_coastal_alert_mode(
+                sig, 60.0, 90.0, bearing, "Europe/Warsaw", OCTOBER
+            ) == MODE_MARINE_STORM
+
+
+@pytest.mark.parametrize("lazy", [False, True])
+def test_old_cache_recomputes_full_turn_and_persists_new_version(tmp_path, lazy):
+    path = tmp_path / "coast_cache.json"
+    key = cd.coast_cache_key(54.608, 18.801)
+    old_version = cd.COAST_SIG_VERSION.removesuffix(";full360")
+    assert old_version != cd.COAST_SIG_VERSION
+    path.write_text(json.dumps({key: {
+        "version": old_version, "is_coastal": True,
+        "distance_to_ocean_km": 1.0, "sea_sectors": [[0.0, 0.0]],
+    }}), encoding="utf-8")
+
+    calls = []
+
+    class Index:
+        def compute_signature(self, **kwargs):
+            calls.append(kwargs)
+            return _sig(distance_km=1.0, sectors=[(0.0, 360.0)])
+
+    store = cd.JsonCoastSigStore(str(path))
+    if lazy:
+        read = lambda store: cd.get_or_compute_coast_signature_lazy(store, 54.608, 18.801, Index)
+    else:
+        idx = Index()
+        read = lambda store: cd.get_or_compute_coast_signature(idx, store, 54.608, 18.801)
+
+    assert read(store).sea_sectors == [(0.0, 360.0)]
+    assert len(calls) == 1
+    saved = json.loads(path.read_text(encoding="utf-8"))[key]
+    assert saved["version"] == cd.COAST_SIG_VERSION
+    assert saved["sea_sectors"] == [[0.0, 360.0]]
+    assert read(cd.JsonCoastSigStore(str(path))).sea_sectors == [(0.0, 360.0)]
+    assert len(calls) == 1  # trafienie w nową wersję, także po ponownym wczytaniu
+
+
+# ═══════════════════════════════════════
+# 5. WERSJONOWANIE SYGNATURY
 # ═══════════════════════════════════════
 
 class TestSignatureVersion:
@@ -295,6 +397,7 @@ class TestSignatureVersion:
         assert cd.COAST_SIG_VERSION.startswith("ne_50m_ocean:50m")
         assert "v2" in cd.COAST_SIG_VERSION
         assert "marine75g90" in cd.COAST_SIG_VERSION
+        assert cd.COAST_SIG_VERSION.endswith(";full360")
 
 
 # ═══════════════════════════════════════
