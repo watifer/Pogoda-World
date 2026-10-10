@@ -11,6 +11,9 @@ import main_card
 from i18n import (
     t_ui,
     t_geocode,
+    report_word,
+    report_words,
+    REPORT_WORDS,
     GEOCODE_OK,
     GEOCODE_TOO_SHORT,
     GEOCODE_NO_MATCH,
@@ -76,6 +79,45 @@ PENDING_SAVE_TTL_SEC = 600
 # reply ("Tak, chcę" / "Nie, nie chcę") albo ukrytą komendą techniczną.
 PENDING_DELETE = {}     # { str(chat_id): expires_ts }
 PENDING_DELETE_TTL_SEC = 300
+
+# =====================================================================
+# PR3 GRUPY — KONWERSACYJNA ZMIANA GODZIN RAPORTÓW (/raport, /report)
+# =====================================================================
+# W grupach Telegram nie pozwala na reply-keyboard z web_app, a prywatny
+# WebApp został odcięty od zapisu godzin — dlatego panel godzin jest teraz
+# zwykłym dialogiem tekstowym: /raport pokazuje aktualne godziny, pyta o ich
+# zachowanie, a potem zbiera dwie odpowiedzi („brak” wyłącza slot).
+# Stan żyje WYŁĄCZNIE w RAM (jak PENDING_CITY): wygasa po TTL, a po restarcie
+# procesu znika. Nic nie trafia do arkusza ani do nowej bazy.
+# Format: { str(chat_id): {"user_id": str, "stage": str, "morning": str|None,
+#                          "afternoon": str|None, "expires_ts": float} }
+PENDING_REPORT = {}
+PENDING_REPORT_TTL_SEC = 600   # 10 minut na przejście całego dialogu
+
+# Etapy dialogu
+STAGE_REPORT_CONFIRM = "confirm"      # czy zachować obecne godziny?
+STAGE_REPORT_MORNING = "morning"      # godzina raportu porannego
+STAGE_REPORT_AFTERNOON = "afternoon"  # godzina raportu popołudniowego
+
+# /menu to nazwa kanoniczna panelu; /raport (PL) i /report (EN) to aliasy
+# widoczne w menu Telegrama. Wszystkie trzy uruchamiają ten sam dialog.
+REPORT_COMMAND_HEADS = {"/menu", "/raport", "/report"}
+
+# Dozwolone okna godzin (włącznie z krańcami). ranges są jedynym źródłem
+# prawdy — komunikaty pytań i walidacja czytają te same wartości.
+REPORT_MORNING_WINDOW = ("05:00", "10:00")
+REPORT_AFTERNOON_WINDOW = ("13:00", "16:00")
+REPORT_TIME_EXAMPLES = {
+    STAGE_REPORT_MORNING: "08:26",
+    STAGE_REPORT_AFTERNOON: "14:00",
+}
+
+# Marker wyłączonego slotu — dokładnie ta wartość, którą czyta scheduler
+# (main_card._parse_scheduler_report_time) i zapisuje users_store.
+REPORT_OFF_MARKER = "brak"
+
+# Statusy członka czatu uprawniające do zmiany ustawień grupy.
+REPORT_ADMIN_STATUSES = ("creator", "administrator")
 
 # POPRAWKA #7: po skutecznym hard delete idą DOKŁADNIE dwa komunikaty —
 # delete_me_done, a po tej pauzie osobny, pełny no_access (dostęp został
@@ -313,7 +355,7 @@ def _take_pending_city_ctx(chat_id, now_ts=None, consume=True):
 
 
 def _prune_expired_pending(now_ts=None):
-    """Sprząta wygasłe stany RAM (miasto, pending zapisu, potwierdzenie kasacji)."""
+    """Sprząta wygasłe stany RAM (miasto, pending zapisu, kasacja, godziny raportów)."""
     now_ts = time.time() if now_ts is None else float(now_ts)
     _prune_expired_pending_saves(now_ts)
     for key, entry in list(PENDING_CITY.items()):
@@ -322,6 +364,9 @@ def _prune_expired_pending(now_ts=None):
     for key, exp in list(PENDING_DELETE.items()):
         if now_ts >= float(exp or 0):
             PENDING_DELETE.pop(key, None)
+    for key, entry in list(PENDING_REPORT.items()):
+        if now_ts >= float((entry or {}).get("expires_ts", 0) or 0):
+            PENDING_REPORT.pop(key, None)
 
 
 def _ask_oneoff_city(chat_id, lang, ctx):
@@ -373,6 +418,14 @@ def _norm_answer(text):
     return re.sub(r"\s+", " ", (text or "").strip().lower())
 
 
+# Anulowanie dialogu godzin raportów (/raport anuluj). Słowo rozpoznajemy we
+# wszystkich obsługiwanych językach — autor zmiany w grupie nie musi pisać
+# w języku czatu, a polecenie i tak niczego nie zapisuje.
+REPORT_CANCEL_ANSWERS = frozenset(
+    _norm_answer(report_word(code, "cancel")) for code in REPORT_WORDS
+) | {"cancel", "anuluj"}
+
+
 def _delete_answer_is_confirmation(chat_id, delete_cmd, text, lang) -> bool:
     """True, gdy odpowiedź na pytanie o kasację to potwierdzenie ("Tak, chcę").
 
@@ -387,6 +440,330 @@ def _delete_answer_is_confirmation(chat_id, delete_cmd, text, lang) -> bool:
         return delete_cmd == "/delete_yes"
     yes_label, _no_label = _delete_confirm_labels(lang)
     return _norm_answer(text) == _norm_answer(yes_label)
+
+
+# =====================================================================
+# PR3 GRUPY — DIALOG GODZIN RAPORTÓW (/raport, /report)
+# =====================================================================
+# Prosty pending state (confirm -> morning -> afternoon), dokładnie w tym
+# samym stylu co PENDING_CITY: słownik w RAM, TTL, brak ogólnego frameworka
+# stanów. Zapis do Users następuje DOPIERO po ostatniej odpowiedzi — nigdy
+# w środku dialogu i nigdy na odpowiedź innej osoby niż jego autor.
+def _set_pending_report(chat_id, user_id, stage, morning=None, afternoon=None,
+                        now_ts=None):
+    """Zakłada (albo nadpisuje) dialog godzin raportów dla czatu."""
+    now_ts = time.time() if now_ts is None else float(now_ts)
+    entry = {
+        "user_id": "" if user_id is None else str(user_id),
+        "stage": str(stage),
+        "morning": morning,
+        "afternoon": afternoon,
+        "expires_ts": now_ts + PENDING_REPORT_TTL_SEC,
+    }
+    PENDING_REPORT[str(chat_id)] = entry
+    return entry
+
+
+def _get_pending_report(chat_id, now_ts=None):
+    """Zwraca aktywny dialog albo None (brak wpisu / po TTL)."""
+    key = str(chat_id)
+    entry = PENDING_REPORT.get(key)
+    if not entry:
+        return None
+    now_ts = time.time() if now_ts is None else float(now_ts)
+    if now_ts >= float(entry.get("expires_ts", 0) or 0):
+        PENDING_REPORT.pop(key, None)
+        return None
+    return entry
+
+
+def _clear_pending_report(chat_id):
+    """Kończy dialog bez dotykania danych w Users."""
+    PENDING_REPORT.pop(str(chat_id), None)
+
+
+_REPORT_TIME_RE = re.compile(r"^(\d{1,2})\s*:\s*(\d{2})$")
+
+
+def _parse_report_time(raw, window):
+    """Zwraca HH:MM dla poprawnej godziny z okna ``window`` albo None.
+
+    Akceptuje zarówno ``08:26``, jak i ``8:26`` (normalizacja do ``08:26``).
+    Okno jest domknięte: 05:00 i 10:00 przechodzą dla poranka, 04:59 i 10:01
+    już nie. Wartość wyłączająca („brak”) NIE jest tutaj rozpoznawana — pustej
+    odpowiedzi też nie traktujemy jako wyłączenia.
+    """
+    text = str(raw or "").strip()
+    match = _REPORT_TIME_RE.match(text)
+    if not match:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if not 0 <= minute <= 59:
+        return None
+    lo_h, lo_m = (int(part) for part in window[0].split(":"))
+    hi_h, hi_m = (int(part) for part in window[1].split(":"))
+    if (hour, minute) < (lo_h, lo_m) or (hour, minute) > (hi_h, hi_m):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _report_slot_display(value, lang):
+    """Godzina do pokazania: wartość, zlokalizowane „brak” albo „—” (puste)."""
+    raw = str(value or "").strip()
+    if raw.lower() == REPORT_OFF_MARKER:
+        return report_word(lang, "off")
+    if not raw:
+        return "—"
+    return raw
+
+
+def _report_saved_message(lang, morning, afternoon):
+    """Podsumowanie po zapisaniu obu slotów (albo komunikat o wyłączeniu obu)."""
+    if morning == REPORT_OFF_MARKER and afternoon == REPORT_OFF_MARKER:
+        return t_ui(lang, "report_both_off")
+
+    off_label = t_ui(lang, "report_slot_off")
+    lines = [
+        t_ui(lang, "report_line_morning",
+             value=morning if morning != REPORT_OFF_MARKER else off_label),
+        t_ui(lang, "report_line_afternoon",
+             value=afternoon if afternoon != REPORT_OFF_MARKER else off_label),
+    ]
+    next_lines = []
+    if morning != REPORT_OFF_MARKER:
+        next_lines.append(t_ui(lang, "report_next_morning", time=morning))
+    if afternoon != REPORT_OFF_MARKER:
+        next_lines.append(t_ui(lang, "report_next_afternoon", time=afternoon))
+    return t_ui(lang, "report_saved", lines="\n".join(lines),
+                next="\n".join(next_lines))
+
+
+def _telegram_chat_member_status(chat_id, user_id):
+    """Status członka czatu z Telegram API; None, gdy sprawdzenie się nie udało.
+
+    Używane wyłącznie przez dialog /raport w grupach (pytanie o administratora).
+    Błąd sieci, odpowiedź ``ok: false`` albo brak pola status = None, czyli
+    „nie wiemy” — wywołujący traktuje to jako brak zgody (fail-closed).
+    """
+    try:
+        resp = requests.get(
+            f"{BASE_URL}/getChatMember",
+            params={"chat_id": chat_id, "user_id": user_id},
+            timeout=10,
+        )
+        data = resp.json() or {}
+    except Exception as e:
+        print(f"  ⚠️ [raport] getChatMember({chat_id}, {user_id}) nie powiodło się: {e}")
+        return None
+    if not data.get("ok"):
+        print(f"  ⚠️ [raport] getChatMember({chat_id}, {user_id}) odrzucone: {data.get('description')}")
+        return None
+    return str((data.get("result") or {}).get("status") or "").strip().lower()
+
+
+def _report_change_allowed(chat_id, user_id):
+    """Czy ten użytkownik może zmieniać godziny raportów tego czatu?
+
+    Zwraca True/False, a None, gdy NIE udało się sprawdzić uprawnień — None
+    nigdy nie oznacza zgody (fail-closed). W czacie prywatnym użytkownik
+    zmienia wyłącznie własne ustawienia, więc kontrola nie jest potrzebna;
+    w grupie wymagamy statusu administrator albo creator.
+    """
+    try:
+        is_private = int(chat_id) > 0
+    except (TypeError, ValueError):
+        return None
+    if is_private:
+        return True
+    if user_id is None:
+        return None
+    status = _telegram_chat_member_status(chat_id, user_id)
+    if status is None:
+        return None
+    return status in REPORT_ADMIN_STATUSES
+
+
+def _start_report_dialog(chat_id, user_id, lang, users_map):
+    """Pierwszy ekran /raport: aktualne godziny + pytanie o ich zachowanie.
+
+    Zwraca True (komenda została obsłużona). Dialog nie startuje — i nic nie
+    zapisuje — gdy użytkownik nie ma uprawnień, gdy nie udało się ich sprawdzić
+    albo gdy czat nie ma jeszcze rekordu w Users (nie tworzymy go tutaj).
+    """
+    allowed = _report_change_allowed(chat_id, user_id)
+    if allowed is None:
+        send_reply(chat_id, t_ui(lang, "report_perm_error"))
+        return True
+    if not allowed:
+        send_reply(chat_id, t_ui(lang, "report_no_perm"))
+        return True
+
+    settings = users_store.get_report_settings(users_map, chat_id)
+    if settings is None:
+        # Brak aktywnego rekordu Users: grupa wymaga wcześniejszej konfiguracji.
+        send_reply(chat_id, t_ui(lang, "menu_reports_migration"))
+        return True
+
+    _set_pending_report(chat_id, user_id, STAGE_REPORT_CONFIRM)
+    send_reply(chat_id, t_ui(
+        lang, "report_dialog",
+        morning=_report_slot_display(settings["report_morning_time"], lang),
+        afternoon=_report_slot_display(settings["report_afternoon_time"], lang),
+        yes=report_word(lang, "yes"),
+        no=report_word(lang, "no"),
+    ))
+    return True
+
+
+def _save_report_settings(chat_id, lang, users_ws, users_map, pending):
+    """Zapis obu slotów naraz + podsumowanie. Wywoływane na końcu dialogu."""
+    morning = pending.get("morning") or REPORT_OFF_MARKER
+    afternoon = pending.get("afternoon") or REPORT_OFF_MARKER
+
+    saved = _sheets_call(
+        "sheets.users.set_report_settings",
+        users_store.set_report_settings,
+        users_ws, chat_id, morning, afternoon,
+    )
+    _clear_pending_report(chat_id)
+    if not saved:
+        send_reply(chat_id, t_ui(lang, "report_save_err"))
+        return
+
+    # Odświeżamy mapę bieżącej paczki bez ponownego odczytu arkusza
+    # (ta sama semantyka co w ścieżce WebApp).
+    record = users_map.get(users_store.norm_chat_id(chat_id))
+    if record is not None:
+        record["report_morning_time"] = morning
+        record["report_afternoon_time"] = afternoon
+        _cache_users_map(users_map)
+
+    send_reply(chat_id, _report_saved_message(lang, morning, afternoon))
+
+
+def _handle_report_slot_answer(chat_id, lang, users_ws, users_map, pending,
+                               stage, answer):
+    """Obsługuje odpowiedź na pytanie o godzinę (poranną albo popołudniową)."""
+    window = (REPORT_MORNING_WINDOW if stage == STAGE_REPORT_MORNING
+              else REPORT_AFTERNOON_WINDOW)
+    ask_key = ("report_ask_morning" if stage == STAGE_REPORT_MORNING
+               else "report_ask_afternoon")
+    slot = ("morning" if stage == STAGE_REPORT_MORNING else "afternoon")
+
+    if _norm_answer(answer) in report_words(lang, "off"):
+        pending[slot] = REPORT_OFF_MARKER
+    else:
+        parsed = _parse_report_time(answer, window)
+        if parsed is None:
+            # Błędna wartość: nie przechodzimy do następnego etapu, niczego nie
+            # zapisujemy i POWTARZAMY właściwe pytanie razem z przykładem.
+            send_reply(chat_id, "\n\n".join((
+                t_ui(lang, "report_bad_time",
+                     lo=window[0], hi=window[1],
+                     example=REPORT_TIME_EXAMPLES.get(stage, window[0]),
+                     off=report_word(lang, "off")),
+                t_ui(lang, ask_key,
+                     lo=window[0], hi=window[1], off=report_word(lang, "off")),
+            )))
+            return True
+        pending[slot] = parsed
+
+    if stage == STAGE_REPORT_MORNING:
+        pending["stage"] = STAGE_REPORT_AFTERNOON
+        _set_pending_report(chat_id, pending.get("user_id"),
+                            STAGE_REPORT_AFTERNOON,
+                            morning=pending.get("morning"),
+                            afternoon=pending.get("afternoon"))
+        send_reply(chat_id, t_ui(
+            lang, "report_ask_afternoon",
+            lo=REPORT_AFTERNOON_WINDOW[0], hi=REPORT_AFTERNOON_WINDOW[1],
+            off=report_word(lang, "off"),
+        ))
+        return True
+
+    _save_report_settings(chat_id, lang, users_ws, users_map, pending)
+    return True
+
+
+def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) -> bool:
+    """Dialog godzin raportów (/raport, /report, /menu). True = wiadomość zużyta.
+
+    Kolejność ma znaczenie: najpierw anulowanie, potem start nowego dialogu,
+    a na końcu odpowiedzi właściciela aktywnego dialogu. Odpowiedź innej osoby
+    nigdy nie zmienia stanu i nigdy nie zapisuje danych.
+    """
+    text = (message.get("text") or "").strip()
+    head = _command_head(text)
+    user_id = (message.get("from") or {}).get("id")
+
+    # 1. /raport [anuluj] — koniec dialogu bez dotykania Users.
+    if head in REPORT_COMMAND_HEADS:
+        argument = (_split_command(text, REPORT_COMMAND_HEADS) or "").strip()
+        if _norm_answer(argument) in REPORT_CANCEL_ANSWERS:
+            _clear_pending_report(chat_id)
+            send_reply(chat_id, t_ui(lang, "report_cancelled"))
+            return True
+        # Ponowne /raport w trakcie dialogu: stary stan znika, startujemy
+        # od aktualnych wartości zapisanych w Users.
+        return _start_report_dialog(chat_id, user_id, lang, users_map)
+
+    pending = _get_pending_report(chat_id)
+    if not pending or not text:
+        return False
+
+    # Cudza wiadomość nie przejmuje dialogu (i nie kasuje go nikomu).
+    if str(pending.get("user_id") or "") != str("" if user_id is None else user_id):
+        return False
+    if text.startswith("/"):
+        # Inna komenda właściciela kończy dialog — bez zostawiania
+        # niewidocznego stanu, który przechwyci kolejny wpisany tekst.
+        _clear_pending_report(chat_id)
+        return False
+
+    answer = _norm_answer(text)
+    if answer in REPORT_CANCEL_ANSWERS:
+        _clear_pending_report(chat_id)
+        send_reply(chat_id, t_ui(lang, "report_cancelled"))
+        return True
+
+    stage = pending.get("stage")
+
+    if stage == STAGE_REPORT_CONFIRM:
+        if answer in report_words(lang, "yes"):
+            # „tak”: godziny zostają dokładnie takie, jakie są — zapisujemy
+            # wyłącznie nowe ustawienia, i to dopiero na końcu dialogu.
+            settings = users_store.get_report_settings(users_map, chat_id) or {}
+            _clear_pending_report(chat_id)
+            send_reply(chat_id, t_ui(
+                lang, "report_kept",
+                morning=_report_slot_display(settings.get("report_morning_time"), lang),
+                afternoon=_report_slot_display(settings.get("report_afternoon_time"), lang),
+            ))
+            return True
+        if answer in report_words(lang, "no"):
+            pending["stage"] = STAGE_REPORT_MORNING
+            _set_pending_report(chat_id, pending.get("user_id"),
+                                STAGE_REPORT_MORNING)
+            send_reply(chat_id, t_ui(
+                lang, "report_ask_morning",
+                lo=REPORT_MORNING_WINDOW[0], hi=REPORT_MORNING_WINDOW[1],
+                off=report_word(lang, "off"),
+            ))
+            return True
+        send_reply(chat_id, t_ui(
+            lang, "report_bad_answer",
+            yes=report_word(lang, "yes"), no=report_word(lang, "no"),
+        ))
+        return True
+
+    if stage in (STAGE_REPORT_MORNING, STAGE_REPORT_AFTERNOON):
+        return _handle_report_slot_answer(
+            chat_id, lang, users_ws, users_map, pending, stage, answer,
+        )
+
+    # Nieznany etap (np. po zmianie kodów w RAM): nie zgadujemy, kończymy stan.
+    _clear_pending_report(chat_id)
+    return False
 
 
 def _put_pending_save(chat_id, lat, lon, city, lang, source, now_ts=None):
@@ -3357,6 +3734,12 @@ def _main_bot_iteration(gc, offset):
                         )
 
                     elif data.get("type") == "set_settings":
+                        # PR3 GRUPY: bot NIE oferuje już WebApp do zmiany godzin
+                        # (przycisk z panelu /raport został usunięty — w grupach
+                        # Telegram i tak zabrania reply-keyboard web_app).
+                        # Ścieżka zostaje wyłącznie jako kompatybilność wsteczna
+                        # dla starej strony webapp/index.html: zapis idzie przez
+                        # ten sam helper users_store co dialog /raport.
                         rano = (data.get("rano") or "").strip()
                         wieczor = (data.get("wieczor") or "").strip()
                         print(f"  ⚙️ Odebrano nowe godziny od {chat_id}: Rano={rano}, Popołudnie={wieczor}")
@@ -3603,6 +3986,23 @@ def _main_bot_iteration(gc, offset):
                     "Lang": user_lang,
                 }
 
+            # ==============================================================
+            # 0.7 KONWERSACYJNA ZMIANA GODZIN RAPORTÓW (/raport, /report)
+            # ==============================================================
+            # Ten sam dialog w grupie i w czacie prywatnym, bez WebApp i bez
+            # inline keyboard: /raport pokazuje aktualne godziny, pyta o ich
+            # zachowanie, a potem zbiera dwie odpowiedzi. W grupie zmianę może
+            # przeprowadzić wyłącznie administrator/creator. Stan żyje w RAM
+            # (jak PENDING_CITY) i wygasa po PENDING_REPORT_TTL_SEC.
+            if _handle_report_settings_dialog(
+                message=message,
+                chat_id=chat_id,
+                lang=user_lang,
+                users_map=users_map,
+                users_ws=users_ws,
+            ):
+                continue
+
             # PR2 UX cleanup: /save_location zostaje WYŁĄCZNIE jako ukryty alias
             # techniczny (kompatybilność wsteczna ze starymi klawiaturami oraz
             # wzmianka w /info). Widocznym flow zapisu lokalizacji jest /miasto.
@@ -3748,57 +4148,12 @@ def _main_bot_iteration(gc, offset):
                 send_reply(chat_id, t_ui(user_lang, "invite_group_desc"), reply_markup=klawiatura)
 
             # 3. /menu (PL alias: /raport, EN alias: /report)
-            elif message.get("text", "").startswith("/menu"):
-                print(f"  ⚙️ Odebrano żądanie panelu ustawień od [{user_data.get('Imię', chat_id)}]")
-
-                # /raport odczytuje teraz jawne sloty z Users. Puste wartości nie
-                # otrzymują domyślnych 08:00/14:00; menu i zapis nie korzystają z Formularza.
-                report_settings = users_store.get_report_settings(users_map, chat_id)
-                if report_settings is None:
-                    send_reply(chat_id, t_ui(user_lang, "menu_reports_migration"))
-                    continue
-
-                godz_rano = report_settings["report_morning_time"]
-                godz_wieczor = report_settings["report_afternoon_time"]
-                disp_rano = (
-                    t_ui(user_lang, "disp_off") if godz_rano.lower() == "brak"
-                    else f"{godz_rano} ⏰" if godz_rano else "—"
-                )
-                disp_wieczor = (
-                    t_ui(user_lang, "disp_off") if godz_wieczor.lower() == "brak"
-                    else f"{godz_wieczor} ⏰" if godz_wieczor else "—"
-                )
-                
-                chat_title = message.get("chat", {}).get("title")
-                imie_z_arkusza = str(user_data.get("Imię", "")).strip()
-                
-                wyswietlana_nazwa = chat_title if chat_title else imie_z_arkusza
-                if not wyswietlana_nazwa:
-                    wyswietlana_nazwa = "Użytkownik"
-                
-                # Budowanie przycisku WebApp otwierającego nowy panel (tylko dla czatów prywatnych!)
-                try:
-                    nazwa_przycisku = t_ui(user_lang, "btn_change_hours")
-                except Exception:
-                    nazwa_przycisku = "⚙️ Zmień ustawienia"
-
-                if int(chat_id) > 0:
-                    # CZAT PRYWATNY -> Tworzymy klawiaturę WebApp
-                    klawiatura = {
-                        "keyboard": [
-                            [{"text": nazwa_przycisku, "web_app": {"url": f"https://watifer.github.io/Pogoda-World/webapp/?lang={user_lang}"}}]
-                        ],
-                        "resize_keyboard": True
-                    }
-                else:
-                    # GRUPA (ID ujemne) -> Telegram zabrania WebApp na grupach!
-                    # Ustawiamy None, żeby send_reply niżej nie wysyłało niedozwolonej klawiatury:
-                    klawiatura = None
-
-                # --- BUDOWANIE WIADOMOŚCI Z I18N (bez sekcji lokalizacji) ---
-                msg = t_ui(user_lang, "menu_header", name=wyswietlana_nazwa, disp_rano=disp_rano, disp_wieczor=disp_wieczor)
-
-                send_reply(chat_id, msg, reply_markup=klawiatura)
+            # PR3 GRUPY: panel godzin jest już wyłącznie dialogiem tekstowym
+            # (blok 0.7 wyżej) — ten sam ekran w grupie i w czacie prywatnym.
+            # Stary panel z przyciskiem WebApp został usunięty: Telegram nie
+            # pozwala na reply-keyboard web_app w grupach, a prywatny zapis
+            # godzin przez WebApp nie jest już oferowany. /miasto (GPS)
+            # korzysta z WebApp nadal — bez żadnych zmian.
 
             # 4. /now
             elif message.get("text", "").startswith("/now") or message.get("text", "").startswith("/teraz"):
