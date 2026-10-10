@@ -295,6 +295,10 @@ class TestGroupPermissions:
 class TestValidation:
 
     @pytest.mark.parametrize("value,expected", [
+        ("5", "05:00"), ("05", "05:00"),
+        ("8", "08:00"), ("08", "08:00"),
+        ("9", "09:00"), ("09", "09:00"),
+        ("9:00", "09:00"), ("09:00", "09:00"),
         ("05:00", "05:00"),
         ("10:00", "10:00"),
         ("07:30", "07:30"),
@@ -314,7 +318,7 @@ class TestValidation:
 
     @pytest.mark.parametrize("value", [
         "04:59", "10:01", "11:00", "12:00", "16:00", "24:00", "25:00",
-        "8:5", "abc", "rano", "0", "",
+        "8:5", "abc", "rano", "0", "", "4", "11", "12", "24", "25", "005",
     ])
     def test_morning_values_outside_window_are_rejected(self, bot, as_admin, value):
         before = seed_chat(bot, GROUP, user_id=ADMIN)
@@ -329,6 +333,8 @@ class TestValidation:
         assert bot.gc.users.record(GROUP) == before
 
     @pytest.mark.parametrize("value,expected", [
+        ("13", "13:00"), ("14", "14:00"), ("16", "16:00"),
+        ("14:34", "14:34"),
         ("13:00", "13:00"),
         ("16:00", "16:00"),
         ("14:00", "14:00"),
@@ -348,6 +354,7 @@ class TestValidation:
 
     @pytest.mark.parametrize("value", [
         "12:59", "16:01", "17:00", "24:00", "25:00", "abc",
+        "12", "17", "24", "25",
     ])
     def test_afternoon_values_outside_window_are_rejected(self, bot, as_admin, value):
         before = seed_chat(bot, GROUP, user_id=ADMIN)
@@ -680,3 +687,38 @@ class TestPrivateChat:
 
         assert "w trakcie przenoszenia" in last(bot, 700)
         assert lb.PENDING_REPORT == {}
+
+
+@pytest.mark.parametrize("chat_id", [PRIVATE, GROUP])
+@pytest.mark.parametrize("command", ["/raport", "/menu"])
+def test_report_entry_points_have_no_keyboard(bot, as_admin, chat_id, command):
+    seed_chat(bot, chat_id, user_id=ADMIN)
+    bot.run(bot.msg(chat_id, command, user_id=ADMIN))
+    assert "Czy zachować te ustawienia?" in last(bot, chat_id)
+    assert bot.markups_for(chat_id)[-1] is None
+
+
+@pytest.mark.parametrize("morning,expected", [("5", "05:00"), ("05", "05:00"),
+                                               ("9", "09:00"), ("09", "09:00")])
+def test_whole_hours_are_saved_with_minutes(bot, morning, expected):
+    seed_chat(bot, PRIVATE)
+    for text in ("/raport", "nie", morning, "14"):
+        bot.run(bot.msg(PRIVATE, text))
+    record = bot.gc.users.record(PRIVATE)
+    assert record["report_morning_time"] == expected
+    assert record["report_afternoon_time"] == "14:00"
+    assert f"Raport poranny: {expected}" in last(bot, PRIVATE)
+    assert "Raport popołudniowy: 14:00" in last(bot, PRIVATE)
+
+
+@pytest.mark.parametrize("chat_id", [PRIVATE, GROUP])
+def test_city_gps_keyboard_is_private_only_and_manual_save_works(bot, chat_id):
+    seed_chat(bot, chat_id, with_profile=False)
+    bot.run(bot.msg(chat_id, "/miasto"))
+    markup = bot.markups_for(chat_id)[-1]
+    if chat_id == PRIVATE:
+        assert "/webapp/?lang=pl" in markup["keyboard"][0][0]["web_app"]["url"]
+    else:
+        assert markup is None
+    bot.run(bot.msg(chat_id, "Warszawa"))
+    assert bot.gc.users.record(chat_id)["location_label"] == "Warszawa"

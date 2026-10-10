@@ -517,13 +517,14 @@ def _clear_pending_report(chat_id, user_id):
     PENDING_REPORT.pop(_report_state_key(chat_id, user_id), None)
 
 
-_REPORT_TIME_RE = re.compile(r"^(\d{1,2})\s*:\s*(\d{2})$")
+_REPORT_TIME_RE = re.compile(r"^(\d{1,2})(?:\s*:\s*(\d{2}))?$")
 
 
 def _parse_report_time(raw, window):
     """Zwraca HH:MM dla poprawnej godziny z okna ``window`` albo None.
 
-    Akceptuje zarówno ``08:26``, jak i ``8:26`` (normalizacja do ``08:26``).
+    Akceptuje ``08:26`` i ``8:26`` oraz pełne godziny ``8`` i ``08``.
+    Brak minut oznacza ``:00``; wynik jest zawsze normalizowany do HH:MM.
     Okno jest domknięte: 05:00 i 10:00 przechodzą dla poranka, 04:59 i 10:01
     już nie. Wartość wyłączająca („brak”) NIE jest tutaj rozpoznawana — pustej
     odpowiedzi też nie traktujemy jako wyłączenia.
@@ -532,7 +533,7 @@ def _parse_report_time(raw, window):
     match = _REPORT_TIME_RE.match(text)
     if not match:
         return None
-    hour, minute = int(match.group(1)), int(match.group(2))
+    hour, minute = int(match.group(1)), int(match.group(2) or "0")
     if not 0 <= minute <= 59:
         return None
     lo_h, lo_m = (int(part) for part in window[0].split(":"))
