@@ -59,6 +59,7 @@ USERS_HEADERS = users_store.CANONICAL_HEADERS
 # (na atrapie Nominatima, bez ani jednego żądania sieciowego).
 REAL_GEOCODE_CITY_ACCEPTED = lb.geocode_city_accepted
 REAL_GET_COORDS_FROM_CITY = lb.get_coords_from_city
+REAL_GET_LOCATION_DETAILS_FROM_COORDS = lb.get_location_details_from_coords
 
 
 def freeze_local_hour(monkeypatch, hour, minute=0):
@@ -316,11 +317,27 @@ class BotHarness:
             m["message"]["reply_to_message"] = {"message_id": 1}
         return m
 
-    def pin(self, chat_id, reply=False):
-        m = self.msg(chat_id, None)
+    def pin(self, chat_id, reply=False, lat=54.5, lon=18.5, lang="pl",
+            user_id=None, chat_type=None, reply_to_message=None,
+            reply_to_bot=False):
+        m = self.msg(chat_id, None, lang=lang, user_id=user_id, chat_type=chat_type)
         m["message"].pop("text")
-        m["message"]["location"] = {"latitude": 54.5, "longitude": 18.5}
-        if reply:
+        m["message"]["location"] = {"latitude": lat, "longitude": lon}
+        if reply_to_message is not None:
+            m["message"]["reply_to_message"] = reply_to_message
+        elif reply_to_bot:
+            m["message"]["reply_to_message"] = {
+                "message_id": 1,
+                "from": {
+                    "id": lb._bot_user_id() or 999000,
+                    "is_bot": True,
+                    "first_name": "Pogoda World",
+                    "username": lb.BOT_USERNAME,
+                },
+                "chat": m["message"]["chat"],
+                "text": "Komunikat bota",
+            }
+        elif reply:
             m["message"]["reply_to_message"] = {"message_id": 1}
         return m
 
@@ -1794,3 +1811,383 @@ class TestPostDeleteUx:
         msgs = [t for c, t in bot.sent[before:] if c == 100]
         assert len(msgs) == 1 and "Nie znaleziono" in msgs[0], msgs
         assert fake_sleep == [], "bez kasacji nie ma drugiego komunikatu ani pauzy"
+
+
+# ============================================================================
+# PINEZKA JAKO ZAPIS LOKALIZACJI W GRUPIE I CZACIE PRYWATNYM (A–F)
+# ============================================================================
+GROUP_PIN_CHAT = -100777
+GROUP_ADMIN_ID = 4242
+GROUP_MEMBER_ID = 4343
+
+
+def _bot_reply_payload(text="Komunikat bota", message_id=10, bot_id=999000,
+                       username=None, extra=None):
+    data = {
+        "message_id": message_id,
+        "from": {
+            "id": bot_id,
+            "is_bot": True,
+            "first_name": "Pogoda World",
+            "username": lb.BOT_USERNAME if username is None else username,
+        },
+        "text": text,
+    }
+    if extra:
+        data.update(extra)
+    return data
+
+
+class TestGroupPinSavesProfile:
+    """W grupie i w czacie prywatnym pinezka w odpowiedzi na dowolny komunikat
+    tego bota zapisuje profil lokalizacji w Users — bez generowania karty /day.
+    """
+
+    # --- A. Prywatny czat ----------------------------------------------------
+    def test_a_private_pin_reply_to_bot_saves_profile_without_oneoff(
+        self, bot, monkeypatch
+    ):
+        freeze_local_hour(monkeypatch, 22, 0)  # poza oknem 05:00-15:59
+        bot.run(bot.msg(100, "/start BETAX1"))
+        bot.run(
+            bot.pin(
+                100,
+                lat=54.60372,
+                lon=18.76164,
+                reply_to_message=_bot_reply_payload("Witaj w Pogoda World"),
+            )
+        )
+
+        rec = bot.users.record(100)
+        assert rec["profile_status"] == "active"
+        assert rec["lat_round"] == "54.604" and rec["lon_round"] == "18.762"
+        assert rec["location_label"] == "Hel"
+        assert rec["location_source"] == "gps"
+        assert rec["location_consent_at"]
+        assert rec["location_consent_version"] == lb.PRIVACY_VERSION
+        assert bot.oneoffs == [] and bot.cards == []
+        assert bot.has_reply(100, "✅ *Zapisana lokalizacja:*")
+        assert not bot.has_reply(100, "Użyta lokalizacja")
+        assert not bot.has_reply(100, "05:00")
+
+    # --- B. Grupa — pinezka jako odpowiedź na komunikat bota -----------------
+    def test_b_group_pin_reply_to_bot_saves_group_profile_without_day_card(
+        self, bot, monkeypatch
+    ):
+        # Nawet poza oknem karty dziennej (22:00) pinezka zapisuje profil grupy,
+        # nie próbuje generować karty /day i nie wysyła blokady okna czasowego.
+        freeze_local_hour(monkeypatch, 22, 0)
+        day_oneoff_calls = []
+        monkeypatch.setattr(
+            lb, "_run_city_oneoff",
+            lambda *a, **kw: day_oneoff_calls.append((a, kw)),
+        )
+
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                lat=54.60372,
+                lon=18.76164,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=_bot_reply_payload("Dowolny komunikat bota"),
+            )
+        )
+
+        assert GROUP_PIN_CHAT < 0
+        rec = bot.users.record(GROUP_PIN_CHAT)
+        assert rec is not None
+        assert rec["chat_id"] == str(GROUP_PIN_CHAT)
+        assert rec["profile_status"] == "active"
+        assert rec["lat_round"] == "54.604"
+        assert rec["lon_round"] == "18.762"
+        assert rec["location_label"] == "Hel"
+        assert rec["location_source"] == "gps"
+        assert rec["location_consent_at"]
+        assert rec["location_consent_version"] == lb.PRIVACY_VERSION
+        assert rec["profile_updated_at"]
+
+        assert bot.has_reply(GROUP_PIN_CHAT, "✅ *Zapisana lokalizacja:*")
+        assert bot.has_reply(GROUP_PIN_CHAT, "Hel, Polska")
+        assert not bot.has_reply(GROUP_PIN_CHAT, "Użyta lokalizacja")
+        assert not bot.has_reply(GROUP_PIN_CHAT, "05:00")
+        assert bot.oneoffs == [], "nie wolno wywoływać generatora karty one-off"
+        assert bot.cards == [], "nie wolno wywoływać generatora karty legacy"
+        assert day_oneoff_calls == [], "nie wolno wywoływać _run_city_oneoff"
+        assert str(GROUP_PIN_CHAT) not in lb.PENDING_SAVE
+
+    # --- C. Grupa — odpowiedź na różne komunikaty bota -----------------------
+    @pytest.mark.parametrize("trigger_cmd,bot_msg_extra", [
+        ("/miasto", None),
+        ("/info", None),
+        ("/menu", None),
+        ("/raport", None),
+        (None, {"photo": [{"file_id": "card_png"}], "caption": "Hel"}),
+    ])
+    def test_c_group_pin_reply_to_various_bot_messages_saves_location(
+        self, bot, monkeypatch, trigger_cmd, bot_msg_extra
+    ):
+        monkeypatch.setattr(
+            lb, "_telegram_chat_member_status",
+            lambda chat_id, user_id: "administrator",
+        )
+        group_id = -100800 - (hash(str(trigger_cmd) + str(bot_msg_extra)) % 100)
+        bot.run(bot.msg(group_id, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+
+        if trigger_cmd:
+            bot.run(bot.msg(group_id, trigger_cmd, user_id=GROUP_ADMIN_ID))
+            bot_reply_text = bot.replies(group_id)[-1]
+        else:
+            bot_reply_text = ""
+
+        bot.run(
+            bot.pin(
+                group_id,
+                lat=52.22972,
+                lon=21.01223,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=_bot_reply_payload(
+                    text=bot_reply_text,
+                    extra=bot_msg_extra,
+                ),
+            )
+        )
+
+        rec = bot.users.record(group_id)
+        assert rec is not None
+        assert rec["chat_id"] == str(group_id)
+        assert rec["profile_status"] == "active"
+        assert rec["lat_round"] == "52.23"
+        assert rec["lon_round"] == "21.012"
+        assert rec["location_label"] == "Warszawa"
+        assert rec["location_source"] == "gps"
+        assert str(group_id) not in lb.PENDING_CITY
+        assert bot.oneoffs == [] and bot.cards == []
+        assert bot.has_reply(group_id, "✅ *Zapisana lokalizacja:*")
+        assert bot.has_reply(group_id, "Warszawa, Polska")
+
+    # --- D. Grupa — location bez odpowiedzi ----------------------------------
+    def test_d_group_pin_without_reply_is_ignored_and_saves_nothing(self, bot):
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+        before = len(bot.sent)
+
+        # Zarówno zwykła pinezka bez odpowiedzi, jak i pinezka bez odpowiedzi po /miasto
+        # w grupie nie zapisuje przypadkowo lokalizacji grupy.
+        bot.run(bot.pin(GROUP_PIN_CHAT, reply=False, user_id=GROUP_ADMIN_ID))
+        assert len(bot.sent) == before
+        assert bot.users.record(GROUP_PIN_CHAT)["profile_status"] == "none"
+
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/miasto", user_id=GROUP_ADMIN_ID))
+        after_prompt = len(bot.sent)
+        bot.run(bot.pin(GROUP_PIN_CHAT, reply=False, user_id=GROUP_ADMIN_ID))
+        assert len(bot.sent) == after_prompt
+        assert bot.users.record(GROUP_PIN_CHAT)["profile_status"] == "none"
+        assert bot.oneoffs == []
+
+    # --- E. Bezpieczeństwo ---------------------------------------------------
+    def test_e_reply_to_another_user_is_not_treated_as_bot_reply(self, bot):
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+        # Nawet przy aktywnym /miasto w grupie odpowiedź pinezką na wiadomość
+        # innego człowieka NIE zapisuje profilu grupy.
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/miasto", user_id=GROUP_ADMIN_ID))
+
+        other_user_msg = {
+            "message_id": 55,
+            "from": {
+                "id": GROUP_MEMBER_ID,
+                "is_bot": False,
+                "first_name": "Piotr",
+                "username": "piotr_member",
+            },
+            "text": "Gdzie się spotykamy?",
+        }
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=other_user_msg,
+            )
+        )
+
+        rec = bot.users.record(GROUP_PIN_CHAT)
+        assert rec["profile_status"] == "none", (
+            "odpowiedź na wiadomość innego użytkownika nie może zapisać profilu grupy"
+        )
+        assert rec["lat_round"] == "" and rec["lon_round"] == ""
+
+        # Również odpowiedź na obcego bota nie zapisuje profilu:
+        other_bot_msg = {
+            "message_id": 56,
+            "from": {
+                "id": 777888,
+                "is_bot": True,
+                "first_name": "Inny Bot",
+                "username": "CompletelyDifferentBot",
+            },
+            "text": "Inny komunikat",
+        }
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=other_bot_msg,
+            )
+        )
+        assert bot.users.record(GROUP_PIN_CHAT)["profile_status"] == "none"
+
+    def test_e_bot_id_from_token_matches_only_this_bot(self, bot, monkeypatch):
+        monkeypatch.setattr(lb, "TELEGRAM_TOKEN", "777000111:TEST_SECRET")
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+
+        # Odpowiedź na innego bota (bez username, inne from.id) -> brak zapisu profilu.
+        foreign_bot = {
+            "message_id": 60,
+            "from": {"id": 888999000, "is_bot": True, "first_name": "Obcy"},
+            "text": "Obcy komunikat",
+        }
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=foreign_bot,
+            )
+        )
+        assert bot.users.record(GROUP_PIN_CHAT)["profile_status"] == "none"
+
+        # Odpowiedź na wiadomość o dokładnie tym from.id co nasz bot -> zapis profilu.
+        own_bot = {
+            "message_id": 61,
+            "from": {"id": 777000111, "is_bot": True, "first_name": "Pogoda"},
+            "text": "Nasz komunikat",
+        }
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                lat=54.60372,
+                lon=18.76164,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=own_bot,
+            )
+        )
+        rec = bot.users.record(GROUP_PIN_CHAT)
+        assert rec["profile_status"] == "active"
+        assert rec["location_label"] == "Hel"
+
+    def test_e_plain_text_and_single_group_write_isolation(self, bot, monkeypatch):
+        set_profile_calls = []
+        real_set_profile = users_store.set_profile
+
+        def spy_set_profile(ws, chat_id, *args, **kwargs):
+            set_profile_calls.append(chat_id)
+            return real_set_profile(ws, chat_id, *args, **kwargs)
+
+        monkeypatch.setattr(users_store, "set_profile", spy_set_profile)
+
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/miasto", user_id=GROUP_ADMIN_ID))
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                lat=54.60372,
+                lon=18.76164,
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=_bot_reply_payload(bot.replies(GROUP_PIN_CHAT)[-1]),
+            )
+        )
+
+        # Dokładnie jeden zapis i dokładnie pod ujemnym chat_id grupy,
+        # nigdy pod prywatnym ID administratora.
+        assert set_profile_calls == [GROUP_PIN_CHAT]
+        assert bot.users.record(GROUP_ADMIN_ID) is None
+        group_rows = [
+            r for r in bot.gc.users.grid[1:]
+            if r and r[0] == str(GROUP_PIN_CHAT)
+        ]
+        assert len(group_rows) == 1
+
+        # Zwykła wiadomość tekstowa po zapisie pinezką jest ignorowana (PENDING_CITY zdjęte),
+        # a wpisanie miasta po kolejnym /miasto nadal działa jak wcześniej.
+        before = len(bot.sent)
+        bot.run(bot.msg(GROUP_PIN_CHAT, "zwykła rozmowa na czacie", user_id=GROUP_ADMIN_ID))
+        assert len(bot.sent) == before
+
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/miasto", user_id=GROUP_ADMIN_ID))
+        bot.run(bot.msg(GROUP_PIN_CHAT, "Warszawa", user_id=GROUP_ADMIN_ID))
+        assert bot.users.record(GROUP_PIN_CHAT)["location_label"] == "Warszawa"
+        assert set_profile_calls == [GROUP_PIN_CHAT, GROUP_PIN_CHAT]
+
+    # --- F. Język i etykiety -------------------------------------------------
+    def test_f_group_pin_uses_group_effective_lang_and_safe_resolver_without_poi_or_postcode(
+        self, bot, monkeypatch
+    ):
+        # Prawdziwy resolver + strukturalny adres z POI, ulicą, numerem domu i kodem pocztowym.
+        reverse_calls = []
+
+        class _SafeLoc:
+            raw = {
+                "address": {
+                    "city": "Wiązowna",
+                    "municipality": "Wiązowna",
+                    "county": "otwocki",
+                    "state": "mazowieckie",
+                    "postcode": "05-462",
+                    "country": "Polen",
+                    "country_code": "pl",
+                    "road": "Kościelna",
+                    "house_number": "41",
+                    "suburb": "Osiedle Parkowe",
+                    "amenity": "Biblioteka publiczna w Wiązownie",
+                }
+            }
+            address = "Biblioteka publiczna, Kościelna 41, 05-462 Wiązowna"
+
+        class _FakeNom:
+            def __init__(self, user_agent=None):
+                pass
+
+            def reverse(self, query, language=None):
+                reverse_calls.append((query, language))
+                return _SafeLoc()
+
+        lb._GEO_DETAILS_CACHE.clear()
+        monkeypatch.setattr(lb, "Nominatim", _FakeNom)
+        monkeypatch.setattr(
+            lb, "get_location_details_from_coords",
+            REAL_GET_LOCATION_DETAILS_FROM_COORDS,
+        )
+
+        # Grupa zarejestrowana z językiem DE, ale pinezkę wysyła użytkownik z Telegramem PL.
+        bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", lang="de", user_id=GROUP_ADMIN_ID))
+        assert bot.users.record(GROUP_PIN_CHAT)["lang"] == "de"
+
+        bot.run(
+            bot.pin(
+                GROUP_PIN_CHAT,
+                lat=52.15,
+                lon=21.29,
+                lang="pl",
+                user_id=GROUP_ADMIN_ID,
+                reply_to_message=_bot_reply_payload("Standort ändern"),
+            )
+        )
+
+        # Resolver wywołany w języku grupy ("de"), a nie prywatnym języku nadawcy ("pl").
+        assert reverse_calls == [("52.15, 21.29", "de")]
+        rec = bot.users.record(GROUP_PIN_CHAT)
+        assert rec["profile_status"] == "active"
+        assert rec["lang"] == "de"
+        assert rec["location_label"] == "Wiązowna"
+
+        confirmation = bot.replies(GROUP_PIN_CHAT)[-1]
+        assert "✅ *Standort gespeichert:*" in confirmation
+        assert "Wiązowna" in confirmation
+        # Etykieta nie może zawierać surowego POI, ulicy, numeru domu, osiedla ani kodu pocztowego.
+        for forbidden in (
+            "Biblioteka publiczna",
+            "Kościelna",
+            "41",
+            "Osiedle Parkowe",
+            "05-462",
+        ):
+            assert forbidden not in confirmation
+            assert forbidden not in rec["location_label"]
