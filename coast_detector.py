@@ -114,7 +114,8 @@ def _geod():
 # (coast_runtime.py / main_card.py -> data/natural_earth/ne_50m_ocean).
 # v2 + marine75g90 = rozdzielenie trybów beach / marine_storm
 # oraz nowe progi sztormowe (wind 75 / gust 90 / gust-with-wind 80).
-COAST_SIG_VERSION = "ne_50m_ocean:50m;radar:v2;r25;step10;minw20;marine75g90"
+# full360 = pełny sektor jest zapisany jako (0, 360), nie (0, 0).
+COAST_SIG_VERSION = "ne_50m_ocean:50m;radar:v2;r25;step10;minw20;marine75g90;full360"
 
 # Domyślne parametry skanu otoczenia
 DEFAULT_RADIUS_KM = 25.0
@@ -228,6 +229,10 @@ def _flags_to_sectors(flags: Sequence[bool], step_deg: int) -> List[Tuple[float,
 
 def bearing_in_sector(bearing_deg: float, start_deg: float, end_deg: float) -> bool:
     """Sprawdza czy dany kąt mieści się w sektorze (obsługuje zawijanie przez północ)."""
+    # Nie sprowadzaj pełnego obrotu do (0, 0): równy początek i koniec
+    # bez różnicy 360° nadal oznacza sektor punktowy.
+    if end_deg - start_deg == 360.0:
+        return True
     b = bearing_deg % 360.0
     s = start_deg % 360.0
     e = end_deg % 360.0
@@ -330,7 +335,7 @@ class CoastIndex:
             e2 = max(0.0, min(360.0, float(e)))
             
             width = (e2 - s2) % 360.0
-            if width == 0:
+            if e2 - s2 == 360.0:
                 width = 360.0
                 
             if width >= min_sector_width_deg:
@@ -338,8 +343,9 @@ class CoastIndex:
 
         normalized.sort(key=lambda x: x[0])
 
-        # Merge wrap-around (łączenie sektorów przez północ 360/0 stopni)
-        if normalized:
+        # Merge wrap-around tylko dla dwóch odrębnych brzegowych sektorów;
+        # pojedyncze (0, 360) musi pozostać pełnym obrotem.
+        if len(normalized) > 1:
             first = normalized[0]
             last = normalized[-1]
             if abs(first[0] - 0.0) < 1e-9 and abs(last[1] - 360.0) < 1e-9:
