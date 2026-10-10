@@ -299,10 +299,18 @@ class BotHarness:
         lb.PENDING_SAVE.clear()
         self._updates = updates
 
-    def msg(self, chat_id, text, reply=False, lang="pl"):
+    def msg(self, chat_id, text, reply=False, lang="pl", user_id=None, chat_type=None):
+        """Wiadomość tekstowa.
+
+        ``user_id`` pozwala oddzielić autora wiadomości od czatu (testy grup:
+        chat_id ujemne, ``from.id`` = członek grupy). Domyślnie ``from.id``
+        jest równe chat_id — dokładnie tak, jak w czacie prywatnym.
+        """
         m = {"update_id": 100000 + len(self.sent) * 7 + len(self._updates),
-             "message": {"chat": {"id": chat_id, "type": "private"},
-                         "from": {"language_code": lang, "first_name": "Ala"},
+             "message": {"chat": {"id": chat_id,
+                                  "type": chat_type or ("private" if int(chat_id) > 0 else "group")},
+                         "from": {"language_code": lang, "first_name": "Ala",
+                                  "id": chat_id if user_id is None else user_id},
                          "text": text}}
         if reply:
             m["message"]["reply_to_message"] = {"message_id": 1}
@@ -483,8 +491,11 @@ class TestStartRegistersAccessOnly:
 
         bot.run(bot.msg(100, "/menu"))
         panel = bot.replies(100)[-1]
+        # PR3 GRUPY: panel godzin to ten sam dialog tekstowy co /raport
+        # (bez klawiatury WebApp — także w czacie prywatnym).
         assert "Rano: 07:00" in panel
         assert "06:00" not in panel and "16:00" not in panel
+        assert "Czy zachować te ustawienia?" in panel
 
     def test_onboarding_is_short_and_points_to_city_and_data(self, bot):
         # PR2 UX cleanup: krótki onboarding, bez obietnicy automatycznych raportów
@@ -1226,7 +1237,10 @@ class TestPr2UxCleanup:
         assert "Rano: —" in panel and "Popołudnie: —" in panel
         assert "08:00" not in panel and "14:00" not in panel
         assert "Obecna lokalizacja" not in panel
-        assert bot.keyboards_for(100), "konto Users powinno móc otworzyć istniejący panel godzin"
+        # PR3 GRUPY: panel godzin jest dialogiem tekstowym — bez przycisku
+        # WebApp także w czacie prywatnym (godziny zmienia się odpowiedziami).
+        assert bot.keyboards_for(100) == []
+        assert "Czy zachować te ustawienia?" in panel
 
     def test_legacy_only_report_settings_are_not_read_from_formularz(self, bot):
         bot.run(bot.msg(700, "/raport"))
