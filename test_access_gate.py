@@ -1150,6 +1150,8 @@ class TestPr2UxCleanup:
 
         bot.run(bot.msg(100, "/zapros"))
         assert bot.has_reply(100, "zaproszenie jest gotowe")
+        invite_message = bot.replies(100)[-2]
+        assert r"https://t.me/Twoja\_pogoda\_bot?start=MTAw" in invite_message
 
         bot.run(bot.msg(100, "/teraz"))
         assert lb.PENDING_CITY["100"]["ctx"] == lb.CTX_ONEOFF_NOW
@@ -1716,6 +1718,10 @@ class TestPostDeleteUx:
         assert bot.users.record(500) is None
 
     def test_second_message_equals_full_no_access_in_six_languages(self, monkeypatch, fake_sleep):
+        invite_url = "https://t.me/Twoja_pogoda_bot?start=BETA2026A"
+        escaped_url = r"https://t.me/Twoja\_pogoda\_bot?start=BETA2026A"
+        monkeypatch.setattr(lb, "INVITE_URL", invite_url)
+
         for lang in ("pl", "en", "de", "es", "fr", "no"):
             local = BotHarness(monkeypatch)
             local.run(local.msg(600, "/start BETAX1", lang=lang))
@@ -1726,14 +1732,36 @@ class TestPostDeleteUx:
             msgs = [t for c, t in local.sent[before:] if c == 600]
             assert len(msgs) == 2, f"{lang}: {msgs}"
             assert msgs[0] == lb.t_ui(lang, "delete_me_done"), lang
-            assert msgs[1] == lb.t_ui(lang, "no_access", url=lb.INVITE_URL), lang
+            assert msgs[1] == lb._invite_message(lang, "no_access"), lang
+            assert escaped_url in msgs[1], f"{lang}: invite URL musi zachować oba podkreślenia"
+            assert f"/start [BETA2026A]({invite_url})" in msgs[1], lang
 
-    def test_no_access_legacy_markdown_escapes_code_underscores(self):
+    def test_access_invite_messages_escape_url_in_six_languages(self, monkeypatch):
+        invite_url = "https://t.me/Twoja_pogoda_bot?start=BETA2026A"
+        escaped_url = r"https://t.me/Twoja\_pogoda\_bot?start=BETA2026A"
+        monkeypatch.setattr(lb, "INVITE_URL", invite_url)
+
         for lang in ("pl", "en", "de", "es", "fr", "no"):
-            text = lb.t_ui(lang, "no_access", url=lb.INVITE_URL)
-            assert re.search(r"/start \S+\\_\S+", text), (lang, text)
-            unescaped = re.findall(r"(?<!\\)_", text)
-            assert len(unescaped) == 2, f"{lang}: nieparzysty/nieoczekiwany '_' w Markdown: {text}"
+            for key in ("no_access", "invalid_link", "limit_reached"):
+                text = lb._invite_message(lang, key)
+                assert text.count(escaped_url) == 1, (lang, key, text)
+                assert escaped_url.count(r"\_") == 2
+                if key == "no_access":
+                    assert f"/start [BETA2026A]({invite_url})" in text, (lang, text)
+
+    def test_no_access_start_sends_escaped_dynamic_code_link_in_six_languages(self, monkeypatch):
+        invite_url = "https://t.me/Twoja_pogoda_bot?start=BETA2026A"
+        escaped_url = r"https://t.me/Twoja\_pogoda\_bot?start=BETA2026A"
+        monkeypatch.setattr(lb, "INVITE_URL", invite_url)
+
+        for index, lang in enumerate(("pl", "en", "de", "es", "fr", "no")):
+            local = BotHarness(monkeypatch)
+            chat_id = 700 + index
+            local.run(local.msg(chat_id, "/start", lang=lang))
+            text = local.replies(chat_id)[-1]
+
+            assert escaped_url in text, (lang, text)
+            assert f"/start [BETA2026A]({invite_url})" in text, (lang, text)
 
     def test_post_delete_everything_is_silent(self, bot, fake_sleep):
         bot.run(bot.msg(500, "/start BETAX1"))

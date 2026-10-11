@@ -4,6 +4,7 @@ import json
 import math
 import re
 import tempfile
+from urllib.parse import parse_qs, urlsplit
 import requests
 import gspread
 from gspread.utils import numericise_all
@@ -1385,7 +1386,7 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
         # POPRAWKA #7: drugi, osobny komunikat po krótkiej pauzie — pokazuje, że
         # razem z danymi zniknął dostęp i że powrót wymaga ponownego zaproszenia.
         time.sleep(DELETE_NOTICE_DELAY_SEC)
-        send_reply(chat_id, t_ui(lang, "no_access", url=INVITE_URL))
+        send_reply(chat_id, _invite_message(lang, "no_access"))
     else:
         send_reply(chat_id, t_ui(lang, "no_data"), reply_markup=remove_keyboard)
 
@@ -1500,6 +1501,36 @@ def _md_safe(text):
             escaped.append("\\")
         escaped.append(char)
     return "".join(escaped)
+
+
+def _invite_start_code(url):
+    """Return the ``start`` payload from a Telegram invite URL, if present."""
+    try:
+        return parse_qs(urlsplit(str(url)).query).get("start", [""])[0].strip()
+    except (TypeError, ValueError):
+        return ""
+
+
+def _invite_message(lang, key):
+    """Render an invite/access message with Markdown-safe dynamic link text.
+
+    The URL is plain text in the localized no_access, invalid_link, and
+    limit_reached templates, so escape it before formatting the message. When
+    it is a Telegram deep link, make its changing start payload the linked
+    /start command example as well. Leave the existing localized placeholder
+    in place for invite pages that do not contain a start payload.
+    """
+    text = t_ui(lang, key, url=_md_safe(INVITE_URL))
+    if key == "no_access":
+        code = _invite_start_code(INVITE_URL)
+        if code:
+            linked_code = f"[{_md_safe(code)}]({INVITE_URL})"
+            text = re.sub(
+                r"(/start\s+)\S+\s*$",
+                lambda match: match.group(1) + linked_code,
+                text,
+            )
+    return text
 
 
 _LOCALITY_ADDRESS_FIELDS = ("city", "town", "village", "hamlet", "locality")
@@ -3968,7 +3999,7 @@ def _main_bot_iteration(gc, offset):
 
                 # Miękkie lądowanie dla ludzi, którzy wpisali samo /start (bez kodu)
                 if len(parts) < 2:
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "no_access", url=INVITE_URL))
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
                     continue
                     
                 # Pobieramy token wejściowy
@@ -3994,14 +4025,14 @@ def _main_bot_iteration(gc, offset):
 
                 # Jeśli kod nie pasuje do niczego (nie jest adminem, kodem beta ani poleceniem od usera)
                 if not (is_dev_mode or is_public_beta or is_referral):
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "invalid_link", url=INVITE_URL))
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "invalid_link"))
                     continue
 
                 # 1. Weryfikacja limitu miejsc (Podniesiono z 50 do 200)
                 # Dev (God Mode) wchodzi zawsze, reszta jest blokowana po osiągnięciu limitu
                 # (liczymy profile legacy — tylko one generują obciążenie schedulera)
                 if len(clean_users) >= 200 and not is_dev_mode:
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "limit_reached", url=INVITE_URL))
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "limit_reached"))
                     continue
 
                 # 2. Mamy autoryzację! PR1: zapisujemy WYŁĄCZNIE minimalny access
