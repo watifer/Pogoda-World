@@ -12,6 +12,13 @@ import re
 import os
 import json
 
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
+
+from i18n import t
+
 
 _NUM_RE = re.compile(r"-?\d+(?:[.,]\d+)?")
 _HOUR_RE = re.compile(r"\b([01]?\d|2[0-3]):00\b")
@@ -264,38 +271,193 @@ def _true_night_allows_moon_tip(core_hours: List[Dict], lat: float, lon: float) 
     return true_night_samples >= MOON_TIP_MIN_TRUE_NIGHT_SAMPLES
 
 
-def _moon_phase_info(target_dt: datetime) -> Optional[Dict]:
+def _meeus_phase_jde(k: float, phase: str = "full") -> float:
+    """Wyznacza JDE (Julian Ephemeris Day) dokładnego momentu fazy wg Jeana Meeusa (rozdz. 49)."""
+    T = k / 1236.85
+    T2 = T * T
+    T3 = T2 * T
+    T4 = T3 * T
+
+    jde = (
+        2451550.09766
+        + 29.530588861 * k
+        + 0.00015437 * T2
+        - 0.000000150 * T3
+        + 0.00000000073 * T4
+    )
+    E = 1.0 - 0.002516 * T - 0.0000074 * T2
+    M = math.radians((2.5534 + 29.10535670 * k - 0.0000014 * T2 - 0.00000011 * T3) % 360.0)
+    Mp = math.radians((201.5643 + 385.81693528 * k + 0.0107582 * T2 + 0.00001238 * T3 - 0.000000058 * T4) % 360.0)
+    F = math.radians((160.7108 + 390.67050284 * k - 0.0016118 * T2 - 0.00000227 * T3 + 0.000000011 * T4) % 360.0)
+    Om = math.radians((124.7746 - 1.56375588 * k + 0.0020672 * T2 + 0.00000215 * T3) % 360.0)
+
+    if phase == "new":
+        terms = (
+            (-0.40720, 1.0, Mp),
+            ( 0.17241, E,   M),
+            ( 0.01608, 1.0, 2 * Mp),
+            ( 0.01039, 1.0, 2 * F),
+            ( 0.00739, E,   Mp - M),
+            (-0.00514, E,   Mp + M),
+            ( 0.00208, E * E, 2 * M),
+            (-0.00111, 1.0, Mp - 2 * F),
+            (-0.00057, 1.0, Mp + 2 * F),
+            ( 0.00056, E,   2 * Mp + M),
+            (-0.00042, 1.0, 3 * Mp),
+            ( 0.00042, E,   M + 2 * F),
+            ( 0.00038, E,   M - 2 * F),
+            (-0.00024, E,   2 * Mp - M),
+            (-0.00017, 1.0, Om),
+            (-0.00007, 1.0, Mp + 2 * M),
+            ( 0.00004, 1.0, 2 * Mp - 2 * F),
+            ( 0.00004, 1.0, 3 * M),
+            ( 0.00003, 1.0, Mp + M - 2 * F),
+            ( 0.00003, 1.0, 2 * Mp + 2 * F),
+            (-0.00003, 1.0, Mp + M + 2 * F),
+            ( 0.00003, 1.0, Mp - M + 2 * F),
+            (-0.00002, 1.0, Mp - M - 2 * F),
+            (-0.00002, 1.0, 3 * Mp + M),
+            ( 0.00002, 1.0, 4 * Mp),
+        )
+    else:
+        terms = (
+            (-0.40614, 1.0, Mp),
+            ( 0.17302, E,   M),
+            ( 0.01614, 1.0, 2 * Mp),
+            ( 0.01043, 1.0, 2 * F),
+            ( 0.00734, E,   Mp - M),
+            (-0.00515, E,   Mp + M),
+            ( 0.00209, E * E, 2 * M),
+            (-0.00111, 1.0, Mp - 2 * F),
+            (-0.00057, 1.0, Mp + 2 * F),
+            ( 0.00056, E,   2 * Mp + M),
+            (-0.00042, 1.0, 3 * Mp),
+            ( 0.00042, E,   M + 2 * F),
+            ( 0.00038, E,   M - 2 * F),
+            (-0.00024, E,   2 * Mp - M),
+            (-0.00017, 1.0, Om),
+            (-0.00007, 1.0, Mp + 2 * M),
+            ( 0.00004, 1.0, 2 * Mp - 2 * F),
+            ( 0.00004, 1.0, 3 * M),
+            ( 0.00003, 1.0, Mp + M - 2 * F),
+            ( 0.00003, 1.0, 2 * Mp + 2 * F),
+            (-0.00003, 1.0, Mp + M + 2 * F),
+            ( 0.00003, 1.0, Mp - M + 2 * F),
+            (-0.00002, 1.0, Mp - M - 2 * F),
+            (-0.00002, 1.0, 3 * Mp + M),
+            ( 0.00002, 1.0, 4 * Mp),
+        )
+
+    corr = sum(c * e * math.sin(arg) for c, e, arg in terms)
+    planetary_terms = (
+        (0.000325, 299.77 +  0.107408 * k - 0.009173 * T2),
+        (0.000165, 251.88 +  0.016321 * k),
+        (0.000164, 251.83 + 26.651886 * k),
+        (0.000126, 349.42 + 36.412478 * k),
+        (0.000110,  84.66 + 18.206239 * k),
+        (0.000062, 141.74 + 53.303771 * k),
+        (0.000060, 207.14 +  2.453732 * k),
+        (0.000056, 154.84 +  7.306860 * k),
+        (0.000047,  34.52 + 27.261239 * k),
+        (0.000042, 207.19 +  0.121824 * k),
+        (0.000040, 291.34 +  1.844379 * k),
+        (0.000037, 161.72 + 24.198154 * k),
+        (0.000035, 239.56 + 25.513099 * k),
+        (0.000023, 331.55 +  3.592518 * k),
+    )
+    corr += sum(amp * math.sin(math.radians(ang % 360.0)) for amp, ang in planetary_terms)
+    return jde + corr
+
+
+def _jde_to_utc_minute(jde: float) -> datetime:
+    """Konwertuje JDE na czas UTC (zaokrąglony do pełnej minuty dla spójności daty i HH:MM)."""
+    dt_tt = datetime(2000, 1, 1, 12, 0, 0, tzinfo=timezone.utc) + timedelta(days=(jde - 2451545.0))
+    delta_t_sec = 63.8 + 0.22 * (dt_tt.year - 2000)
+    dt_utc = dt_tt - timedelta(seconds=delta_t_sec)
+    return (dt_utc + timedelta(seconds=30)).replace(second=0, microsecond=0)
+
+
+def _nearest_syzygy_utc(target_utc: datetime, phase: str = "full", tz=None, local_date=None) -> datetime:
+    """Zwraca dokładny moment najbliższej pełni ('full') lub nowiu ('new') wg Meeusa."""
+    ref_new_2000 = datetime(2000, 1, 6, 18, 14, tzinfo=timezone.utc)
+    k_approx = (target_utc - ref_new_2000).total_seconds() / (86400.0 * _SYNODIC_MONTH_DAYS)
+    if phase == "new":
+        base_n = round(k_approx)
+        k_candidates = (base_n - 1.0, float(base_n), base_n + 1.0)
+    else:
+        base_n = round(k_approx - 0.5)
+        k_candidates = (base_n - 0.5, base_n + 0.5, base_n + 1.5)
+
+    dts = [_jde_to_utc_minute(_meeus_phase_jde(k, phase=phase)) for k in k_candidates]
+    if tz is not None and local_date is not None:
+        return min(
+            dts,
+            key=lambda d: (
+                abs((d.astimezone(tz).date() - local_date).days),
+                abs((d - target_utc).total_seconds()),
+            ),
+        )
+    return min(dts, key=lambda d: abs((d - target_utc).total_seconds()))
+
+
+def _moon_phase_info(target_dt: datetime, tz=None, phase: str = "full") -> Optional[Dict]:
     if target_dt is None:
         return None
-    if target_dt.tzinfo is None:
-        target_utc = target_dt.replace(tzinfo=timezone.utc)
+    if tz is not None:
+        if target_dt.tzinfo is None:
+            target_local = target_dt.replace(tzinfo=tz)
+        else:
+            target_local = target_dt.astimezone(tz)
+    elif target_dt.tzinfo is not None:
+        tz = target_dt.tzinfo
+        target_local = target_dt
     else:
-        target_utc = target_dt.astimezone(timezone.utc)
+        tz = timezone.utc
+        target_local = target_dt.replace(tzinfo=timezone.utc)
 
-    days_since_ref = (target_utc - _REF_FULL_MOON_UTC).total_seconds() / 86400.0
-    nearest_idx = round(days_since_ref / _SYNODIC_MONTH_DAYS)
-    nearest_full = _REF_FULL_MOON_UTC + timedelta(days=nearest_idx * _SYNODIC_MONTH_DAYS)
-    delta_to_full = (nearest_full - target_utc).total_seconds() / 86400.0
-    abs_delta = abs(delta_to_full)
-    illumination = (1.0 + math.cos(2.0 * math.pi * abs_delta / _SYNODIC_MONTH_DAYS)) / 2.0
+    target_utc = target_local.astimezone(timezone.utc)
+    local_date = target_local.date()
 
-    if abs_delta > MOON_TIP_PHASE_WINDOW_DAYS or illumination < MOON_TIP_MIN_ILLUMINATION:
-        return None
+    nearest_phase_utc = _nearest_syzygy_utc(target_utc, phase=phase, tz=tz, local_date=local_date)
+    phase_local = nearest_phase_utc.astimezone(tz)
+    day_diff = (phase_local.date() - local_date).days
 
-    if abs_delta < 0.5:
-        bucket = "full_today"
-    elif abs_delta < 1.5:
-        bucket = "before_1" if delta_to_full > 0 else "after_1"
-    elif abs_delta < 2.5:
-        bucket = "before_2" if delta_to_full > 0 else "after_2"
+    delta_to_phase = (nearest_phase_utc - target_utc).total_seconds() / 86400.0
+    abs_delta = abs(delta_to_phase)
+    if phase == "new":
+        illumination = (1.0 - math.cos(2.0 * math.pi * abs_delta / _SYNODIC_MONTH_DAYS)) / 2.0
+        if day_diff != 0:
+            return None
+        bucket = "new_today"
     else:
-        bucket = "before_3" if delta_to_full > 0 else "after_3"
+        illumination = (1.0 + math.cos(2.0 * math.pi * abs_delta / _SYNODIC_MONTH_DAYS)) / 2.0
+        if abs(day_diff) > 3:
+            return None
+        if day_diff == 0:
+            bucket = "full_today"
+        elif day_diff == 1:
+            bucket = "before_1"
+        elif day_diff == 2:
+            bucket = "before_2"
+        elif day_diff == 3:
+            bucket = "before_3"
+        elif day_diff == -1:
+            bucket = "after_1"
+        elif day_diff == -2:
+            bucket = "after_2"
+        else:
+            bucket = "after_3"
 
     return {
-        "delta_days": delta_to_full,
+        "delta_days": delta_to_phase,
+        "day_diff": day_diff,
         "illumination": illumination,
         "bucket": bucket,
-        "nearest_full_utc": nearest_full,
+        "nearest_full_utc": nearest_phase_utc if phase == "full" else None,
+        "phase_utc": nearest_phase_utc,
+        "phase_local": phase_local,
+        "time_local_hm": phase_local.strftime("%H:%M"),
+        "local_date": local_date,
     }
 
 
@@ -327,8 +489,59 @@ def _night_weather_allows_moon_tip(night_hours: List[Dict], all_hours: List[Dict
     return True
 
 
+def _resolve_report_local_context(payload: dict) -> Optional[Tuple[ZoneInfo, datetime]]:
+    """Wyznacza strefę czasową lokalizacji oraz lokalny czas raportu z payloadu."""
+    if not isinstance(payload, dict):
+        return None
+    loc = payload.get("location") or {}
+    tz_name = str(loc.get("tz") or "").strip()
+    if not tz_name:
+        return None
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        return None
+
+    raw_dt = _parse_local_dt(payload.get("generated_at_local"))
+    if raw_dt is None:
+        hours = payload.get("hours") or []
+        if hours and isinstance(hours[0], dict):
+            raw_dt = _parse_local_dt(hours[0].get("time_local"))
+    if raw_dt is None:
+        return None
+
+    if raw_dt.tzinfo is None:
+        report_dt_local = raw_dt.replace(tzinfo=tz)
+    else:
+        report_dt_local = raw_dt.astimezone(tz)
+    return tz, report_dt_local
+
+
+def _can_show_clear_moon_night(payload: dict, lat: float, lon: float) -> bool:
+    """Sprawdza pełny zestaw bramek pogodowych i wysokościowych dla jasnej nocy księżycowej."""
+    if " + " not in str(payload.get("forecast_source", "")):
+        return False
+
+    all_hours = payload.get("hours") or []
+    night_hours, core_hours, night_start, night_end = _select_primary_night_hours(payload)
+    if not night_hours or night_start is None or night_end is None:
+        return False
+
+    if not _night_weather_allows_moon_tip(night_hours, all_hours):
+        return False
+    if not _true_night_allows_moon_tip(core_hours, lat, lon):
+        return False
+
+    target_dt = night_start + (night_end - night_start) / 2  # okolice 02:00 lokalnie
+    sun_decl = _solar_declination_rad(target_dt)
+    if _moon_max_alt_near_full_approx_deg(lat, sun_decl) < MOON_TIP_MIN_MOON_MAX_ALT_DEG:
+        return False
+
+    return True
+
+
 def _build_moon_night_candidate(payload: dict, alerts: List[str] = None, trust_block: bool = False) -> Optional[Dict]:
-    """Buduje dodatkowy tip o jasnej nocy.
+    """Buduje dodatkowy tip o pełni lub nowiu Księżyca.
 
     `alerts` i `trust_block` zostają w sygnaturze dla kompatybilności testów/wywołań,
     ale celowo NIE blokują tego dodatku: komunikaty z sekcji „Uważaj" oraz inne
@@ -336,36 +549,60 @@ def _build_moon_night_candidate(payload: dict, alerts: List[str] = None, trust_b
     """
     if os.environ.get("ENABLE_WK_MOON_TIP", "1") == "0":
         return None
-    if " + " not in str(payload.get("forecast_source", "")):
+
+    if not isinstance(payload, dict):
         return None
 
     loc = payload.get("location") or {}
     try:
         lat = float(loc.get("lat"))
         lon = float(loc.get("lon"))
+        if not (math.isfinite(lat) and math.isfinite(lon) and -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            return None
     except Exception:
         return None
 
-    all_hours = payload.get("hours") or []
-    night_hours, core_hours, night_start, night_end = _select_primary_night_hours(payload)
-    if not night_hours or night_start is None or night_end is None:
+    ctx = _resolve_report_local_context(payload)
+    if ctx is None:
+        return None
+    tz, report_dt_local = ctx
+
+    # 1. NÓW KSIĘŻYCA — tylko w dokładny lokalny dzień nowiu (niezależnie od zachmurzenia i liczby modeli)
+    new_phase = _moon_phase_info(report_dt_local, tz=tz, phase="new")
+    if new_phase and new_phase["bucket"] == "new_today":
+        text = t("pl", "moon_new_today", time=new_phase["time_local_hm"])
+        return {
+            "priority": MOON_TIP_PRIORITY,
+            "text": text,
+            "category": "moon_night",
+            "kind": "opportunity",
+            "wx": [],
+        }
+
+    # 2. PEŁNIA KSIĘŻYCA — dokładny dzień pełni vs koszyki before_1..3 / after_1..3
+    full_phase = _moon_phase_info(report_dt_local, tz=tz, phase="full")
+    if not full_phase:
         return None
 
-    if not _night_weather_allows_moon_tip(night_hours, all_hours):
-        return None
-    if not _true_night_allows_moon_tip(core_hours, lat, lon):
+    bucket = full_phase["bucket"]
+    if bucket == "full_today":
+        if _can_show_clear_moon_night(payload, lat, lon):
+            text = t("pl", "moon_full_today_clear", time=full_phase["time_local_hm"])
+        else:
+            text = t("pl", "moon_full_today", time=full_phase["time_local_hm"])
+        return {
+            "priority": MOON_TIP_PRIORITY,
+            "text": text,
+            "category": "moon_night",
+            "kind": "opportunity",
+            "wx": [],
+        }
+
+    # Dla pozostałych dni (before_1..3 / after_1..3) obowiązuje pełna bramka 2 modeli i pogodnej nocy
+    if not _can_show_clear_moon_night(payload, lat, lon):
         return None
 
-    target_dt = night_start + (night_end - night_start) / 2  # okolice 02:00 lokalnie
-    phase = _moon_phase_info(target_dt)
-    if not phase:
-        return None
-
-    sun_decl = _solar_declination_rad(target_dt)
-    if _moon_max_alt_near_full_approx_deg(lat, sun_decl) < MOON_TIP_MIN_MOON_MAX_ALT_DEG:
-        return None
-
-    text = MOON_TIP_TEXTS.get(phase["bucket"])
+    text = MOON_TIP_TEXTS.get(bucket)
     if not text:
         return None
 
@@ -1497,13 +1734,17 @@ def build_worth_knowing(
             if pop_peak >= 60 and precip_peak < 0.2:
                 trust_block = True
     # --------------------------
-    # [POPRAWKA 1b]: Awaryjny zwrot, gdy mamy tylko 1 model
-    #if not has_two_models:
-    #    return {
-    #        "title": "Dziś warto wiedzieć",
-    #        "text": "Brak weryfikacji z drugiego modelu. Prognoza może ulec zmianie. Wygeneruj ponownie za kilka minut.",
-    #    }
+    # Dodatkowy tip o pełni/nowiu Księżyca: NIE konkuruje w rankingu WK i NIE jest blokowany
+    # przez sekcję „Uważaj”. Dokładny dzień pełni/nowiu działa także przy 1 modelu.
+    moon_candidate = _build_moon_night_candidate(payload, alerts=alerts, trust_block=trust_block)
+
+    # [POPRAWKA 1b]: Awaryjny zwrot, gdy mamy tylko 1 model (z zachowaniem astronomicznego komunikatu pełni/nowiu)
     if not has_two_models:
+        if moon_candidate and moon_candidate.get("text"):
+            return {
+                "title": "Dziś warto wiedzieć",
+                "text": moon_candidate["text"],
+            }
         return None  # <--- Zwraca nic, sekcja WK się nie wyrenderuje
 
     candidates = _candidates_level1(
@@ -1515,11 +1756,6 @@ def build_worth_knowing(
     
     if ta:
         candidates += _candidates_future(ta)
-
-    # Dodatkowy tip o jasnej nocy: NIE konkuruje w rankingu WK i NIE jest blokowany
-    # przez sekcję „Uważaj”. Jeśli spełni własne warunki meteo/astronomiczne,
-    # zostanie dopisany na końcu tekstu „Warto wiedzieć”.
-    moon_candidate = _build_moon_night_candidate(payload, alerts=alerts, trust_block=trust_block)
         
     candidates = [enforce_priority_policy(c) for c in candidates]
 
