@@ -6,7 +6,7 @@ Maksymalnie 1 komunikat na raport.
 
 from __future__ import annotations
 from typing import Optional, List, Dict, Tuple, Set
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 import math
 import re
 import os
@@ -459,6 +459,66 @@ def _moon_phase_info(target_dt: datetime, tz=None, phase: str = "full") -> Optio
         "time_local_hm": phase_local.strftime("%H:%M"),
         "local_date": local_date,
     }
+
+
+def get_moon_phase_for_local_date(local_date: date | datetime, tz=None) -> Optional[Dict]:
+    """Zwraca informację o dokładnym lokalnym dniu pełni ('full') lub nowiu ('new') wg Meeusa.
+
+    Nie stosuje żadnych bramek pogodowych — wynik zależy wyłącznie od tego, czy
+    dokładny moment astronomiczny pełni lub nowiu (w strefie `tz`) wypada w dacie `local_date`.
+    """
+    if local_date is None:
+        return None
+
+    tz_obj = tz
+    if isinstance(tz_obj, str):
+        try:
+            tz_obj = ZoneInfo(tz_obj)
+        except Exception:
+            tz_obj = timezone.utc
+
+    if isinstance(local_date, datetime):
+        if tz_obj is not None:
+            dt_loc = local_date.replace(tzinfo=tz_obj) if local_date.tzinfo is None else local_date.astimezone(tz_obj)
+        elif local_date.tzinfo is not None:
+            tz_obj = local_date.tzinfo
+            dt_loc = local_date
+        else:
+            tz_obj = timezone.utc
+            dt_loc = local_date.replace(tzinfo=timezone.utc)
+        d = dt_loc.date()
+    elif isinstance(local_date, date):
+        d = local_date
+        if tz_obj is None:
+            tz_obj = timezone.utc
+    else:
+        return None
+
+    probe_dt = datetime(d.year, d.month, d.day, 12, 0, tzinfo=tz_obj)
+
+    full_info = _moon_phase_info(probe_dt, tz=tz_obj, phase="full")
+    if full_info and full_info.get("bucket") == "full_today":
+        return {
+            "phase": "full",
+            "icon": "wk_full_moon",
+            "phase_utc": full_info["phase_utc"],
+            "phase_local": full_info["phase_local"],
+            "time_local_hm": full_info["time_local_hm"],
+            "local_date": d,
+        }
+
+    new_info = _moon_phase_info(probe_dt, tz=tz_obj, phase="new")
+    if new_info and new_info.get("bucket") == "new_today":
+        return {
+            "phase": "new",
+            "icon": "wk_new_moon",
+            "phase_utc": new_info["phase_utc"],
+            "phase_local": new_info["phase_local"],
+            "time_local_hm": new_info["time_local_hm"],
+            "local_date": d,
+        }
+
+    return None
 
 
 def _night_weather_allows_moon_tip(night_hours: List[Dict], all_hours: List[Dict]) -> bool:

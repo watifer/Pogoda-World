@@ -10,6 +10,7 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 from prepare_layout import _build_day_summary, _fmt_temp
+from worth_knowing import get_moon_phase_for_local_date
 from ui_softening import strip_mm_pct_parens
 from i18n import t, DAYS_SHORT, DAYS_FULL
 from i18n import translate_weather_text
@@ -46,7 +47,7 @@ def prepare_future_layout_data(payload, now=None):
     all_temps = []
     daily_diag_dict = payload.get("daily_diag", {})
 
-    for off in range(1, 16):
+    for off in range(1, 15):
         tgt = now + timedelta(days=off)
         ts = tgt.strftime("%Y-%m-%d")
 
@@ -104,16 +105,27 @@ def prepare_future_layout_data(payload, now=None):
                                 summary["diag_severity"] = "caution"
 
             short_day_name = DAYS_SHORT.get(lang, DAYS_SHORT["pl"])[tgt.weekday()]
-            future_days.append({
+            date_short = tgt.strftime("%d.%m")
+            day_entry = {
                 "name": short_day_name + source_marker,
-                "label": f"{short_day_name} {tgt.strftime('%d.%m')}",
+                "label": f"{short_day_name} {date_short}",
                 "icon": summary["icon"],
                 "temp_min": summary["temp_min"],
                 "temp_max": summary["temp_max"],
                 "precip_badge": summary["precip_badge"],
                 "descriptor": summary["descriptor"],
                 "severity": summary.get("severity", "normal")
-            })
+            }
+            moon_info = get_moon_phase_for_local_date(tgt.date(), tz)
+            if moon_info:
+                phase = moon_info["phase"]
+                label_key = "trend_moon_full_date" if phase == "full" else "trend_moon_new_date"
+                day_entry["moon_phase"] = phase
+                day_entry["moon_icon"] = moon_info["icon"]
+                day_entry["moon_date_short"] = date_short
+                day_entry["moon_hero_label"] = t(lang, label_key, date=date_short)
+
+            future_days.append(day_entry)
             all_temps.extend([summary["temp_min"], summary["temp_max"]])
 
     overall_min = min(all_temps) if all_temps else 0

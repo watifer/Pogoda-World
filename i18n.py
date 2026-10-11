@@ -102,7 +102,9 @@ STRINGS = {
     "coast_beach_from": "Wybrzeże: od ok. {hh}:00 wiatr od wody (do {gust} km/h).",
     "moon_full_today_clear": "Dziś pełnia Księżyca o godz. {time}. Niebo może być tej nocy wyraźnie jaśniejsze.",
     "moon_full_today": "Dziś pełnia Księżyca o godz. {time}.",
-    "moon_new_today": "Dziś nów Księżyca ({time}) — noc będzie wyjątkowo ciemna."
+    "moon_new_today": "Dziś nów Księżyca ({time}) — noc będzie wyjątkowo ciemna.",
+    "trend_moon_full_date": "Pełnia {date}",
+    "trend_moon_new_date": "Nów {date}"
   },
   "en": {
     "report_morning": "morning report",
@@ -194,7 +196,9 @@ STRINGS = {
     "coast_beach_from": "Coast: from around {hh}:00 onshore wind (up to {gust} km/h).",
     "moon_full_today_clear": "Full moon today at {time}. The sky may be noticeably brighter tonight.",
     "moon_full_today": "Full moon today at {time}.",
-    "moon_new_today": "New moon today ({time}) — the night will be exceptionally dark."
+    "moon_new_today": "New moon today ({time}) — the night will be exceptionally dark.",
+    "trend_moon_full_date": "Full moon {date}",
+    "trend_moon_new_date": "New moon {date}"
   },
   "fr": {
     "report_morning": "rapport du matin",
@@ -286,7 +290,9 @@ STRINGS = {
     "coast_beach_from": "Côte : à partir d'env. {hh}:00, vent de mer (jusqu'à {gust} km/h).",
     "moon_full_today_clear": "Pleine lune aujourd'hui à {time}. Le ciel pourrait être nettement plus lumineux cette nuit.",
     "moon_full_today": "Pleine lune aujourd'hui à {time}.",
-    "moon_new_today": "Nouvelle lune aujourd'hui ({time}) — la nuit sera exceptionnellement sombre."
+    "moon_new_today": "Nouvelle lune aujourd'hui ({time}) — la nuit sera exceptionnellement sombre.",
+    "trend_moon_full_date": "Pleine lune {date}",
+    "trend_moon_new_date": "Nouvelle lune {date}"
   },
   "de": {
     "report_morning": "Morgenbericht",
@@ -378,7 +384,9 @@ STRINGS = {
     "coast_beach_from": "Küste: ab ca. {hh}:00 Uhr auflandiger Wind (bis {gust} km/h).",
     "moon_full_today_clear": "Heute Vollmond um {time} Uhr. Der Himmel kann in dieser Nacht deutlich heller sein.",
     "moon_full_today": "Heute Vollmond um {time} Uhr.",
-    "moon_new_today": "Heute Neumond ({time} Uhr) — die Nacht wird besonders dunkel sein."
+    "moon_new_today": "Heute Neumond ({time} Uhr) — die Nacht wird besonders dunkel sein.",
+    "trend_moon_full_date": "Vollmond {date}",
+    "trend_moon_new_date": "Neumond {date}"
 
   },
   "es": {
@@ -471,7 +479,9 @@ STRINGS = {
     "coast_beach_from": "Costa: desde aprox. las {hh}:00, viento del mar (hasta {gust} km/h).",
     "moon_full_today_clear": "Hoy luna llena a las {time}. El cielo puede verse claramente más iluminado esta noche.",
     "moon_full_today": "Hoy luna llena a las {time}.",
-    "moon_new_today": "Hoy luna nueva ({time}) — la noche será excepcionalmente oscura."
+    "moon_new_today": "Hoy luna nueva ({time}) — la noche será excepcionalmente oscura.",
+    "trend_moon_full_date": "Luna llena {date}",
+    "trend_moon_new_date": "Luna nueva {date}"
   },
   "no": {
     "report_morning": "morgenrapport",
@@ -563,7 +573,9 @@ STRINGS = {
     "coast_beach_from": "Kyst: fra ca. {hh}:00 pålandsvind (opptil {gust} km/h).",
     "moon_full_today_clear": "Fullmåne i dag kl. {time}. Himmelen kan bli merkbart lysere i natt.",
     "moon_full_today": "Fullmåne i dag kl. {time}.",
-    "moon_new_today": "Nymåne i dag ({time}) — natten vil bli ekstra mørk."
+    "moon_new_today": "Nymåne i dag ({time}) — natten vil bli ekstra mørk.",
+    "trend_moon_full_date": "Fullmåne {date}",
+    "trend_moon_new_date": "Nymåne {date}"
   }
 }
 

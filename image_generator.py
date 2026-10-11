@@ -72,8 +72,15 @@ WK_FALLBACK_GLOBAL = {
     "wk_heavy_rain": "rain", "wk_light_snow": "snow",
     "wk_snow": "snow", "wk_storm": "storm",
     "wk_fog": "cloud", "wk_wind": "wind",
-    "wk_sleet": "snow", "wk_sun_storm": "storm", "wk_snow_showers": "snow"
+    "wk_sleet": "snow", "wk_sun_storm": "storm", "wk_snow_showers": "snow",
+    "wk_full_moon": "wk_clear_night", "wk_new_moon": "wk_clear_night",
 }
+
+MOON_ICON_SIZE = 34
+MOON_ICON_GAP = 12
+HERO_MOON_ICON_GAP = 10
+HERO_MOON_SEP = "   ·   "
+HERO_MOON_LINE_H = 42
 
 def paste_icon(img, x, y, icon_name, size=(60, 60)):
     # 1. Próbujemy znaleźć dokładną nazwę pliku (np. wk_rain.png)
@@ -397,40 +404,196 @@ def draw_blocks_card(draw, ov, img, blocks, title, y, cx1, cx2, pal,
     return y + card_h
 
 
+def _plan_days_card_layout(draw, days, cx1, cx2):
+    """Wspólny pre-pass i kalkulator geometrii dla draw_days_card().
+
+    Używa dokładnie tych samych fontów, wymiarów kolumn i reguł przycinania co
+    renderer. Nie mutuje wejściowej listy `days` ani jej słowników.
+    """
+    f_label = get_font("Inter-Medium.ttf", 34)
+    f_line  = get_font("Inter-Regular.ttf", 30)
+    f_diag  = get_font("Inter-Medium.ttf", 26)
+    CP = 20; CR = 24; TITLE_GAP = 62; ROW = 54; SEP = 18
+
+    max_label_w = max([draw.textlength(d.get("label") or d.get("name", ""), font=f_label) for d in days] + [0])
+    max_day_w = max([draw.textlength((d.get("label") or d.get("name", "")).split(" ")[0], font=f_label) for d in days] + [0])
+    col_offset = max(130, int(max_label_w + 30))
+
+    C_HOURS = cx1 + CP
+    C_DATE  = C_HOURS + int(max_day_w) + 12
+    C_ICON  = cx1 + CP + col_offset
+    C_TEMP  = C_ICON + 65
+    C_DESC  = max(cx1 + 400, C_TEMP + 150)
+    DESC_RIGHT = cx2 - CP
+    MOON_X = DESC_RIGHT - MOON_ICON_SIZE
+
+    base_desc_avail = DESC_RIGHT - C_DESC
+    avail_before_moon = base_desc_avail - MOON_ICON_SIZE - MOON_ICON_GAP
+
+    rows_plan = []
+    hero_moon_items = []
+
+    for idx, d in enumerate(days):
+        badge = d.get("precip_badge")
+        descriptor = d.get("descriptor")
+        raw_text = badge or descriptor or ""
+
+        desc_avail = base_desc_avail
+        raw_diag = d.get("diag_tag")
+        diag_tag = None
+        diag_w = 0
+        if raw_diag:
+            max_diag_avail = int(base_desc_avail * 0.35)
+            diag_tag = ellipsize(draw, raw_diag, f_diag, max_diag_avail)
+            bbox = draw.textbbox((0, 0), diag_tag, font=f_diag)
+            diag_w = bbox[2] - bbox[0]
+            desc_avail = max(10, desc_avail - (diag_w + 20))
+
+        moon_phase = d.get("moon_phase")
+        moon_icon = d.get("moon_icon") or (
+            "wk_full_moon" if moon_phase == "full" else "wk_new_moon" if moon_phase == "new" else None
+        )
+        has_moon = moon_phase in ("full", "new") and bool(moon_icon)
+
+        raw_text_w = draw.textlength(raw_text, font=f_line) if raw_text else 0.0
+        fits_inline = (
+            has_moon
+            and not diag_tag
+            and raw_text_w <= avail_before_moon
+            and (not raw_text or fit_day_desc(draw, raw_text, f_line, avail_before_moon) == raw_text)
+        )
+
+        if has_moon and fits_inline:
+            moon_inline = True
+            row_desc_avail = avail_before_moon
+            fitted_text = fit_day_desc(draw, raw_text, f_line, row_desc_avail) if raw_text else ""
+            moon_x = MOON_X
+        else:
+            moon_inline = False
+            row_desc_avail = desc_avail
+            fitted_text = fit_day_desc(draw, raw_text, f_line, row_desc_avail) if raw_text else ""
+            moon_x = None
+            if has_moon:
+                hero_label = d.get("moon_hero_label") or d.get("moon_date_short") or ""
+                hero_moon_items.append({
+                    "day_index": idx,
+                    "phase": moon_phase,
+                    "icon": moon_icon,
+                    "label": hero_label,
+                })
+
+        fitted_w = draw.textlength(fitted_text, font=f_line) if fitted_text else 0.0
+        rows_plan.append({
+            "day_index": idx,
+            "raw_text": raw_text,
+            "raw_text_w": raw_text_w,
+            "fitted_text": fitted_text,
+            "text_w": fitted_w,
+            "desc_avail": row_desc_avail,
+            "diag_tag": diag_tag,
+            "diag_w": diag_w,
+            "has_moon": has_moon,
+            "moon_phase": moon_phase if has_moon else None,
+            "moon_icon": moon_icon if has_moon else None,
+            "moon_inline": moon_inline,
+            "moon_x": moon_x,
+        })
+
+    return {
+        "CP": CP,
+        "CR": CR,
+        "TITLE_GAP": TITLE_GAP,
+        "ROW": ROW,
+        "SEP": SEP,
+        "C_HOURS": C_HOURS,
+        "C_DATE": C_DATE,
+        "C_ICON": C_ICON,
+        "C_TEMP": C_TEMP,
+        "C_DESC": C_DESC,
+        "DESC_RIGHT": DESC_RIGHT,
+        "MOON_ICON_SIZE": MOON_ICON_SIZE,
+        "MOON_ICON_GAP": MOON_ICON_GAP,
+        "MOON_X": MOON_X,
+        "base_desc_avail": base_desc_avail,
+        "avail_before_moon": avail_before_moon,
+        "rows": rows_plan,
+        "hero_moon_items": hero_moon_items,
+    }
+
+
+def _plan_hero_moon_line(draw, hero_moon_items, x=MARGIN, max_width=None, font=None):
+    """Wyznacza pozycje ikon i tekstów faz Księżyca w jednej linii Hero."""
+    if not hero_moon_items:
+        return {"items": [], "separators": [], "total_width": 0.0, "right_edge": float(x)}
+    if font is None:
+        font = get_font("Inter-Regular.ttf", 32)
+    if max_width is None:
+        max_width = WIDTH - 2 * MARGIN
+
+    n = len(hero_moon_items)
+    sep_w = draw.textlength(HERO_MOON_SEP, font=font) if n > 1 else 0.0
+    fixed_w = n * (MOON_ICON_SIZE + HERO_MOON_ICON_GAP) + max(0, n - 1) * sep_w
+    per_label_max = max(20.0, (max_width - fixed_w) / n)
+
+    planned_items = []
+    separators = []
+    cx = float(x)
+
+    for i, item in enumerate(hero_moon_items):
+        if i > 0:
+            separators.append({"x": cx, "text": HERO_MOON_SEP})
+            cx += sep_w
+
+        raw_lbl = str(item.get("label") or "")
+        lbl = ellipsize(draw, raw_lbl, font, per_label_max) if draw.textlength(raw_lbl, font=font) > per_label_max else raw_lbl
+        lbl_w = draw.textlength(lbl, font=font)
+        icon_x = int(round(cx))
+        text_x = cx + MOON_ICON_SIZE + HERO_MOON_ICON_GAP
+
+        planned_items.append({
+            "day_index": item.get("day_index"),
+            "phase": item.get("phase"),
+            "icon": item.get("icon"),
+            "label": lbl,
+            "icon_x": icon_x,
+            "text_x": text_x,
+            "text_w": lbl_w,
+            "right_edge": text_x + lbl_w,
+        })
+        cx = text_x + lbl_w
+
+    return {
+        "items": planned_items,
+        "separators": separators,
+        "total_width": cx - float(x),
+        "right_edge": cx,
+    }
+
+
 def draw_days_card(draw, ov, img, days, title, y, cx1, cx2, pal,
-                   title_color=None):
+                   title_color=None, plan=None):
     if title_color is None:
         title_color = TITLE_FUTURE
     f_title = get_font("Inter-Bold.ttf", 42)
     f_label = get_font("Inter-Medium.ttf", 34)
     f_temp  = get_font("Inter-Medium.ttf", 34)
     f_line  = get_font("Inter-Regular.ttf", 30)
-    CP = 20; CR = 24; TITLE_GAP = 62
+    f_diag  = get_font("Inter-Medium.ttf", 26)
 
-    # Kolumny dosunięte do lewej dla ikony 48px
-    #C_HOURS = cx1 + CP
-    #C_ICON  = cx1 + CP + 130
-    #C_TEMP  = cx1 + CP + 200   # +15 — miejsce na ikonę 48px
-    #C_DESC  = cx1 + 400        # ZŁOTA KOLUMNA OPISÓW
-    #DESC_RIGHT = cx2 - CP
+    if plan is None:
+        plan = _plan_days_card_layout(draw, days, cx1, cx2)
 
-    # === INTELIGENTNE KOLUMNY (Auto-Layout) ===
-    max_label_w = max([draw.textlength(d.get("label") or d.get("name", ""), font=f_label) for d in days] + [0])
-    
-    # Dodajemy: szukamy najszerszego skrótu dnia (np. "Czw"), by równo ustawić margines dat
-    max_day_w = max([draw.textlength((d.get("label") or d.get("name", "")).split(" ")[0], font=f_label) for d in days] + [0])
-    
-    col_offset = max(130, int(max_label_w + 30))
+    CP = plan["CP"]
+    CR = plan["CR"]
+    TITLE_GAP = plan["TITLE_GAP"]
+    C_HOURS = plan["C_HOURS"]
+    C_DATE = plan["C_DATE"]
+    C_ICON = plan["C_ICON"]
+    C_TEMP = plan["C_TEMP"]
+    C_DESC = plan["C_DESC"]
+    ROW = plan["ROW"]
+    SEP = plan["SEP"]
 
-    C_HOURS = cx1 + CP
-    C_DATE  = C_HOURS + int(max_day_w) + 12   # <--- NOWA, niewidzialna kolumna na samą datę
-    C_ICON  = cx1 + CP + col_offset            # Ikony ani drgną!
-    C_TEMP  = C_ICON + 65                      # Lekko zbliżamy temperaturę
-    C_DESC  = max(cx1 + 400, C_TEMP + 150)     # Odzyskujemy aż 35 pikseli dla długich opisów!
-    DESC_RIGHT = cx2 - CP
-
-    ROW = 54
-    SEP = 18  # odstęp między wierszami jak w draw_blocks_card
     n_days = len(days)
     card_h = CP + TITLE_GAP + n_days * ROW + max(0, n_days - 1) * SEP + CP
     draw_rounded_rect(ov, (cx1, y, cx2, y + card_h), CR, pal["card"])
@@ -448,7 +611,8 @@ def draw_days_card(draw, ov, img, days, title, y, cx1, cx2, pal,
     # ---------------------------------------------
 
     dy = y + CP + TITLE_GAP
-    for d in days:
+    for idx, d in enumerate(days):
+        row_plan = plan["rows"][idx]
         # Kolumna 1: label (np. "06–22") lub name (np. "Wt.")
         label = d.get("label") or d.get("name", "")
         
@@ -487,41 +651,28 @@ def draw_days_card(draw, ov, img, days, title, y, cx1, cx2, pal,
                       fill=(230, 235, 245))
 
         # Kolumna 4: badge LUB descriptor
-        badge = d.get("precip_badge")
-        descriptor = d.get("descriptor")
         severity = d.get("severity", "normal")
-        
-        desc_avail = cx2 - CP - C_DESC
-
-        # --- ODCZYT I BEZPIECZNE FORMATOWANIE DIAG_TAG ---
-        diag_tag = d.get("diag_tag")
-        diag_w = 0
-        if diag_tag:
-            # 1. Zabezpieczenie szerokości dla tagu (zmienione z 45% na bezpieczne 35%)
-            max_diag_avail = int((cx2 - CP - C_DESC) * 0.35)
-            
-            # Używamy ellipsize (z textbbox)
-            diag_tag = ellipsize(draw, diag_tag, f_diag, max_diag_avail)
-            
-            # 2. Bezpieczne mierzenie przez textbbox
-            bbox = draw.textbbox((0, 0), diag_tag, font=f_diag)
-            diag_w = bbox[2] - bbox[0]
-            
-            # 3. Odcięcie przestrzeni z clampem
-            desc_avail = max(10, desc_avail - (diag_w + 20))
+        fitted_text = row_plan["fitted_text"]
+        diag_tag = row_plan["diag_tag"]
+        diag_w = row_plan["diag_w"]
 
         # --- KOLOROWANIE OPISU POGODY (Semantyczne) ---
         if severity == "alert": warn_color = (252, 129, 129)
         elif severity == "caution": warn_color = (253, 186, 116)
         else: warn_color = (200, 210, 225)
 
-        if badge:
-            badge = fit_day_desc(draw, badge, f_line, desc_avail)
-            draw.text((C_DESC, dy + 1), badge, font=f_line, fill=warn_color)
-            
-        elif descriptor:
-            descriptor = fit_day_desc(draw, descriptor, f_line, desc_avail)
-            draw.text((C_DESC, dy + 1), descriptor, font=f_line, fill=warn_color)
+        if fitted_text:
+            draw.text((C_DESC, dy + 1), fitted_text, font=f_line, fill=warn_color)
+
+        # --- RYSOWANIE IKONY PEŁNI / NOWIU INLINE (stała pozycja przy prawym marginesie) ---
+        if row_plan["moon_inline"] and row_plan["moon_icon"] and row_plan["moon_x"] is not None:
+            paste_icon(
+                img,
+                row_plan["moon_x"],
+                dy + 1,
+                row_plan["moon_icon"],
+                size=(MOON_ICON_SIZE, MOON_ICON_SIZE),
+            )
 
         # --- RYSOWANIE DIAG_TAG ---
         if diag_tag:
@@ -607,6 +758,12 @@ def generate_weather_card(data, palette_override=None):
     if ctx:
         ctx_lines = wrap_text(dummy_draw, ctx, f_ctx, WIDTH - 2 * MARGIN)
         hh += len(ctx_lines) * 38
+
+    cx1 = MARGIN; cx2 = WIDTH - MARGIN
+    days_plan = _plan_days_card_layout(dummy_draw, days, cx1, cx2) if days else None
+    hero_moon_items = days_plan["hero_moon_items"] if days_plan else []
+    if hero_moon_items:
+        hh += HERO_MOON_LINE_H
     
 
     # Bloki dziś (z draw_blocks_card: CP=20, TITLE_GAP=62, ROW=54, EXTRA=32)
@@ -828,6 +985,24 @@ def generate_weather_card(data, palette_override=None):
             draw.text((MARGIN, y + 4), line, font=f_ctx, fill=(254, 240, 138)) # <- Zmieniono na żółty
             y += 38
 
+    # 4. Fallback faz Księżyca w Hero (gdy nie mieszczą się inline w wierszu dnia)
+    if hero_moon_items:
+        hero_moon_plan = _plan_hero_moon_line(
+            draw, hero_moon_items, x=MARGIN, max_width=WIDTH - 2 * MARGIN, font=f_ctx
+        )
+        for sep in hero_moon_plan["separators"]:
+            draw.text((sep["x"], y + 4), sep["text"], font=f_ctx, fill=(254, 240, 138))
+        for m_item in hero_moon_plan["items"]:
+            paste_icon(
+                img,
+                m_item["icon_x"],
+                y + 3,
+                m_item["icon"],
+                size=(MOON_ICON_SIZE, MOON_ICON_SIZE),
+            )
+            draw.text((m_item["text_x"], y + 4), m_item["label"], font=f_ctx, fill=(254, 240, 138))
+        y += HERO_MOON_LINE_H
+
     y += 20
 
     # ==========================================
@@ -978,7 +1153,7 @@ def generate_weather_card(data, palette_override=None):
                     y += gap
             elif section_type == "summary" and not summary_placed:
                 if days:
-                    y = draw_days_card(draw, ov, img, days, next_days_title, y, cx1, cx2, pal, title_color=TITLE_FUTURE)
+                    y = draw_days_card(draw, ov, img, days, next_days_title, y, cx1, cx2, pal, title_color=TITLE_FUTURE, plan=days_plan)
                     y += gap
                 summary_placed = True
     else:
@@ -986,7 +1161,7 @@ def generate_weather_card(data, palette_override=None):
             y = draw_blocks_card(draw, ov, img, wdd_item["blocks"], wdd_item["name"], y, cx1, cx2, pal, title_color=TITLE_FUTURE)
             y += gap
         if days:
-            y = draw_days_card(draw, ov, img, days, next_days_title, y, cx1, cx2, pal, title_color=TITLE_FUTURE)
+            y = draw_days_card(draw, ov, img, days, next_days_title, y, cx1, cx2, pal, title_color=TITLE_FUTURE, plan=days_plan)
             y += gap
 
     # 5. KARTA WEEKENDOWA
