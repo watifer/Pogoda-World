@@ -217,16 +217,81 @@ def load_users_map(ws) -> dict:
         return {}
 
 
-def has_access(ws, chat_id) -> bool:
-    """True tylko gdy istnieje wiersz w Users z access_status=granted."""
+def has_access(ws, chat_id, now=None) -> bool:
+    """True tylko gdy istnieje wiersz w Users spełniający effective_access_allowed."""
     u = get_user(ws, chat_id)
-    return bool(u) and str(u.get("access_status", "")).strip().lower() == ACCESS_GRANTED
+    return effective_access_allowed(u, now=now)
 
 
-def has_access_in_map(users_map: dict, chat_id) -> bool:
+def has_access_in_map(users_map: dict, chat_id, now=None) -> bool:
     """Wariant has_access działający na mapie z RAM (bez zapytań API)."""
     u = (users_map or {}).get(norm_chat_id(chat_id))
-    return bool(u) and str(u.get("access_status", "")).strip().lower() == ACCESS_GRANTED
+    return effective_access_allowed(u, now=now)
+
+
+def _to_utc_datetime(val) -> datetime | None:
+    """Parsuje ciąg znaków lub obiekt datetime do UTC datetime."""
+    if val is None:
+        return None
+    if isinstance(val, datetime):
+        if val.tzinfo is None:
+            return val.replace(tzinfo=timezone.utc)
+        return val.astimezone(timezone.utc)
+    s = str(val).strip()
+    if not s:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(s, fmt)
+            return dt.replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    try:
+        from dateutil import parser as dateutil_parser
+        dt = dateutil_parser.parse(s)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        pass
+    try:
+        dt = datetime.fromisoformat(s)
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    except Exception:
+        return None
+
+
+def effective_access_allowed(user_row: dict | None, now=None) -> bool:
+    """
+    Zwraca True wyłącznie, gdy:
+    - rekord istnieje (user_row to niepusty dict);
+    - access_status == "granted" (case-insensitive);
+    - blocked_at jest puste;
+    - access_expires_at jest puste albo jeszcze nie wygasło (w odniesieniu do now / UTC).
+    """
+    if not user_row or not isinstance(user_row, dict):
+        return False
+
+    status = str(user_row.get("access_status", "")).strip().lower()
+    if status != ACCESS_GRANTED:
+        return False
+
+    blocked_at = str(user_row.get("blocked_at", "")).strip()
+    if blocked_at:
+        return False
+
+    expires_raw = str(user_row.get("access_expires_at", "")).strip()
+    if not expires_raw:
+        return True
+
+    now_dt = _to_utc_datetime(now) if now is not None else datetime.now(timezone.utc)
+    expires_dt = _to_utc_datetime(expires_raw)
+    if expires_dt is None:
+        return False
+
+    return now_dt < expires_dt
 
 
 def get_lang(users_map: dict, chat_id):
