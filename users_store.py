@@ -264,6 +264,20 @@ def _to_utc_datetime(val) -> Optional[datetime]:
         return None
 
 
+def is_blocked_row(user_row: Optional[dict]) -> bool:
+    """True, gdy wiersz Users oznacza blokadę: access_status=blocked albo ustawione blocked_at.
+
+    Blokada nie może być zdjęta przez zwykły payload (kod/referral/MASTER_TOKEN) —
+    odblokowanie należy do ręcznej ścieżki administracyjnej w arkuszu.
+    """
+    if not user_row or not isinstance(user_row, dict):
+        return False
+    status = str(user_row.get("access_status", "")).strip().lower()
+    if status == ACCESS_BLOCKED:
+        return True
+    return bool(str(user_row.get("blocked_at", "")).strip())
+
+
 def effective_access_allowed(user_row: Optional[dict], now=None) -> bool:
     """
     Zwraca True wyłącznie, gdy:
@@ -382,6 +396,10 @@ def upsert_access(ws, chat_id, lang, source, now_iso_str, privacy_ver) -> bool:
             return True
 
         # --- ISTNIEJĄCY WIERSZ: batch update pól access ---
+        # Zablokowany wiersz nie może wrócić do granted przez payload (P7 / blokada).
+        if is_blocked_row(existing):
+            print(f"  ⚠️ [users_store] upsert_access({chat_id}): konto zablokowane — bez zmian.")
+            return False
         updates = {
             "last_seen_at": now_iso_str,
             "access_status": ACCESS_GRANTED,
