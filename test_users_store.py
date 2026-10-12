@@ -455,6 +455,46 @@ class TestHasAccess:
 
 
 # ============================================================================
+# Blokada nie może być zdjęta przez upsert_access (payload) — REGISTRATION gate
+# ============================================================================
+class TestUpsertAccessRespectsBlock:
+    def test_is_blocked_row_flags(self):
+        from users_store import is_blocked_row
+        assert is_blocked_row({"access_status": "blocked"}) is True
+        assert is_blocked_row({"access_status": "granted", "blocked_at": "2026-10-01 10:00:00"}) is True
+        assert is_blocked_row({"access_status": "granted", "blocked_at": "  "}) is False
+        assert is_blocked_row({"access_status": "revoked"}) is False
+        assert is_blocked_row({}) is False
+        assert is_blocked_row(None) is False
+
+    def test_upsert_refuses_to_unblock_blocked_row(self):
+        ws = FakeWorksheet()
+        upsert_access(ws, 777, "pl", "public_beta", "2026-09-30 10:00:00", "v1")
+        headers = [h.lower() for h in USERS_HEADERS]
+        row = ws.grid[1]
+        row[headers.index("access_status")] = "blocked"
+        row[headers.index("blocked_at")] = "2026-10-01 10:00:00"
+        before = list(row)
+        ws.calls["update_cells"] = 0
+
+        ok = upsert_access(ws, 777, "pl", "referral", "2026-10-12 12:00:00", "v2")
+
+        assert ok is False
+        assert ws.grid[1] == before, "zablokowany wiersz nie może się zmienić"
+        assert ws.calls["update_cells"] == 0
+        assert users_store.effective_access_allowed(ws.record(777)) is False
+
+    def test_upsert_still_refreshes_inactive_unblocked_row(self):
+        # Kontrolka: zwykły "revoked" (bez blokady) nadal jest reaktywowany.
+        ws = FakeWorksheet()
+        upsert_access(ws, 778, "pl", "referral", "2026-09-30 10:00:00", "v1")
+        headers = [h.lower() for h in USERS_HEADERS]
+        ws.grid[1][headers.index("access_status")] = "revoked"
+        assert upsert_access(ws, 778, "pl", "public_beta", "2026-10-12 12:00:00", "v2") is True
+        assert ws.record(778)["access_status"] == "granted"
+
+
+# ============================================================================
 # set_blocked — Users first, czyszczenie profilu
 # ============================================================================
 class TestSetBlocked:
