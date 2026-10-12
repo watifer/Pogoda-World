@@ -3844,16 +3844,17 @@ def _main_bot_iteration(gc, offset):
                 print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Zapisuję access w Users (ID: {chat_id}, źródło: {access_source})")
 
                 try:
+                    existing_entry = users_map.get(users_store.norm_chat_id(chat_id), {})
+                    user_lang = existing_entry.get("lang") or wykryty_jezyk
                     zapisano = _sheets_call(
                         "sheets.users.upsert_access",
                         users_store.upsert_access,
-                        users_ws, chat_id, wykryty_jezyk, access_source,
+                        users_ws, chat_id, user_lang, access_source,
                         users_store.now_iso(), PRIVACY_VERSION,
                     )
                     if not zapisano:
                         raise RuntimeError("upsert_access nie zapisał wiersza (brak zakładki Users?)")
 
-                    existing_entry = users_map.get(users_store.norm_chat_id(chat_id), {})
                     users_map[users_store.norm_chat_id(chat_id)] = {
                         **existing_entry,
                         "chat_id": str(chat_id),
@@ -3861,12 +3862,12 @@ def _main_bot_iteration(gc, offset):
                         "access_source": access_source,
                         "access_granted_at": users_store.now_iso(),
                         "privacy_version_seen": PRIVACY_VERSION,
-                        "lang": existing_entry.get("lang") or wykryty_jezyk,
+                        "lang": user_lang,
                         "profile_status": existing_entry.get("profile_status") or "none",
                     }
                     _cache_users_map(users_map)
 
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "access_granted"))
+                    send_reply(chat_id, t_ui(user_lang, "access_granted"))
                     continue
 
                 except SheetsRateLimitError:

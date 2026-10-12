@@ -2465,3 +2465,46 @@ class TestP7AuthorizationMatrix:
         assert len(bot.oneoffs) == 1
         assert bot.oneoffs[0][0] == group_id
 
+    def test_existing_user_with_revoked_access_and_active_profile_reactivates_access_and_preserves_all_data(
+        self, bot, monkeypatch
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        # 1. Zarejestruj i skonfiguruj profil z językiem "de"
+        bot.run(bot.msg(310, "/start BETAX1", lang="de"))
+        bot.run(bot.msg(310, "/miasto", lang="de"))
+        bot.run(bot.msg(310, "Berlin", lang="de"))
+        rec_initial = bot.users.record(310)
+        assert rec_initial["profile_status"] == "active"
+        assert rec_initial["location_label"] == "Berlin"
+        assert rec_initial["access_status"] == "granted"
+
+        # 2. Ręcznie symulujemy utratę dostępu (access_status="revoked")
+        for r in bot.gc.users.grid[1:]:
+            if r and r[0] == "310":
+                status_col_idx = [h.lower() for h in bot.gc.users.grid[0]].index("access_status")
+                r[status_col_idx] = "revoked"
+                break
+        lb._invalidate_users_snapshot()
+
+        # Użytkownik nie ma dostępu — komendy są wyciszone
+        bot.run(bot.msg(310, "/teraz", lang="de"))
+        assert bot.oneoffs == []
+
+        # 3. Użytkownik wysyła poprawny /start BETAX1 (np. z klienta z lang="pl")
+        bot.run(bot.msg(310, "/start BETAX1", lang="pl"))
+        rec_reloaded = bot.users.record(310)
+
+        # Weryfikacja: access_status zmieniony na granted, reszta zachowana
+        assert rec_reloaded["access_status"] == "granted"
+        assert rec_reloaded["profile_status"] == "active"  # NIE none!
+        assert rec_reloaded["location_label"] == "Berlin"
+        assert rec_reloaded["lang"] == "de"  # język profilu zachowany
+        assert rec_reloaded["location_consent_version"] == lb.PRIVACY_VERSION
+        assert bot.has_reply(310, "Zugang aktiviert") or bot.has_reply(310, "Dostęp aktywowany")
+
+        # 4. Profil jest aktywny i działa natychmiast bez ponownego podawania miasta
+        bot.run(bot.msg(310, "/teraz", lang="de"))
+        assert len(bot.oneoffs) == 1
+        assert bot.oneoffs[-1][0] == 310
+        assert bot.oneoffs[-1][3] == "Berlin"
+

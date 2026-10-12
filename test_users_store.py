@@ -222,6 +222,41 @@ class TestUpsertAccess:
         upsert_access(ws, 6, "it", "referral", "2026-09-30 10:00:00", "v1")
         assert ws.record(6)["lang"] == "en"
 
+    def test_upsert_access_preserves_active_profile_and_location_and_consents(self):
+        ws = FakeWorksheet()
+        upsert_access(ws, 113, "de", "referral", "2026-09-30 10:00:00", "v1")
+        set_profile(ws, 113, 52.23, 21.01, "Warszawa", "gps", "de", "2026-09-v1", "2026-10-01 10:00:00")
+        set_report_settings(ws, 113, "08:00", "14:00")
+
+        # Symulujemy zmianę access_status na nieaktywny (np. revoked)
+        row_idx = find_row_by_chat_id(ws, 113)
+        col_idx = [h.lower() for h in ws.grid[0]].index("access_status") + 1
+        ws.update_cells([
+            type("_Cell", (), {"row": row_idx, "col": col_idx, "value": "revoked"})()
+        ])
+        rec_before = ws.record(113)
+        assert rec_before["access_status"] == "revoked"
+        assert rec_before["profile_status"] == "active"
+        assert rec_before["lat_round"] == "52.23"
+        assert rec_before["location_label"] == "Warszawa"
+
+        # Ponowny /start z nowym kodem
+        ok = upsert_access(ws, 113, "de", "public_beta", "2026-10-12 12:00:00", "2026-09-v2")
+        assert ok is True
+
+        rec_after = ws.record(113)
+        assert rec_after["access_status"] == "granted"
+        assert rec_after["profile_status"] == "active"  # profile_status nie jest resetowane do "none"!
+        assert rec_after["lat_round"] == "52.23"
+        assert rec_after["lon_round"] == "21.01"
+        assert rec_after["location_label"] == "Warszawa"
+        assert rec_after["location_source"] == "gps"
+        assert rec_after["location_consent_at"] == "2026-10-01 10:00:00"
+        assert rec_after["location_consent_version"] == "2026-09-v1"
+        assert rec_after["report_morning_time"] == "08:00"
+        assert rec_after["report_afternoon_time"] == "14:00"
+        assert rec_after["lang"] == "de"
+
 
 # ============================================================================
 # set_profile — wyłącznie po świadomym flow /miasto (ukryty alias: /save_location)
