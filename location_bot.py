@@ -36,7 +36,9 @@ import users_store
 
 load_dotenv()
 #Furtka do testowanie bota bez zaproszenia
-MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
+# Brak domyślnego tokena: gdy MASTER_TOKEN nie jest ustawiony, ścieżka admin jest
+# WYŁĄCZONA (patrz _is_master_token). Nigdy nie akceptujemy wartości zgadywalnej.
+MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "").strip()
 import time
 
 
@@ -196,6 +198,105 @@ def _primary_public_code() -> str:
     return codes[0] if codes else ""
 
 
+# --- Rejestracja nowych użytkowników (REGISTRATION_ENABLED / MAX_USERS) ---
+# Wartości domyślne odpowiadają dotychczasowemu zachowaniu: rejestracja otwarta,
+# limit 200 miejsc (wcześniej zahardkodowany w handlerze /start).
+DEFAULT_MAX_USERS = 200
+_REGISTRATION_TRUE = ("1", "true", "yes", "on")
+_REGISTRATION_FALSE = ("0", "false", "no", "off")
+
+
+def _registration_enabled() -> bool:
+    """REGISTRATION_ENABLED: nowe rejestracje (kody, referral, linki deep link).
+
+    Pusta lub nierozpoznana wartość = włączona (zachowanie sprzed zmiany).
+    Odczyt przy każdym wywołaniu, żeby zmiana .env / testy działały bez restartu.
+    """
+    raw = os.environ.get("REGISTRATION_ENABLED", "").strip().lower()
+    if not raw or raw in _REGISTRATION_TRUE:
+        return True
+    if raw in _REGISTRATION_FALSE:
+        return False
+    print(f"  ⚠️ [access] Nierozpoznana wartość REGISTRATION_ENABLED={raw!r}; używam domyślnej (włączona).")
+    return True
+
+
+def _max_users() -> int:
+    """MAX_USERS: limit aktywnych miejsc (rekordy Users z effective_access_allowed)."""
+    raw = os.environ.get("MAX_USERS", "").strip()
+    if not raw:
+        return DEFAULT_MAX_USERS
+    try:
+        value = int(raw)
+    except ValueError:
+        value = -1
+    if value < 0:
+        print(f"  ⚠️ [access] Nieprawidłowe MAX_USERS={raw!r}; używam domyślnego {DEFAULT_MAX_USERS}.")
+        return DEFAULT_MAX_USERS
+    return value
+
+
+def _active_seats_count(users_map, clean_users) -> int:
+    """Liczba zajętych miejsc.
+
+    - Źródłem prawdy jest Users: liczymy wyłącznie wiersze z effective_access_allowed
+      (blocked / revoked / wygasłe / bez granted nie zajmują miejsca).
+    - Użytkownik legacy bez wiersza w Users (Formularz) ma dostęp domniemany
+      (fallback _chat_has_access), więc też zajmuje miejsce. Jeśli wiersz Users
+      istnieje, Users rozstrzyga i Formularz nie jest liczony drugi raz.
+    """
+    users_map = users_map or {}
+    seats = sum(1 for row in users_map.values() if users_store.effective_access_allowed(row))
+    for legacy in clean_users or ():
+        cid = users_store.norm_chat_id(legacy.get("Chat ID", ""))
+        if cid and cid not in users_map:
+            seats += 1
+    return seats
+
+
+def _is_master_token(token) -> bool:
+    """True tylko dla dokładnie skonfigurowanego MASTER_TOKEN.
+
+    Gdy MASTER_TOKEN jest pusty / nieustawiony, ścieżka admin jest wyłączona —
+    żaden payload nie jest traktowany jako master.
+    """
+    if not token or not isinstance(token, str):
+        return False
+    expected = (MASTER_TOKEN or "").strip()
+    if not expected:
+        return False
+    return token.strip() == expected
+
+
+def _registration_block_key(reason: str) -> str:
+    """Klucz i18n komunikatu dla powodu z _registration_closed_reason().
+
+    closed (REGISTRATION_ENABLED=0) -> registration_closed: bez liczby miejsc i bez kodu,
+    full (MAX_USERS osiągnięte)    -> limit_reached z aktualnym max_users.
+    """
+    return "registration_closed" if reason == "closed" else "limit_reached"
+
+
+def _registration_closed_reason(token, users_map, clean_users) -> str:
+    """CENTRALNA bramka nowych rejestracji.
+
+    Zwraca "" gdy nowa rejestracja jest dozwolona, w przeciwnym razie "closed"
+    (REGISTRATION_ENABLED=false) albo "full" (osiągnięto MAX_USERS).
+
+    Wywoływana PRZED _validate_access_token() i PRZED upsert_access(), więc
+    zamknięcie blokuje każdą ścieżkę nowego dostępu. Aktywnego użytkownika
+    nie dotyczy — jego obsługuje gałąź A /start (chat_has_access) wcześniej.
+    MASTER_TOKEN omija bramkę (P7 God mode: "wchodzi zawsze i omija limit").
+    """
+    if _is_master_token(token):
+        return ""
+    if not _registration_enabled():
+        return "closed"
+    if _active_seats_count(users_map, clean_users) >= _max_users():
+        return "full"
+    return ""
+
+
 def _validate_access_token(token: str, clean_users, users_map) -> tuple:
     """
     Waliduje token zaproszenia/dostępu (istniejący mechanizm P7):
@@ -211,7 +312,7 @@ def _validate_access_token(token: str, clean_users, users_map) -> tuple:
     if not clean_token:
         return False, ""
 
-    is_dev_mode = (clean_token == MASTER_TOKEN)
+    is_dev_mode = _is_master_token(clean_token)
     if is_dev_mode:
         return True, "admin"
 
@@ -1641,6 +1742,8 @@ def _invite_message(lang, key):
 
     Dla key == 'invalid_link' oraz 'limit_reached':
     Wstawia bezpieczny link INVITE_URL.
+    'limit_reached' dostaje też aktualne MAX_USERS (placeholder {max_users}),
+    więc komunikat nie zawiera zahardkodowanej liczby miejsc.
     """
     if key == "no_access":
         code = _primary_public_code()
@@ -1651,9 +1754,15 @@ def _invite_message(lang, key):
             return t_ui(lang, "no_access_no_code")
     elif key == "invalid_link":
         return t_ui(lang, "invalid_link", url=_md_safe(INVITE_URL))
+    elif key == "limit_reached":
+        return t_ui(lang, "limit_reached", url=_md_safe(INVITE_URL), max_users=_max_users())
+    elif key == "registration_closed":
+        # Celowo BEZ liczby miejsc i BEZ kodu: przy ręcznie zamkniętej rejestracji
+        # wolne miejsca mogą istnieć, więc „200/200” byłoby nieprawdziwe.
+        return t_ui(lang, "registration_closed", url=_md_safe(INVITE_URL))
     elif key == "access_granted":
         return t_ui(lang, "access_granted")
-    return t_ui(lang, key, url=_md_safe(INVITE_URL))
+    return t_ui(lang, key, url=_md_safe(INVITE_URL), max_users=_max_users())
 
 
 _LOCALITY_ADDRESS_FIELDS = ("city", "town", "village", "hamlet", "locality")
@@ -3819,26 +3928,46 @@ def _main_bot_iteration(gc, offset):
                     send_reply(chat_id, t_ui(user_lang, "welcome_back"))
                     continue
 
-                # Użytkownik bez dostępu:
+                # Użytkownik bez dostępu (nowa rejestracja albo nieaktywny rekord):
                 wykryty_jezyk = get_user_lang(message)
 
                 if not start_payload:
                     # B. Czysty /start bez payloadu:
-                    # Nie aktywuj, wyślij no_access z dynamicznym kodem publicznym.
-                    send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
+                    # Przy zamkniętej rejestracji nie pokazujemy kodu, którym
+                    # i tak nie da się wejść — tylko limit_reached.
+                    block_reason = _registration_closed_reason("", users_map, clean_users)
+                    if block_reason:
+                        send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
+                    else:
+                        # Nie aktywuj, wyślij no_access z dynamicznym kodem publicznym.
+                        send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
                     continue
 
-                # C. /start z payloadem:
+                # C. /start z payloadem (kod publiczny, referral, MASTER, deep link):
                 token = start_payload
+
+                # C1. Konto zablokowane: payload (także MASTER_TOKEN) nie może
+                # ustawić access_status=granted. Odblokowanie = ścieżka admina w arkuszu.
+                existing_row = users_map.get(users_store.norm_chat_id(chat_id))
+                if users_store.is_blocked_row(existing_row):
+                    print(f"  [access] Konto zablokowane ({chat_id}) — payload odrzucony bez zmian.")
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "invalid_link"))
+                    continue
+
+                # C2. CENTRALNA BRAMKA REJESTRACJI — przed _validate_access_token()
+                # i przed upsert_access(). Zamknięta rejestracja albo pełny limit
+                # (liczony z Users) = limit_reached, bez tworzenia i zmiany rekordu.
+                # MASTER_TOKEN omija bramkę (P7 God mode).
+                block_reason = _registration_closed_reason(token, users_map, clean_users)
+                if block_reason:
+                    print(f"  [access] Rejestracja zablokowana ({block_reason}) dla {chat_id}.")
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
+                    continue
+
                 is_valid, access_source = _validate_access_token(token, clean_users, users_map)
 
                 if not is_valid:
                     send_reply(chat_id, _invite_message(wykryty_jezyk, "invalid_link"))
-                    continue
-
-                # Weryfikacja limitu miejsc (200)
-                if len(clean_users) >= 200 and access_source != "admin":
-                    send_reply(chat_id, _invite_message(wykryty_jezyk, "limit_reached"))
                     continue
 
                 print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Zapisuję access w Users (ID: {chat_id}, źródło: {access_source})")
