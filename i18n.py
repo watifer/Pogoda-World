@@ -2168,7 +2168,9 @@ UI_TEXTS = {
         "prep_future": "🔮 Generuję prognozę hybrydową na najbliższe 14 dni... Daj mi sekundę.",
         "time_limit": "ℹ️ Główny raport dzienny jest dostępny tylko od 05:00 do 15:59.\nWybierz /now, aby sprawdzić radar taktyczny na wieczór i noc!",
         "err_gen": "⚠️ Wystąpił błąd podczas generowania karty.",
-        "no_access": "⛔ *Brak dostępu*\n\nTen bot działa obecnie w trybie zamkniętym (tylko na zaproszenia).\n\n*Aby dołączyć lub pobrać kod zaproszenia:*\n{url}\n\n💡 _Jeśli masz już kod, użyj komendy:_ /start TWÓJ\\_KOD",
+        "no_access": "🔒 *Pogoda World — dostęp testowy*\n\nDołączenie do bota w fazie testów wymaga kodu dostępu.\n\nSkopiuj poniższą komendę i wyślij ją na czacie:\n\n/start {public_code}\n\nPrzytrzymaj wiadomość, aby skopiować komendę.",
+        "no_access_no_code": "🔒 *Pogoda World — dostęp testowy*\n\nDołączenie do bota w fazie testów wymaga kodu dostępu.\n\nSkontaktuj się z administratorem, aby uzyskać dostęp.",
+        "access_granted": "✅ Dostęp aktywowany!\n\nWitaj w Pogoda World 🌍\n\nNajpierw Twoja prywatność, przeczytaj:\n/priv\n\nMożesz od razu sprawdzać pogodę korzystając z menu Telegrama:\n\n/dzien — prognoza dzienna dla podanej lokalizacji\n/teraz — prognoza na 12 godzin\n/trend — prognoza na 14 dni\n\nJeśli nie masz zapisanej lokalizacji, bot poprosi Cię o miejscowość.\n\nAby zapisać swoje miejsce na przyszłość, użyj:\n/miasto\n\nAdministracja Twoimi danymi:\n/dane",
         "limit_reached": "⏳ *Osiągnięto limit miejsc*\n\nNiestety, obecnie wszystkie miejsca na serwerze są zajęte. Nowe miejsca zwalniamy na bieżąco!\n\n*Sprawdź dostępność i zapisz się na listę oczekujących:*\n{url}",
         "invalid_link": "⚠️ *Nieprawidłowy lub nieaktywny kod*\n\nTen link zaproszeniowy wygasł lub kod jest błędny.\n\n*Aby pobrać nowy, działający link wejdź na:*\n{url}",
         "welcome_new": "✅ *Rejestracja pomyślna!*\nWitamy w doborowym gronie Pogoda dla Ciebie. Dostałeś się tu z polecenia!\n\n⚠️ *Ostatni, ale konieczny krok:*\nAby raporty mogły do Ciebie przychodzić (domyślnie o 8:00 i 14:00), musisz ustawić swoją lokalizację.\n\n👇 **Naciśnij przycisk GPS na dole ekranu** lub wpisz komendę /miasto.",
@@ -2259,8 +2261,9 @@ UI_TEXTS = {
         "prep_future": "🔮 Generating 14-day forecast... Give me a second.",
         "time_limit": "ℹ️ The main daily report is only available from 05:00 to 15:59.\nUse /now to check the tactical radar for the evening and night!",
         "err_gen": "⚠️ An error occurred while generating the card.",
-        "no_access": "⛔ *No access*\n\nThis bot currently operates in a closed invite-only beta.\n\n*To join or request an invite code:*\n{url}\n\n💡 _If you already have a code, use:_ /start YOUR\\_CODE",
-
+        "no_access": "🔒 *Pogoda World — beta access*\n\nJoining the bot during the test phase requires an access code.\n\nCopy the command below and send it in the chat:\n\n/start {public_code}\n\nTap and hold the message to copy the command.",
+        "no_access_no_code": "🔒 *Pogoda World — beta access*\n\nJoining the bot during the test phase requires an access code.\n\nPlease contact the administrator to get access.",
+        "access_granted": "✅ Access activated!\n\nWelcome to Pogoda World 🌍\n\nFirst, your privacy — please read:\n/privacy\n\nYou can check the weather right away using the Telegram menu:\n\n/day — daily forecast for the location you give\n/now — forecast for the next 12 hours\n/trend — forecast for the next 14 days\n\nIf you have no saved location, the bot will ask you for a place name.\n\nTo save your place for the future, use:\n/city\n\nManaging your data:\n/data",
         "limit_reached": "⏳ *Server capacity reached*\n\nUnfortunately, all user slots (50/50) are currently full. We release new slots regularly!\n\n*Check availability and join the waitlist:*\n{url}",
 
         "invalid_link": "⚠️ *Invalid or expired link*\n\nThis invite link is no longer valid or the code is incorrect.\n\n*To get a new working invite link, visit:*\n{url}",
@@ -2349,7 +2352,9 @@ UI_TEXTS = {
     "prep_future": "🔮 Generiere 14-Tage-Vorhersage... Gib mir eine Sekunde.",
     "time_limit": "ℹ️ Der Haupttagesbericht ist nur von 05:00 bis 15:59 Uhr verfügbar.\nNutze /now, um das taktische Radar für den Abend und die Nacht zu prüfen!",
     "err_gen": "⚠️ Beim Generieren der Karte ist ein Fehler aufgetreten.",
-    "no_access": "⛔ *Kein Zugriff*\n\nDieser Bot läuft derzeit in einer geschlossenen Beta-Phase (nur auf Einladung).\n\n*Um beizutreten oder einen Code zu erhalten:*\n{url}\n\n💡 _Wenn du bereits einen Code hast, nutze:_ /start DEIN\\_CODE",
+    "no_access": "🔒 *Pogoda World — Testzugang*\n\nDer Beitritt zum Bot während der Testphase erfordert einen Zugangscode.\n\nKopiere den folgenden Befehl und sende ihn im Chat:\n\n/start {public_code}\n\nHalte die Nachricht gedrückt, um den Befehl zu kopieren.",
+    "no_access_no_code": "🔒 *Pogoda World — Testzugang*\n\nDer Beitritt zum Bot während der Testphase erfordert einen Zugangscode.\n\nBitte kontaktiere den Administrator, um Zugang zu erhalten.",
+    "access_granted": "✅ Zugang aktiviert!\n\nWillkommen bei Pogoda World 🌍\n\nZuerst deine Privatsphäre — bitte lies:\n/privacy\n\nDu kannst das Wetter sofort über das Telegram-Menü prüfen:\n\n/day — Tagesprognose für den angegebenen Ort\n/now — Prognose für die nächsten 12 Stunden\n/trend — Prognose für 14 Tage\n\nWenn du keinen gespeicherten Standort hast, fragt der Bot dich nach einem Ortsnamen.\n\nUm deinen Ort für die Zukunft zu speichern, nutze:\n/city\n\nVerwaltung deiner Daten:\n/data",
     "limit_reached": "⏳ *Serverlimit erreicht*\n\nLeider sind derzeit alle Plätze (50/50) belegt. Wir schalten regelmäßig neue Plätze frei!\n\n*Prüfe die Verfügbarkeit hier:*\n{url}",
     "invalid_link": "⚠️ *Ungültiger oder abgelaufener Link*\n\nDieser Einladungslink ist nicht mehr gültig.\n\n*Einen neuen, funktionierenden Link findest du unter:*\n{url}",
     "welcome_new": "✅ *Registrierung erfolgreich!*\nWillkommen in der Community. Du bist über eine Einladung hier!\n\n⚠️ *Letzter, aber notwendiger Schritt:*\nDamit die Berichte dich erreichen (standardmäßig 8:00 und 14:00 Uhr), musst du deinen Standort festlegen.\n\n👇 **Tippe auf den GPS-Button unten auf dem Bildschirm** oder gib den Befehl /city ein.",
@@ -2437,8 +2442,9 @@ UI_TEXTS = {
         "prep_future": "🔮 Generando el pronóstico de 14 días... Dame un segundo.",
         "time_limit": "ℹ️ El informe diario principal solo está disponible de 05:00 a 15:59.\n¡Usa /now para ver el radar táctico para la tarde y la noche!",
         "err_gen": "⚠️ Ocurrió un error al generar la tarjeta.",
-        "no_access": "⛔ *Sin acceso*\n\nEste bot funciona actualmente en versión beta cerrada (solo con invitación).\n\n*Para unirte o solicitar un código:*\n{url}\n\n💡 _Si ya tienes un código, usa:_ /start TU\\_CÓDIGO",
-
+        "no_access": "🔒 *Pogoda World — acceso de prueba*\n\nUnirse al bot durante la fase de pruebas requiere un código de acceso.\n\nCopia el siguiente comando y envíalo en el chat:\n\n/start {public_code}\n\nMantén pulsado el mensaje para copiar el comando.",
+        "no_access_no_code": "🔒 *Pogoda World — acceso de prueba*\n\nUnirse al bot durante la fase de pruebas requiere un código de acceso.\n\nPonte en contacto con el administrador para obtener acceso.",
+        "access_granted": "✅ ¡Acceso activado!\n\nBienvenido a Pogoda World 🌍\n\nPrimero, tu privacidad — lee:\n/privacy\n\nPuedes consultar el tiempo ahora mismo usando el menú de Telegram:\n\n/day — pronóstico diario para la ubicación que indiques\n/now — pronóstico de las próximas 12 horas\n/trend — pronóstico de 14 días\n\nSi no tienes una ubicación guardada, el bot te pedirá el nombre del lugar.\n\nPara guardar tu lugar para el futuro, usa:\n/city\n\nGestión de tus datos:\n/data",
         "limit_reached": "⏳ *Límite de plazas alcanzado*\n\nDesafortunadamente, todas las plazas (50/50) están ocupadas. ¡Liberamos nuevas plazas regularmente!\n\n*Comprueba la disponibilidad aquí:*\n{url}",
 
         "invalid_link": "⚠️ *Enlace inválido o caducado*\n\nEste enlace de invitación ya no es válido o el código es incorrecto.\n\n*Para obtener un nuevo enlace, visita:*\n{url}",
@@ -2527,8 +2533,9 @@ UI_TEXTS = {
         "prep_future": "🔮 Génération des prévisions à 14 jours... Donnez-moi une seconde.",
         "time_limit": "ℹ️ Le rapport quotidien principal n'est disponible que de 05h00 à 15h59.\nUtilisez /now pour consulter le radar tactique pour le soir et la nuit !",
         "err_gen": "⚠️ Une erreur s'est produite lors de la génération de la carte.",
-        "no_access": "⛔ *Accès restreint*\n\nCe bot fonctionne actuellement en version bêta fermée (sur invitation uniquement).\n\n*Pour rejoindre ou demander un code :*\n{url}\n\n💡 _Si vous avez déjà un code, utilisez :_ /start VOTRE\\_CODE",
-
+        "no_access": "🔒 *Pogoda World — accès test*\n\nRejoindre le bot pendant la phase de test nécessite un code d'accès.\n\nCopiez la commande ci-dessous et envoyez-la dans le chat :\n\n/start {public_code}\n\nAppuyez longuement sur le message pour copier la commande.",
+        "no_access_no_code": "🔒 *Pogoda World — accès test*\n\nRejoindre le bot pendant la phase de test nécessite un code d'accès.\n\nVeuillez contacter l'administrateur pour obtenir un accès.",
+        "access_granted": "✅ Accès activé !\n\nBienvenue sur Pogoda World 🌍\n\nD'abord, votre vie privée — à lire :\n/privacy\n\nVous pouvez consulter la météo immédiatement depuis le menu Telegram :\n\n/day — prévision du jour pour le lieu indiqué\n/now — prévision des prochaines 12 heures\n/trend — prévision sur 14 jours\n\nSi vous n'avez aucune position enregistrée, le bot vous demandera un nom de lieu.\n\nPour enregistrer votre lieu pour plus tard, utilisez :\n/city\n\nGestion de vos données :\n/data",
         "limit_reached": "⏳ *Capacité maximale atteinte*\n\nMalheureusement, toutes les places (50/50) sont actuellement occupées. Nous libérons régulièrement de nouveaux accès !\n\n*Vérifiez les disponibilités ici :*\n{url}",
 
         "invalid_link": "⚠️ *Lien invalide ou expiré*\n\nCe lien d'invitation n'est plus valide ou le code est incorrect.\n\n*Pour obtenir un nouveau lien valide, visitez :*\n{url}",
@@ -2617,8 +2624,9 @@ UI_TEXTS = {
         "prep_future": "🔮 Genererer 14-dagers varsel... Gi meg et sekund.",
         "time_limit": "ℹ️ Den daglige hovedrapporten er kun tilgjengelig fra 05:00 til 15:59.\nBruk /now for å sjekke den taktiske radaren for kvelden og natten!",
         "err_gen": "⚠️ Det oppstod en feil under generering av kortet.",
-        "no_access": "⛔ *Ingen tilgang*\n\nDenne boten er for øyeblikket i en lukket betafase (kun via invitasjon).\n\n*For å bli med eller få en invitasjonskode:*\n{url}\n\n💡 _Hvis du allerede har en kode, bruk:_ /start DIN\\_KODE",
-
+        "no_access": "🔒 *Pogoda World — testtilgang*\n\nÅ bli med i boten i testfasen krever en tilgangskode.\n\nKopier kommandoen nedenfor og send den i chatten:\n\n/start {public_code}\n\nHold inne meldingen for å kopiere kommandoen.",
+        "no_access_no_code": "🔒 *Pogoda World — testtilgang*\n\nÅ bli med i boten i testfasen krever en tilgangskode.\n\nVennligst kontakt administrator for å få tilgang.",
+        "access_granted": "✅ Tilgang aktivert!\n\nVelkommen til Pogoda World 🌍\n\nFørst personvernet ditt — les:\n/privacy\n\nDu kan sjekke været med en gang via Telegram-menyen:\n\n/day — dagsvarsel for stedet du oppgir\n/now — varsel for de neste 12 timene\n/trend — varsel for 14 dager\n\nHvis du ikke har en lagret posisjon, spør botten deg om et stedsnavn.\n\nFor å lagre stedet ditt for senere, bruk:\n/city\n\nAdministrasjon av dataene dine:\n/data",
         "limit_reached": "⏳ *Kapasitetsgrense nådd*\n\nDessverre er alle plassene (50/50) opptatt akkurat nå. Vi frigir nye plasser jevnlig!\n\n*Sjekk tilgjengelighet og venteliste her:*\n{url}",
 
         "invalid_link": "⚠️ *Ugyldig eller utløpt lenke*\n\nDenne invitasjonslenken er ikke lenger gyldig.\n\n*For å få en ny, fungerende lenke, gå til:*\n{url}",

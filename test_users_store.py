@@ -222,6 +222,41 @@ class TestUpsertAccess:
         upsert_access(ws, 6, "it", "referral", "2026-09-30 10:00:00", "v1")
         assert ws.record(6)["lang"] == "en"
 
+    def test_upsert_access_preserves_active_profile_and_location_and_consents(self):
+        ws = FakeWorksheet()
+        upsert_access(ws, 113, "de", "referral", "2026-09-30 10:00:00", "v1")
+        set_profile(ws, 113, 52.23, 21.01, "Warszawa", "gps", "de", "2026-09-v1", "2026-10-01 10:00:00")
+        set_report_settings(ws, 113, "08:00", "14:00")
+
+        # Symulujemy zmianę access_status na nieaktywny (np. revoked)
+        row_idx = find_row_by_chat_id(ws, 113)
+        col_idx = [h.lower() for h in ws.grid[0]].index("access_status") + 1
+        ws.update_cells([
+            type("_Cell", (), {"row": row_idx, "col": col_idx, "value": "revoked"})()
+        ])
+        rec_before = ws.record(113)
+        assert rec_before["access_status"] == "revoked"
+        assert rec_before["profile_status"] == "active"
+        assert rec_before["lat_round"] == "52.23"
+        assert rec_before["location_label"] == "Warszawa"
+
+        # Ponowny /start z nowym kodem
+        ok = upsert_access(ws, 113, "de", "public_beta", "2026-10-12 12:00:00", "2026-09-v2")
+        assert ok is True
+
+        rec_after = ws.record(113)
+        assert rec_after["access_status"] == "granted"
+        assert rec_after["profile_status"] == "active"  # profile_status nie jest resetowane do "none"!
+        assert rec_after["lat_round"] == "52.23"
+        assert rec_after["lon_round"] == "21.01"
+        assert rec_after["location_label"] == "Warszawa"
+        assert rec_after["location_source"] == "gps"
+        assert rec_after["location_consent_at"] == "2026-10-01 10:00:00"
+        assert rec_after["location_consent_version"] == "2026-09-v1"
+        assert rec_after["report_morning_time"] == "08:00"
+        assert rec_after["report_afternoon_time"] == "14:00"
+        assert rec_after["lang"] == "de"
+
 
 # ============================================================================
 # set_profile — wyłącznie po świadomym flow /miasto (ukryty alias: /save_location)
@@ -328,8 +363,63 @@ def test_report_settings_fail_closed_if_live_headers_are_missing():
 
 
 # ============================================================================
-# has_access / load_users_map
+# effective_access_allowed & has_access
 # ============================================================================
+class TestEffectiveAccessAllowed:
+    def test_missing_or_empty_record(self):
+        assert users_store.effective_access_allowed(None) is False
+        assert users_store.effective_access_allowed({}) is False
+        assert users_store.effective_access_allowed("invalid") is False
+
+    def test_access_status_values(self):
+        assert users_store.effective_access_allowed({"access_status": "granted"}) is True
+        assert users_store.effective_access_allowed({"access_status": "GRANTED"}) is True
+        assert users_store.effective_access_allowed({"access_status": " granted "}) is True
+        assert users_store.effective_access_allowed({"access_status": "blocked"}) is False
+        assert users_store.effective_access_allowed({"access_status": "revoked"}) is False
+        assert users_store.effective_access_allowed({"access_status": "pending"}) is False
+        assert users_store.effective_access_allowed({"access_status": ""}) is False
+
+    def test_blocked_at_flag(self):
+        row = {"access_status": "granted", "blocked_at": "2026-10-01 12:00:00"}
+        assert users_store.effective_access_allowed(row) is False
+
+        row_empty = {"access_status": "granted", "blocked_at": "  "}
+        assert users_store.effective_access_allowed(row_empty) is True
+
+    def test_access_expires_at_boundary_and_future_past(self):
+        # Format YYYY-MM-DD HH:MM:SS
+        row = {
+            "access_status": "granted",
+            "access_expires_at": "2026-10-12 12:00:00",
+        }
+        # W przyszłości (przed wygaśnięciem)
+        assert users_store.effective_access_allowed(row, now="2026-10-12 11:59:59") is True
+        # Dokładnie w chwili wygaśnięcia (granica) -> wygasło
+        assert users_store.effective_access_allowed(row, now="2026-10-12 12:00:00") is False
+        # W przeszłości (po wygaśnięciu)
+        assert users_store.effective_access_allowed(row, now="2026-10-12 12:00:01") is False
+
+    def test_access_expires_at_timezone_awareness(self):
+        from datetime import datetime, timezone, timedelta
+        # 14:00 w +02:00 to 12:00 UTC
+        row = {
+            "access_status": "granted",
+            "access_expires_at": "2026-10-12T14:00:00+02:00",
+        }
+        now_before = datetime(2026, 10, 12, 11, 59, 59, tzinfo=timezone.utc)
+        now_boundary = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
+        now_after = datetime(2026, 10, 12, 12, 0, 1, tzinfo=timezone.utc)
+
+        assert users_store.effective_access_allowed(row, now=now_before) is True
+        assert users_store.effective_access_allowed(row, now=now_boundary) is False
+        assert users_store.effective_access_allowed(row, now=now_after) is False
+
+    def test_invalid_expires_at_fails_closed(self):
+        row = {"access_status": "granted", "access_expires_at": "not-a-valid-date"}
+        assert users_store.effective_access_allowed(row) is False
+
+
 class TestHasAccess:
     def _ws_with_status(self, status):
         ws = FakeWorksheet()
@@ -575,6 +665,7 @@ class TestLocationBotHelpers:
         sleeps = []
         monkeypatch.setattr(lb, "send_reply", lambda cid, txt, **kw: sent.append((cid, txt)))
         monkeypatch.setattr(lb.time, "sleep", lambda s: sleeps.append(s))
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
         lb._set_pending_city("123456", lb.CTX_ONEOFF_DAY)
         lb._set_pending_delete("123456")
         lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city")
@@ -583,11 +674,11 @@ class TestLocationBotHelpers:
         assert "123456" not in lb.PENDING_SAVE
         assert "123456" not in lb.PENDING_DELETE
         # POPRAWKA #7: dokładnie dwa komunikaty — delete_me_done (bez linku),
-        # po pauzie osobny, pełny no_access (z linkiem zaproszenia).
+        # po pauzie osobny, pełny no_access (z dynamicznym kodem).
         assert len(sent) == 2, sent
         assert "usunąłem twoje dane" in sent[0][1].lower()
         assert "http" not in sent[0][1]
-        assert "brak dostępu" in sent[1][1].lower() and "http" in sent[1][1]
+        assert "dostęp testowy" in sent[1][1].lower() and "/start BETA2026A" in sent[1][1]
         assert sleeps == [lb.DELETE_NOTICE_DELAY_SEC]
 
 
