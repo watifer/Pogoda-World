@@ -2885,3 +2885,123 @@ class TestRegistrationGate:
         else:
             monkeypatch.setenv("MAX_USERS", raw)
         assert lb._max_users() == expected
+
+
+# ============================================================================
+# POPRAWKI PRZED MERGE: brak domyślnego MASTER_TOKEN, limit_reached z MAX_USERS
+# ============================================================================
+class TestMasterTokenHardening:
+    def test_default_master_token_is_empty_not_dev_test(self):
+        import os as _os
+        import subprocess
+        import sys
+        env = {k: v for k, v in _os.environ.items() if k != "MASTER_TOKEN"}
+        here = _os.path.dirname(_os.path.abspath(__file__))
+        out = subprocess.run(
+            [sys.executable, "-c", "import location_bot as lb; print(repr(lb.MASTER_TOKEN))"],
+            cwd=here, env=env, capture_output=True, text=True, timeout=180,
+        )
+        assert out.returncode == 0, out.stderr
+        assert out.stdout.strip().splitlines()[-1] == "''"
+
+    def test_unset_master_token_disables_admin_path(self, bot, monkeypatch, upsert_spy):
+        monkeypatch.setattr(lb, "MASTER_TOKEN", "")
+        assert lb._validate_access_token("DEV_TEST", [], {}) == (False, "")
+        assert lb._validate_access_token("", [], {}) == (False, "")
+        bot.run(bot.msg(740, "/start DEV_TEST"))
+        assert bot.has_reply(740, INVALID_PL)
+        assert bot.users.record(740) is None
+        assert upsert_spy == []
+
+    def test_whitespace_master_token_counts_as_unset(self, bot, monkeypatch):
+        monkeypatch.setattr(lb, "MASTER_TOKEN", "   ")
+        assert lb._validate_access_token("   ", [], {}) == (False, "")
+        assert lb._validate_access_token("DEV_TEST", [], {}) == (False, "")
+
+    def test_unset_master_does_not_bypass_closed_registration(self, bot, monkeypatch, upsert_spy):
+        monkeypatch.setattr(lb, "MASTER_TOKEN", "")
+        monkeypatch.setenv("REGISTRATION_ENABLED", "false")
+        bot.run(bot.msg(741, "/start DEV_TEST"))
+        assert bot.has_reply(741, LIMIT_PL)
+        assert bot.users.record(741) is None
+        assert upsert_spy == []
+
+    def test_configured_master_still_bypasses_gate_and_limit(self, empty_bot, monkeypatch):
+        monkeypatch.setattr(lb, "MASTER_TOKEN", "OwnSecretToken-42")
+        monkeypatch.setenv("REGISTRATION_ENABLED", "0")
+        monkeypatch.setenv("MAX_USERS", "1")
+        _seed_users_row(empty_bot, 742)
+        empty_bot.run(empty_bot.msg(743, "/start OwnSecretToken-42"))
+        rec = empty_bot.users.record(743)
+        assert rec is not None and rec["access_source"] == "admin"
+
+    def test_configured_master_does_not_unblock_blocked_account(self, empty_bot, monkeypatch, upsert_spy):
+        monkeypatch.setattr(lb, "MASTER_TOKEN", "OwnSecretToken-42")
+        _seed_users_row(empty_bot, 744, access_status="blocked", blocked_at="2026-10-01 10:00:00")
+        upsert_spy.clear()
+        before = _users_row(empty_bot, 744)
+        empty_bot.run(empty_bot.msg(744, "/start OwnSecretToken-42"))
+        assert _users_row(empty_bot, 744) == before
+        assert upsert_spy == []
+
+
+class TestLimitReachedMessage:
+    @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
+    def test_limit_reached_shows_configured_max_users(self, monkeypatch, lang):
+        monkeypatch.setenv("MAX_USERS", "7")
+        text = lb._invite_message(lang, "limit_reached")
+        assert "7/7" in text, (lang, text)
+        assert "50/50" not in text, (lang, text)
+        assert "{max_users}" not in text and "{url}" not in text, (lang, text)
+        assert "https://" in text
+
+    @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
+    def test_limit_reached_default_is_200(self, monkeypatch, lang):
+        monkeypatch.delenv("MAX_USERS", raising=False)
+        text = lb._invite_message(lang, "limit_reached")
+        assert "200/200" in text, (lang, text)
+        assert "50/50" not in text
+
+    def test_limit_reached_sent_to_user_uses_max_users(self, empty_bot, monkeypatch):
+        monkeypatch.setenv("MAX_USERS", "1")
+        _seed_users_row(empty_bot, 750)
+        empty_bot.run(empty_bot.msg(751, "/start BETAX1"))
+        assert empty_bot.has_reply(751, "(1/1)")
+        assert not empty_bot.has_reply(751, "50/50")
+
+
+class TestClosedRegistrationDecisions:
+    def test_closed_invalid_code_gets_limit_reached_not_invalid_link(self, bot, monkeypatch, upsert_spy):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "false")
+        bot.run(bot.msg(760, "/start TOTALLY_BOGUS"))
+        assert bot.has_reply(760, LIMIT_PL)
+        assert not bot.has_reply(760, INVALID_PL)
+        assert bot.users.record(760) is None
+        assert upsert_spy == []
+
+    @pytest.mark.parametrize("raw", ["0", "false", "off", "no"])
+    def test_bare_start_closed_returns_limit_without_code(self, bot, monkeypatch, raw):
+        monkeypatch.setenv("REGISTRATION_ENABLED", raw)
+        bot.run(bot.msg(761, "/start"))
+        replies = bot.replies(761)
+        assert len(replies) == 1
+        assert LIMIT_PL in replies[0]
+        assert "/start BETAX1" not in replies[0]
+        assert bot.users.record(761) is None
+
+    def test_bare_start_open_returns_no_access_with_code(self, bot, monkeypatch):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "1")
+        bot.run(bot.msg(762, "/start"))
+        replies = bot.replies(762)
+        assert len(replies) == 1
+        assert "/start BETAX1" in replies[0]
+        assert LIMIT_PL not in replies[0]
+
+    def test_legacy_row_also_in_users_is_counted_once(self, monkeypatch):
+        rows = [["2026-01-01 08:00:00", "901", "L1", "Gdańsk", "54.35", "18.65", "08:00", "14:00", "pl"]]
+        bot = BotHarness(monkeypatch, formularz_rows=rows)
+        monkeypatch.setenv("MAX_USERS", "2")
+        _seed_users_row(bot, 901)  # ten sam człowiek: Formularz + aktywny wiersz Users
+        bot.run(bot.msg(902, "/start BETAX1"))
+        assert bot.users.record(902) is not None, "wiersz obecny w Users nie może liczyć się podwójnie"
+        assert bot.users.record(902)["access_status"] == "granted"

@@ -36,7 +36,9 @@ import users_store
 
 load_dotenv()
 #Furtka do testowanie bota bez zaproszenia
-MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "DEV_TEST")
+# Brak domyślnego tokena: gdy MASTER_TOKEN nie jest ustawiony, ścieżka admin jest
+# WYŁĄCZONA (patrz _is_master_token). Nigdy nie akceptujemy wartości zgadywalnej.
+MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "").strip()
 import time
 
 
@@ -253,11 +255,17 @@ def _active_seats_count(users_map, clean_users) -> int:
 
 
 def _is_master_token(token) -> bool:
-    """True tylko dla dokładnie MASTER_TOKEN (ta sama reguła co _validate_access_token)."""
+    """True tylko dla dokładnie skonfigurowanego MASTER_TOKEN.
+
+    Gdy MASTER_TOKEN jest pusty / nieustawiony, ścieżka admin jest wyłączona —
+    żaden payload nie jest traktowany jako master.
+    """
     if not token or not isinstance(token, str):
         return False
-    clean = token.strip()
-    return bool(clean) and clean == MASTER_TOKEN
+    expected = (MASTER_TOKEN or "").strip()
+    if not expected:
+        return False
+    return token.strip() == expected
 
 
 def _registration_closed_reason(token, users_map, clean_users) -> str:
@@ -295,7 +303,7 @@ def _validate_access_token(token: str, clean_users, users_map) -> tuple:
     if not clean_token:
         return False, ""
 
-    is_dev_mode = (clean_token == MASTER_TOKEN)
+    is_dev_mode = _is_master_token(clean_token)
     if is_dev_mode:
         return True, "admin"
 
@@ -1725,6 +1733,8 @@ def _invite_message(lang, key):
 
     Dla key == 'invalid_link' oraz 'limit_reached':
     Wstawia bezpieczny link INVITE_URL.
+    'limit_reached' dostaje też aktualne MAX_USERS (placeholder {max_users}),
+    więc komunikat nie zawiera zahardkodowanej liczby miejsc.
     """
     if key == "no_access":
         code = _primary_public_code()
@@ -1735,9 +1745,11 @@ def _invite_message(lang, key):
             return t_ui(lang, "no_access_no_code")
     elif key == "invalid_link":
         return t_ui(lang, "invalid_link", url=_md_safe(INVITE_URL))
+    elif key == "limit_reached":
+        return t_ui(lang, "limit_reached", url=_md_safe(INVITE_URL), max_users=_max_users())
     elif key == "access_granted":
         return t_ui(lang, "access_granted")
-    return t_ui(lang, key, url=_md_safe(INVITE_URL))
+    return t_ui(lang, key, url=_md_safe(INVITE_URL), max_users=_max_users())
 
 
 _LOCALITY_ADDRESS_FIELDS = ("city", "town", "village", "hamlet", "locality")
