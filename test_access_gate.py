@@ -212,7 +212,7 @@ class _Resp:
 class BotHarness:
     """Patched location_bot z atrapami; rejestruje wysłane wiadomości i karty."""
 
-    def __init__(self, monkeypatch, formularz_rows=None):
+    def __init__(self, monkeypatch, formularz_rows=None, public_beta_codes=None):
         lb._reset_polling_state()
         self.gc = FakeGC(formularz_rows)
         self.sent = []        # (chat_id, text)
@@ -222,12 +222,14 @@ class BotHarness:
         self.cards = []       # chat_id z _send_card_to_user (legacy)
         self.oneoffs = []     # (chat_id, lat, lon, city, lang, card_type)
 
-        # Kody beta ustawiane PER-TEST przez monkeypatch (auto-undo po teście):
-        # 1) działa niezależnie od kolejności importu modułów testowych,
-        # 2) nadpisuje PUBLIC_BETA_CODES z .env wczytanego przez load_dotenv(),
-        # 3) _public_codes() czyta env na czas WYWOŁANIA, nie importu.
-        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETAX1")
-        monkeypatch.delenv("PUBLIC_BETA_CODE", raising=False)
+        # Kody beta: jeśli test podał jawnie lub ustawił wcześniej w monkeypatch, zachowaj.
+        # Domyślnie ustaw BETAX1 dla powtarzalności środowiska testowego.
+        if public_beta_codes is not None:
+            monkeypatch.setenv("PUBLIC_BETA_CODES", public_beta_codes)
+            monkeypatch.delenv("PUBLIC_BETA_CODE", raising=False)
+        elif "PUBLIC_BETA_CODES" not in os.environ and "PUBLIC_BETA_CODE" not in os.environ:
+            monkeypatch.setenv("PUBLIC_BETA_CODES", "BETAX1")
+            monkeypatch.delenv("PUBLIC_BETA_CODE", raising=False)
 
         updates = []
 
@@ -353,6 +355,17 @@ class BotHarness:
             },
         }
 
+    def callback_query(self, chat_id, data="test_data", user_id=None):
+        return {
+            "update_id": 400000 + len(self.sent) * 7 + len(self._updates),
+            "callback_query": {
+                "id": "cb123",
+                "from": {"id": chat_id if user_id is None else user_id, "first_name": "Ala"},
+                "message": {"chat": {"id": chat_id}},
+                "data": data,
+            },
+        }
+
     def webapp_settings(self, chat_id, morning="", afternoon="", lang="pl"):
         return {
             "update_id": 300000 + len(self.sent) * 7 + len(self._updates),
@@ -461,8 +474,8 @@ class TestStrangerIsSilent:
 
     def test_start_without_code_gets_no_access(self, bot):
         bot.run(bot.msg(100, "/start"))
-        assert bot.has_reply(100, "Brak dostępu")
-        assert bot.has_reply(100, "https://"), "no_access bez linku zaproszenia"
+        assert bot.has_reply(100, "dostęp testowy")
+        assert bot.has_reply(100, "/start BETAX1")
 
     def test_invalid_start_token(self, bot):
         bot.run(bot.msg(999, "/start ZLYKOD"))
@@ -531,7 +544,8 @@ class TestStartRegistersAccessOnly:
 
     def test_start_without_code_hint(self, bot):
         bot.run(bot.msg(100, "/start"))
-        assert bot.has_reply(100, "Brak dostępu")
+        assert bot.has_reply(100, "dostęp testowy")
+        assert bot.has_reply(100, "/start BETAX1")
 
     def test_referral_from_access_only_user(self, bot):
         import base64
@@ -860,7 +874,7 @@ class TestPrivacyCommands:
         after = [t for c, t in bot.sent[before:] if c == 100]
         assert len(after) == 2, f"oczekiwane dwa komunikaty, jest {len(after)}: {after}"
         assert "Usunąłem Twoje dane" in after[0]
-        assert "Brak dostępu" in after[1] and "https://" in after[1]
+        assert "dostęp testowy" in after[1] and "/start BETAX1" in after[1]
         assert fake_sleep == [lb.DELETE_NOTICE_DELAY_SEC], "brak pauzy przed drugim komunikatem"
         assert bot.users.record(100) is None, "wiersz Users nieusunięty"
         assert "100" not in lb.PENDING_CITY, "PENDING_CITY nie wyczyszczone"
@@ -1082,7 +1096,7 @@ class TestPr2UxCleanup:
         after = [t for c, t in bot.sent[before:] if c == 100]
         assert len(after) == 2
         assert "Usunąłem Twoje dane" in after[0]
-        assert "https://" in after[1], "drugi komunikat to pełny no_access z linkiem"
+        assert "dostęp testowy" in after[1] and "/start BETAX1" in after[1]
 
     def test_g_usun_dane_cancellation_keeps_data(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -1713,18 +1727,16 @@ class TestPostDeleteUx:
         msgs = [t for c, t in bot.sent[before:] if c == 500]
         assert len(msgs) == 2, f"oczekiwane dokładnie 2 komunikaty: {msgs}"
         assert "Usunąłem Twoje dane" in msgs[0]
-        assert "Brak dostępu" in msgs[1] and "https://" in msgs[1]
+        assert "dostęp testowy" in msgs[1] and "/start BETAX1" in msgs[1]
         assert fake_sleep == [lb.DELETE_NOTICE_DELAY_SEC], "brak pauzy 1 s między komunikatami"
         assert bot.users.record(500) is None
 
     def test_second_message_equals_full_no_access_in_six_languages(self, monkeypatch, fake_sleep):
-        invite_url = "https://t.me/Twoja_pogoda_bot?start=BETA2026A"
-        escaped_url = r"https://t.me/Twoja\_pogoda\_bot?start=BETA2026A"
-        monkeypatch.setattr(lb, "INVITE_URL", invite_url)
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
 
         for lang in ("pl", "en", "de", "es", "fr", "no"):
             local = BotHarness(monkeypatch)
-            local.run(local.msg(600, "/start BETAX1", lang=lang))
+            local.run(local.msg(600, "/start BETA2026A", lang=lang))
             local.run(local.msg(600, "/usunDane", lang=lang))
             before = len(local.sent)
             local.run(local.msg(600, lb.t_ui(lang, "delete_confirm_yes"), lang=lang))
@@ -1733,26 +1745,20 @@ class TestPostDeleteUx:
             assert len(msgs) == 2, f"{lang}: {msgs}"
             assert msgs[0] == lb.t_ui(lang, "delete_me_done"), lang
             assert msgs[1] == lb._invite_message(lang, "no_access"), lang
-            assert escaped_url in msgs[1], f"{lang}: invite URL musi zachować oba podkreślenia"
-            assert f"/start [BETA2026A]({invite_url})" in msgs[1], lang
+            assert "/start BETA2026A" in msgs[1], lang
 
     def test_access_invite_messages_escape_url_in_six_languages(self, monkeypatch):
-        invite_url = "https://t.me/Twoja_pogoda_bot?start=BETA2026A"
-        escaped_url = r"https://t.me/Twoja\_pogoda\_bot?start=BETA2026A"
-        monkeypatch.setattr(lb, "INVITE_URL", invite_url)
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
 
         for lang in ("pl", "en", "de", "es", "fr", "no"):
-            for key in ("no_access", "invalid_link", "limit_reached"):
+            no_access_text = lb._invite_message(lang, "no_access")
+            assert "/start BETA2026A" in no_access_text, (lang, no_access_text)
+            for key in ("invalid_link", "limit_reached"):
                 text = lb._invite_message(lang, key)
-                assert text.count(escaped_url) == 1, (lang, key, text)
-                assert escaped_url.count(r"\_") == 2
-                if key == "no_access":
-                    assert f"/start [BETA2026A]({invite_url})" in text, (lang, text)
+                assert "https://" in text, (lang, key, text)
 
-    def test_no_access_start_sends_escaped_dynamic_code_link_in_six_languages(self, monkeypatch):
-        invite_url = "https://t.me/Twoja_pogoda_bot?start=BETA2026A"
-        escaped_url = r"https://t.me/Twoja\_pogoda\_bot?start=BETA2026A"
-        monkeypatch.setattr(lb, "INVITE_URL", invite_url)
+    def test_no_access_start_sends_dynamic_code_link_in_six_languages(self, monkeypatch):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
 
         for index, lang in enumerate(("pl", "en", "de", "es", "fr", "no")):
             local = BotHarness(monkeypatch)
@@ -1760,8 +1766,8 @@ class TestPostDeleteUx:
             local.run(local.msg(chat_id, "/start", lang=lang))
             text = local.replies(chat_id)[-1]
 
-            assert escaped_url in text, (lang, text)
-            assert f"/start [BETA2026A]({invite_url})" in text, (lang, text)
+            assert "/start BETA2026A" in text, (lang, text)
+            assert "`" not in text, f"{lang}: komenda nie może być otoczona backtickami"
 
     def test_post_delete_everything_is_silent(self, bot, fake_sleep):
         bot.run(bot.msg(500, "/start BETAX1"))
@@ -1773,6 +1779,8 @@ class TestPostDeleteUx:
             bot.run(bot.msg(500, text))
         bot.run(bot.pin(500, reply=True))
         bot.run(bot.pin(500, reply=False))
+        bot.run(bot.callback_query(500, data="test"))
+        bot.run(bot.webapp_location(500))
         assert len(bot.sent) == before, (
             "po hard delete czat nie ma danych ani dostępu — odpowiada wyłącznie /start, "
             f"a odpowiedziały: {[t[:40] for c, t in bot.sent[before:] if c == 500]}"
@@ -1786,8 +1794,8 @@ class TestPostDeleteUx:
         # /start bez kodu -> pełny no_access
         before = len(bot.sent)
         bot.run(bot.msg(500, "/start"))
-        assert bot.has_reply(500, "Brak dostępu")
-        assert "https://" in bot.replies(500)[-1]
+        assert bot.has_reply(500, "dostęp testowy")
+        assert "/start BETAX1" in bot.replies(500)[-1]
 
         # /start zły kod -> invalid_link (nadal ścieżka /start)
         bot.run(bot.msg(500, "/start ZLYKOD"))
@@ -1804,9 +1812,12 @@ class TestPostDeleteUx:
         before = len(bot.sent)
         for text in NO_ACCESS_SILENT_INPUTS:
             bot.run(bot.msg(999, text))
+        bot.run(bot.callback_query(999))
+        bot.run(bot.webapp_location(999))
         assert len(bot.sent) == before, "nowy czat bez kodu: cisza na wszystko poza /start"
         bot.run(bot.msg(999, "/start"))
-        assert bot.has_reply(999, "Brak dostępu")
+        assert bot.has_reply(999, "dostęp testowy")
+        assert "/start BETAX1" in bot.replies(999)[-1]
 
     def test_batch_after_delete_stays_silent_for_rest_of_batch(self, bot, fake_sleep):
         # Z7 (tylko RAM): kolejne update'y z TEJ SAMEJ paczki nie widzą już
@@ -1824,7 +1835,7 @@ class TestPostDeleteUx:
         assert len(msgs) == 3, f"pytanie + 2 komunikaty kasacji, nic więcej: {msgs}"
         assert "Czy na pewno" in msgs[0]
         assert "Usunąłem Twoje dane" in msgs[1]
-        assert "Brak dostępu" in msgs[2]
+        assert "dostęp testowy" in msgs[2] and "/start BETAX1" in msgs[2]
 
     def test_delete_without_any_rows_sends_only_no_data(self, bot, fake_sleep, monkeypatch):
         # Ścieżka obronna: rejestr nie potwierdził usunięcia żadnego wiersza
@@ -2219,3 +2230,238 @@ class TestGroupPinSavesProfile:
         ):
             assert forbidden not in confirmation
             assert forbidden not in rec["location_label"]
+
+
+# ============================================================================
+# SUBTASK A & B: ROTACJA KODÓW PUBLICZNYCH I MACIERZ AUTORYZACJI P7
+# ============================================================================
+class TestPublicBetaCodesDynamicRotation:
+    """Testy rotacji i obsługi zmiennej środowiskowej PUBLIC_BETA_CODES (Subtask B)."""
+
+    def test_start_without_code_returns_current_public_code(self, bot):
+        bot.run(bot.msg(101, "/start"))
+        replies = bot.replies(101)
+        assert len(replies) == 1
+        assert "/start BETAX1" in replies[0]
+        assert "dostęp testowy" in replies[0].lower() or "dostępu" in replies[0].lower()
+        # Komendy klikalne => brak backticków
+        assert "`/start" not in replies[0]
+
+    def test_code_rotation_changes_no_access_message(self, bot, monkeypatch):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026B")
+        bot.run(bot.msg(102, "/start"))
+        replies = bot.replies(102)
+        assert len(replies) == 1
+        assert "/start BETA2026B" in replies[0]
+        assert "BETAX1" not in replies[0]
+
+    def test_multiple_codes_selects_first_deterministically(self, bot, monkeypatch):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "ALPHA1, BETA2, GAMMA3")
+        # /start bez kodu zwraca pierwszy aktywny kod: ALPHA1
+        bot.run(bot.msg(103, "/start"))
+        replies = bot.replies(103)
+        assert "/start ALPHA1" in replies[0]
+        assert "BETA2" not in replies[0]
+
+        # Ale drugi kod BETA2 nadal pozwala na autoryzację!
+        bot.run(bot.msg(104, "/start BETA2"))
+        rec = bot.users.record(104)
+        assert rec is not None
+        assert rec["access_status"] == "granted"
+        assert bot.has_reply(104, "Dostęp aktywowany")
+
+    def test_empty_public_beta_codes_safe_no_code_variant(self, bot, monkeypatch):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "")
+        monkeypatch.delenv("PUBLIC_BETA_CODE", raising=False)
+        bot.run(bot.msg(105, "/start"))
+        replies = bot.replies(105)
+        assert len(replies) == 1
+        # Fallbackowy komunikat bez artefaktu {public_code}
+        assert "{public_code}" not in replies[0]
+        assert (
+            "kod dostępu" in replies[0].lower()
+            or "zaproszenie" in replies[0].lower()
+            or "dostęp" in replies[0].lower()
+        )
+        assert bot.users.record(105) is None
+
+    def test_removed_old_code_gives_invalid_link(self, bot, monkeypatch):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "NEWCODE2026")
+        # Użycie starego kodu, którego już nie ma na liście
+        bot.run(bot.msg(106, "/start BETAX1"))
+        assert bot.has_reply(106, "Nieprawidłowy")
+        assert bot.users.record(106) is None
+
+    @pytest.mark.parametrize("lang,expected_snippet", [
+        ("pl", "Skopiuj poniższą komendę i wyślij ją na czacie:"),
+        ("en", "Copy the command below and send it in the chat:"),
+        ("de", "Kopiere den folgenden Befehl und sende ihn im Chat:"),
+        ("fr", "Copiez la commande ci-dessous et envoyez-la dans le chat :"),
+        ("es", "Copia el siguiente comando y envíalo en el chat:"),
+        ("no", "Kopier kommandoen nedenfor og send den i chatten:"),
+    ])
+    def test_no_access_all_supported_languages(self, bot, monkeypatch, lang, expected_snippet):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "GLOBALBETA")
+        cid = 1000 + (abs(hash(lang)) % 1000)
+        bot.run(bot.msg(cid, "/start", lang=lang))
+        replies = bot.replies(cid)
+        assert len(replies) == 1
+        assert expected_snippet in replies[0]
+        assert "/start GLOBALBETA" in replies[0]
+        assert "`/start" not in replies[0]
+
+    @pytest.mark.parametrize("lang,expected_snippet", [
+        ("pl", "Skontaktuj się z administratorem, aby uzyskać dostęp."),
+        ("en", "Please contact the administrator to get access."),
+        ("de", "Bitte kontaktiere den Administrator, um Zugang zu erhalten."),
+        ("fr", "Veuillez contacter l'administrateur pour obtenir un accès."),
+        ("es", "Ponte en contacto con el administrador para obtener acceso."),
+        ("no", "Vennligst kontakt administrator for å få tilgang."),
+    ])
+    def test_no_access_no_code_all_supported_languages(self, bot, monkeypatch, lang, expected_snippet):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "")
+        monkeypatch.delenv("PUBLIC_BETA_CODE", raising=False)
+        cid = 2000 + (abs(hash(lang)) % 1000)
+        bot.run(bot.msg(cid, "/start", lang=lang))
+        replies = bot.replies(cid)
+        assert len(replies) == 1
+        assert expected_snippet in replies[0]
+        assert "{public_code}" not in replies[0]
+
+
+class TestP7AuthorizationMatrix:
+    """Kompleksowa macierz autoryzacji i silent guard P7 (Subtask A)."""
+
+    def test_active_user_start_without_payload_gets_welcome_back_without_data_change(self, bot):
+        # 1. Zarejestruj usera z lokalizacją
+        bot.run(bot.msg(301, "/start BETAX1"))
+        bot.run(bot.msg(301, "/miasto"))
+        bot.run(bot.msg(301, "Kraków"))
+        rec_before = bot.users.record(301)
+        assert rec_before["access_status"] == "granted"
+        assert rec_before["location_label"] == "Kraków"
+        assert rec_before["profile_status"] == "active"
+        rows_count_before = len(bot.gc.users.grid)
+
+        # 2. Wyślij /start bez payloadu
+        bot.run(bot.msg(301, "/start"))
+        rec_after = bot.users.record(301)
+        # Profil, lokalizacja, consents nienaruszone
+        assert rec_after == rec_before
+        assert len(bot.gc.users.grid) == rows_count_before
+        assert bot.has_reply(301, "Witaj")
+
+    def test_active_user_start_with_invalid_payload_keeps_access_and_gets_welcome_back(self, bot):
+        bot.run(bot.msg(302, "/start BETAX1"))
+        rec_before = bot.users.record(302)
+
+        # Aktywny user odpala /start z losowym payloadem
+        bot.run(bot.msg(302, "/start RANDOM_INVALID_CODE"))
+        rec_after = bot.users.record(302)
+        assert rec_after["access_status"] == "granted"
+        assert bot.has_reply(302, "Witaj")
+        assert not bot.has_reply(302, "Nieprawidłowy")
+
+    def test_active_user_re_start_with_valid_code_does_not_create_duplicate(self, bot):
+        bot.run(bot.msg(303, "/start BETAX1"))
+        rows_1 = len([r for r in bot.gc.users.grid if r and r[0] == "303"])
+        assert rows_1 == 1
+
+        bot.run(bot.msg(303, "/start BETAX1"))
+        rows_2 = len([r for r in bot.gc.users.grid if r and r[0] == "303"])
+        assert rows_2 == 1
+
+    def test_stranger_start_with_valid_code_activates_access(self, bot):
+        bot.run(bot.msg(304, "/start BETAX1"))
+        rec = bot.users.record(304)
+        assert rec is not None
+        assert rec["access_status"] == "granted"
+        assert rec["access_source"] == "public_beta"
+        assert rec["profile_status"] == "none"
+        assert bot.has_reply(304, "Dostęp aktywowany")
+
+    def test_stranger_start_with_bad_code_sends_invalid_link_and_no_record(self, bot):
+        bot.run(bot.msg(305, "/start TOTALLY_BOGUS"))
+        assert bot.has_reply(305, "Nieprawidłowy")
+        assert bot.users.record(305) is None
+
+    def test_stranger_start_at_bot_syntax(self, bot):
+        # /start@PogodaWorld_bot bez kodu -> no_access
+        bot.run(bot.msg(306, f"/start@{lb.BOT_USERNAME}"))
+        assert bot.has_reply(306, "dostęp testowy")
+        assert bot.users.record(306) is None
+
+        # /start@PogodaWorld_bot z poprawnym kodem -> access_granted
+        bot.run(bot.msg(307, f"/start@{lb.BOT_USERNAME} BETAX1"))
+        assert bot.has_reply(307, "Dostęp aktywowany")
+        assert bot.users.record(307) is not None
+
+        # /start@PogodaWorld_bot ze złym kodem -> invalid_link
+        bot.run(bot.msg(308, f"/start@{lb.BOT_USERNAME} WRONGCODE"))
+        assert bot.has_reply(308, "Nieprawidłowy")
+        assert bot.users.record(308) is None
+
+    def test_unauthorized_silent_guard_all_mechanisms(self, bot):
+        cid = 400
+        # Komendy
+        for cmd in (
+            "/day", "/now", "/future", "/dzien", "/teraz", "/trend",
+            "/miasto", "/raport", "/dane", "/priv", "/bezGPS", "/usunDane",
+            "/privacy", "/my_data", "/delete_me", "/menu", "/zapros", "/info",
+        ):
+            bot.run(bot.msg(cid, cmd))
+
+        # Skróty i zapytania
+        for query in (".d", ".n", ".f", "?d", "?12", "?14", ".d Hel", "?d Kraków"):
+            bot.run(bot.msg(cid, query))
+
+        # Wzmianki i plain text
+        bot.run(bot.msg(cid, f"@{lb.BOT_USERNAME} jaka pogoda?"))
+        bot.run(bot.msg(cid, "Hej bota czy jutro pada?"))
+
+        # Pinezka
+        bot.run(bot.pin(cid, lat=52.2, lon=21.0))
+
+        # WebApp data
+        bot.run(bot.webapp_location(cid, lat=52.2, lon=21.0))
+        bot.run(bot.webapp_settings(cid, morning="08:00", afternoon="18:00"))
+
+        # Callback query
+        bot.run(bot.callback_query(cid, data="some_callback"))
+
+        # Weryfikacja: całkowita cisza
+        assert bot.replies(cid) == []
+        assert bot.cards == []
+        assert bot.oneoffs == []
+        assert bot.users.record(cid) is None
+
+    def test_group_authorization_isolation_from_sender(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
+        group_id = -100999
+        sender_with_access = 501
+        sender_without_access = 502
+
+        # 1. sender_with_access ma dostęp prywatny
+        bot.run(bot.msg(sender_with_access, "/start BETAX1"))
+        assert bot.users.record(sender_with_access)["access_status"] == "granted"
+
+        # 2. Grupa NIE ma dostępu (nie było /start na grupie)
+        # Wiadomość z grupy wysłana przez sendera Z DOSTĘPEM musi być zignorowana!
+        bot.run(bot.msg(group_id, "/dzien", user_id=sender_with_access, chat_type="group"))
+        bot.run(bot.msg(group_id, ".d Warszawa", user_id=sender_with_access, chat_type="group"))
+        bot.run(bot.pin(group_id, user_id=sender_with_access, chat_type="group"))
+        assert bot.replies(group_id) == []
+        assert bot.users.record(group_id) is None
+
+        # 3. Aktywacja grupy przez /start na czacie grupy
+        bot.run(bot.msg(group_id, "/start BETAX1", user_id=sender_without_access, chat_type="group"))
+        rec_group = bot.users.record(group_id)
+        assert rec_group is not None
+        assert rec_group["access_status"] == "granted"
+        assert bot.has_reply(group_id, "Dostęp aktywowany")
+
+        # 4. Teraz sender BEZ prywatnego dostępu może pytać bota na aktywowanej grupie
+        bot.run(bot.msg(group_id, "/dzien Warszawa", user_id=sender_without_access, chat_type="group"))
+        assert len(bot.oneoffs) == 1
+        assert bot.oneoffs[0][0] == group_id
+

@@ -173,16 +173,144 @@ COMMAND_ALIASES = {
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
-def _public_codes():
+def _public_codes_list() -> list:
     """
-    Pobiera z .env listę aktywnych kodów promocji publicznej.
+    Pobiera z .env listę aktywnych kodów promocji publicznej (w kolejności definicji).
     Pozwala na łatwą rotację i kilka kampanii jednocześnie.
     """
     s = os.environ.get("PUBLIC_BETA_CODES", "").strip()
     if s:
-        return {x.strip() for x in s.split(",") if x.strip()}
+        return [x.strip() for x in s.split(",") if x.strip()]
     one = os.environ.get("PUBLIC_BETA_CODE", "").strip()
-    return {one} if one else set()
+    return [one] if one else []
+
+
+def _public_codes() -> set:
+    """Zbiór aktywnych kodów beta do szybkiego wyszukiwania."""
+    return set(_public_codes_list())
+
+
+def _primary_public_code() -> str:
+    """Zwraca pierwszy aktywny publiczny kod (deterministycznie) do wyświetlenia w no_access."""
+    codes = _public_codes_list()
+    return codes[0] if codes else ""
+
+
+def _validate_access_token(token: str, clean_users, users_map) -> tuple:
+    """
+    Waliduje token zaproszenia/dostępu (istniejący mechanizm P7):
+    - MASTER_TOKEN (admin/dev)
+    - PUBLIC_BETA_CODES / PUBLIC_BETA_CODE (public_beta)
+    - Referral token (referral ID zakodowany base64 lub jawny) jeśli polecający ma aktywny dostęp.
+    Zwraca (is_valid, access_source).
+    """
+    if not token or not isinstance(token, str):
+        return False, ""
+
+    clean_token = token.strip()
+    if not clean_token:
+        return False, ""
+
+    is_dev_mode = (clean_token == MASTER_TOKEN)
+    if is_dev_mode:
+        return True, "admin"
+
+    if clean_token in _public_codes():
+        return True, "public_beta"
+
+    # --- ROZSZYFROWANIE TOKENA ZAPROSZENIA (Referral ID) ---
+    import base64
+    try:
+        padding = 4 - (len(clean_token) % 4)
+        referrer_id = base64.urlsafe_b64decode(clean_token + "=" * padding).decode()
+    except Exception:
+        referrer_id = clean_token
+
+    is_referral = (
+        any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in (clean_users or ()))
+        or users_store.has_access_in_map(users_map, referrer_id)
+    )
+    if is_referral:
+        return True, "referral"
+
+    return False, ""
+
+
+def _extract_update_chat_id(update: dict):
+    """Wyciąga chat_id z dowolnego typu update'u Telegrama."""
+    if not isinstance(update, dict):
+        return None
+    msg = update.get("message")
+    if isinstance(msg, dict):
+        cid = msg.get("chat", {}).get("id")
+        if cid is not None:
+            return cid
+    cb = update.get("callback_query")
+    if isinstance(cb, dict):
+        cb_msg = cb.get("message")
+        if isinstance(cb_msg, dict):
+            cid = cb_msg.get("chat", {}).get("id")
+            if cid is not None:
+                return cid
+        cb_from = cb.get("from")
+        if isinstance(cb_from, dict):
+            cid = cb_from.get("id")
+            if cid is not None:
+                return cid
+    em = update.get("edited_message")
+    if isinstance(em, dict):
+        cid = em.get("chat", {}).get("id")
+        if cid is not None:
+            return cid
+    cp = update.get("channel_post")
+    if isinstance(cp, dict):
+        cid = cp.get("chat", {}).get("id")
+        if cid is not None:
+            return cid
+    ecp = update.get("edited_channel_post")
+    if isinstance(ecp, dict):
+        cid = ecp.get("chat", {}).get("id")
+        if cid is not None:
+            return cid
+    iq = update.get("inline_query")
+    if isinstance(iq, dict):
+        cid = iq.get("from", {}).get("id")
+        if cid is not None:
+            return cid
+    cir = update.get("chosen_inline_result")
+    if isinstance(cir, dict):
+        cid = cir.get("from", {}).get("id")
+        if cid is not None:
+            return cid
+    for key in ("my_chat_member", "chat_member", "chat_join_request"):
+        obj = update.get(key)
+        if isinstance(obj, dict):
+            cid = obj.get("chat", {}).get("id")
+            if cid is not None:
+                return cid
+    return None
+
+
+def _extract_start_payload(update: dict) -> tuple:
+    """
+    Zwraca (is_start, payload).
+    is_start jest True wyłącznie, gdy update to wiadomość z komendą /start (lub /start@bot).
+    payload zawiera argument komendy (lub pusty string).
+    """
+    msg = update.get("message")
+    if not isinstance(msg, dict):
+        return False, ""
+    raw_text = (msg.get("text") or "").strip()
+    if not raw_text.startswith("/"):
+        return False, ""
+    parts = raw_text.split(maxsplit=1)
+    head = parts[0]
+    cmd = head.split("@", 1)[0].lower()
+    if cmd != "/start":
+        return False, ""
+    payload = parts[1].strip() if len(parts) > 1 else ""
+    return True, payload
+
 
 def get_user_lang(message):
     """
@@ -252,19 +380,19 @@ def _is_guest_trigger(text, bot_username):
     return prefix is not None
 
 
-def _chat_has_access(users_map, clean_users, chat_id) -> bool:
+def _chat_has_access(users_map, clean_users, chat_id, now=None) -> bool:
     """
-    Bramka dostępu (PR1):
-    - Jeśli istnieje wiersz w Users — rozstrzyga jego access_status
-      (granted = dostęp; blocked/revoked = brak dostępu, nawet przy wierszu legacy).
+    Bramka dostępu (P7 Gatekeeper):
+    - Jeśli istnieje wiersz w Users — rozstrzyga effective_access_allowed
+      (granted, nie blocked_at, nie wygasło; blocked/revoked/expired = brak dostępu, nawet przy wierszu legacy).
     - Jeśli NIE ma wiersza w Users (użytkownik legacy sprzed migracji) — dostęp
       implikuje wiersz w Formularz (BLOCKED_ jest już odfiltrowany przez
       wirtualne_scalanie, więc zablokowani legacy dostępu nie mają).
     """
     u = (users_map or {}).get(users_store.norm_chat_id(chat_id))
     if u:
-        return str(u.get("access_status", "")).strip().lower() == users_store.ACCESS_GRANTED
-    return any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in clean_users)
+        return users_store.effective_access_allowed(u, now=now)
+    return any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in (clean_users or ()))
 
 
 # ==============================================================
@@ -1503,34 +1631,29 @@ def _md_safe(text):
     return "".join(escaped)
 
 
-def _invite_start_code(url):
-    """Return the ``start`` payload from a Telegram invite URL, if present."""
-    try:
-        return parse_qs(urlsplit(str(url)).query).get("start", [""])[0].strip()
-    except (TypeError, ValueError):
-        return ""
-
-
 def _invite_message(lang, key):
-    """Render an invite/access message with Markdown-safe dynamic link text.
+    """Render an invite/access message with dynamic code or link.
 
-    The URL is plain text in the localized no_access, invalid_link, and
-    limit_reached templates, so escape it before formatting the message. When
-    it is a Telegram deep link, make its changing start payload the linked
-    /start command example as well. Leave the existing localized placeholder
-    in place for invite pages that do not contain a start payload.
+    Dla key == 'no_access':
+    Używa dynamicznego kodu public_code pobranego z PUBLIC_BETA_CODES.
+    Gdy lista jest pusta lub niepoprawna, używa bezpiecznego wariantu
+    no_access_no_code i loguje problem bez ujawniania sekretów.
+
+    Dla key == 'invalid_link' oraz 'limit_reached':
+    Wstawia bezpieczny link INVITE_URL.
     """
-    text = t_ui(lang, key, url=_md_safe(INVITE_URL))
     if key == "no_access":
-        code = _invite_start_code(INVITE_URL)
+        code = _primary_public_code()
         if code:
-            linked_code = f"[{_md_safe(code)}]({INVITE_URL})"
-            text = re.sub(
-                r"(/start\s+)\S+\s*$",
-                lambda match: match.group(1) + linked_code,
-                text,
-            )
-    return text
+            return t_ui(lang, "no_access", public_code=_md_safe(code))
+        else:
+            print("  ⚠️ [access] PUBLIC_BETA_CODES jest puste lub niepoprawne.")
+            return t_ui(lang, "no_access_no_code")
+    elif key == "invalid_link":
+        return t_ui(lang, "invalid_link", url=_md_safe(INVITE_URL))
+    elif key == "access_granted":
+        return t_ui(lang, "access_granted")
+    return t_ui(lang, key, url=_md_safe(INVITE_URL))
 
 
 _LOCALITY_ADDRESS_FIELDS = ("city", "town", "village", "hamlet", "locality")
@@ -3645,11 +3768,11 @@ def _main_bot_iteration(gc, offset):
         highest_update_id = update["update_id"] + 1
         
         try:
-            message = update.get("message", {})
-            chat_id = message.get("chat", {}).get("id")
-            
+            chat_id = _extract_update_chat_id(update)
             if not chat_id: 
                 continue
+
+            message = update.get("message") or {}
 
             # TTL jest egzekwowany również wtedy, gdy właściciel pending nie
             # wyśle ponownie żadnej komendy (wpisy nadal pozostają tylko w RAM).
@@ -3668,22 +3791,91 @@ def _main_bot_iteration(gc, offset):
                     message["text"] = normalized_text
             # --------------------------------------------------------
 
-            # POPRAWKA #7: dawny błyskawiczny język gościa (guest_lang) obsługiwał
-            # odmowę no_access dla skrótów/wzmianek bez dostępu. Odmowa zniknęła
-            # (bez dostępu jest cisza), więc zmienna nie jest już potrzebna.
+            is_start, start_payload = _extract_start_payload(update)
+            chat_has_access = _chat_has_access(users_map, clean_users, chat_id)
 
             # ==============================================================
-            # POPRAWKA #7 — BRAMKA DOSTĘPU LICZONA RAZ NA WIADOMOŚĆ
+            # GLOBALNY GUARD (P7 GATEKEEPER)
             # ==============================================================
             # Bez dostępu odpowiada WYŁĄCZNIE /start (rejestracja kodem albo
             # informacja no_access). Wszystko inne — komendy RODO, komendy
-            # zwykłe, skróty i wzmianki, pinezki, WebApp i zwykły tekst — jest
-            # ignorowane po cichu. Dzięki temu po hard delete czat bez wiersza
-            # w rejestrze nie dostaje ani no_data, ani linku zaproszenia.
-            chat_has_access = _chat_has_access(users_map, clean_users, chat_id)
-            raw_text = (message.get("text") or "").strip()
-            if not chat_has_access and not raw_text.startswith("/start"):
+            # zwykłe, skróty i wzmianki, pinezki, WebApp, callback_query i
+            # zwykły tekst — jest ignorowane po cichu (silent drop).
+            if not is_start and not chat_has_access:
                 continue
+
+            # ==============================================================
+            # BRAMKA WEJŚCIOWA /START
+            # ==============================================================
+            if is_start:
+                if chat_has_access:
+                    # A. Użytkownik ma aktywny dostęp:
+                    # Nie nadpisuj danych, zachowaj język i wyślij standardowe powitanie.
+                    user_row = _legacy_user_row(clean_users, chat_id)
+                    user_lang = _effective_lang(
+                        message, chat_id, users_map, legacy_row=user_row,
+                    )
+                    print(f"  👋 Wysłano powitanie powrotne do {chat_id}")
+                    send_reply(chat_id, t_ui(user_lang, "welcome_back"))
+                    continue
+
+                # Użytkownik bez dostępu:
+                wykryty_jezyk = get_user_lang(message)
+
+                if not start_payload:
+                    # B. Czysty /start bez payloadu:
+                    # Nie aktywuj, wyślij no_access z dynamicznym kodem publicznym.
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
+                    continue
+
+                # C. /start z payloadem:
+                token = start_payload
+                is_valid, access_source = _validate_access_token(token, clean_users, users_map)
+
+                if not is_valid:
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "invalid_link"))
+                    continue
+
+                # Weryfikacja limitu miejsc (200)
+                if len(clean_users) >= 200 and access_source != "admin":
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, "limit_reached"))
+                    continue
+
+                print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Zapisuję access w Users (ID: {chat_id}, źródło: {access_source})")
+
+                try:
+                    zapisano = _sheets_call(
+                        "sheets.users.upsert_access",
+                        users_store.upsert_access,
+                        users_ws, chat_id, wykryty_jezyk, access_source,
+                        users_store.now_iso(), PRIVACY_VERSION,
+                    )
+                    if not zapisano:
+                        raise RuntimeError("upsert_access nie zapisał wiersza (brak zakładki Users?)")
+
+                    existing_entry = users_map.get(users_store.norm_chat_id(chat_id), {})
+                    users_map[users_store.norm_chat_id(chat_id)] = {
+                        **existing_entry,
+                        "chat_id": str(chat_id),
+                        "access_status": users_store.ACCESS_GRANTED,
+                        "access_source": access_source,
+                        "access_granted_at": users_store.now_iso(),
+                        "privacy_version_seen": PRIVACY_VERSION,
+                        "lang": existing_entry.get("lang") or wykryty_jezyk,
+                        "profile_status": existing_entry.get("profile_status") or "none",
+                    }
+                    _cache_users_map(users_map)
+
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "access_granted"))
+                    continue
+
+                except SheetsRateLimitError:
+                    raise
+                except Exception as e:
+                    print(f"  [DEBUG] ❌ Błąd przy zapisie access: {e}")
+                    alert_admin(f"❌ Błąd zapisu access (Users) dla {chat_id}: {e}")
+                    send_reply(chat_id, t_ui(wykryty_jezyk, "reg_err"))
+                    continue
 
             # ==============================================================
             # 0A. TRYB GOŚCIA I SZYBKIE SKRÓTY (.n, .d, .f) — GATE PO ACCESS (PR1)
@@ -3982,111 +4174,7 @@ def _main_bot_iteration(gc, offset):
             )
 
 
-            # ==============================================================
-            # BRAMKA WEJŚCIOWA (PR1: dostęp z Users + legacy Formularz)
-            # ==============================================================
-            # access = Users(access_status=granted) LUB wiersz w legacy Formularz.
-            # POPRAWKA #7: bramka na wejściu pętli wyciszyła już wszystko, co nie
-            # jest /start, więc tutaj zostaje wyłącznie obsługa /start dla czatu
-            # bez dostępu: bez kodu -> no_access, zły kod -> invalid_link,
-            # limit miejsc -> limit_reached, poprawny kod -> rejestracja.
             has_legacy_row = user_row_index is not None
-
-            if not chat_has_access:
-                text = message.get("text", "").strip()
-                wykryty_jezyk = get_user_lang(message)
-                parts = text.split()
-
-                # Miękkie lądowanie dla ludzi, którzy wpisali samo /start (bez kodu)
-                if len(parts) < 2:
-                    send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
-                    continue
-                    
-                # Pobieramy token wejściowy
-                token = parts[1].strip()
-                
-                # --- ROZSZYFROWANIE TOKENA ZAPROSZENIA (Referral ID) ---
-                import base64
-                try:
-                    padding = 4 - (len(token) % 4)
-                    referrer_id = base64.urlsafe_b64decode(token + "=" * padding).decode()
-                except Exception:
-                    referrer_id = token  # Fallback dla linków z jawnym ID
-                
-                # --- WALIDACJA UPRAWNIEŃ ---
-                is_dev_mode = (token == MASTER_TOKEN)
-                is_public_beta = (token in _public_codes())
-                # PR1: polecającym może być też użytkownik z samym access-em w Users
-                # (rejestracja od PR1 nie tworzy już wiersza w Formularz).
-                is_referral = (
-                    any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in clean_users)
-                    or users_store.has_access_in_map(users_map, referrer_id)
-                )
-
-                # Jeśli kod nie pasuje do niczego (nie jest adminem, kodem beta ani poleceniem od usera)
-                if not (is_dev_mode or is_public_beta or is_referral):
-                    send_reply(chat_id, _invite_message(wykryty_jezyk, "invalid_link"))
-                    continue
-
-                # 1. Weryfikacja limitu miejsc (Podniesiono z 50 do 200)
-                # Dev (God Mode) wchodzi zawsze, reszta jest blokowana po osiągnięciu limitu
-                # (liczymy profile legacy — tylko one generują obciążenie schedulera)
-                if len(clean_users) >= 200 and not is_dev_mode:
-                    send_reply(chat_id, _invite_message(wykryty_jezyk, "limit_reached"))
-                    continue
-
-                # 2. Mamy autoryzację! PR1: zapisujemy WYŁĄCZNIE minimalny access
-                #    w zakładce Users — bez lat/lon, bez profilu i BEZ wiersza
-                #    w Formularz (scheduler nadal czyta Formularz, ale nowi
-                #    użytkownicy nie dostają profili aż do PR2).
-                access_source = "admin" if is_dev_mode else ("public_beta" if is_public_beta else "referral")
-
-                # Wykrycie języka z Telegrama + bezpieczny fallback do angielskiego
-                raw_lang = message.get("from", {}).get("language_code", "en")[:2].lower()
-                OBSLUGIWANE_JEZYKI = ("pl", "en", "de", "fr", "es", "no", "nb")
-                if raw_lang in OBSLUGIWANE_JEZYKI:
-                    wykryty_jezyk = "no" if raw_lang in ("no", "nb") else raw_lang
-                else:
-                    wykryty_jezyk = "en"
-
-                print(f"  [DEBUG] 🌟 Nowy klient z ZAPROSZENIA! Zapisuję access w Users (ID: {chat_id}, źródło: {access_source})")
-
-                try:
-                    zapisano = _sheets_call(
-                        "sheets.users.upsert_access",
-                        users_store.upsert_access,
-                        users_ws, chat_id, wykryty_jezyk, access_source,
-                        users_store.now_iso(), PRIVACY_VERSION,
-                    )
-                    if not zapisano:
-                        raise RuntimeError("upsert_access nie zapisał wiersza (brak zakładki Users?)")
-
-                    # Odświeżamy mapę w RAM, żeby dalsze wiadomości z tej samej
-                    # paczki update'ów widziały nowy dostęp bez ponownego odczytu API.
-                    users_map[users_store.norm_chat_id(chat_id)] = {
-                        "chat_id": str(chat_id),
-                        "access_status": users_store.ACCESS_GRANTED,
-                        "access_source": access_source,
-                        "access_granted_at": users_store.now_iso(),
-                        "privacy_version_seen": PRIVACY_VERSION,
-                        "lang": wykryty_jezyk,
-                        "profile_status": "none",
-                    }
-                    _cache_users_map(users_map)
-
-                    # Onboarding PR1: privacy-first, bez klawiatury GPS
-                    # (zapis lokalizacji dopiero od PR2 przez /save_location).
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "welcome_access"))
-
-                    continue  # Rejestracja zrobiona, pomijamy resztę pętli dla tej wiadomości
-
-                except SheetsRateLimitError:
-                    raise
-                except Exception as e:
-                    print(f"  [DEBUG] ❌ Błąd przy zapisie access: {e}")
-                    alert_admin(f"❌ Błąd zapisu access (Users) dla {chat_id}: {e}")
-                    send_reply(chat_id, t_ui(wykryty_jezyk, "reg_err"))
-                    continue
 
             # ==============================================================
             # AKCJE DLA ZAREJESTROWANYCH UŻYTKOWNIKÓW
@@ -4416,16 +4504,9 @@ def _main_bot_iteration(gc, offset):
             elif message.get("text", "").startswith("/info"):
                 print(f"  ℹ️ Wysłano instrukcję obsługi do {chat_id}")
                 send_reply(chat_id, t_ui(user_lang, "info_msg"))
-            
-            # 7. /start (Ktoś klika to po raz kolejny)
-            elif message.get("text", "").startswith("/start"):
-                print(f"  👋 Wysłano powitanie powrotne do {chat_id}")
-                
-                send_reply(chat_id, t_ui(user_lang, "welcome_back"))
-                
+
             elif message.get("text", "").lower().startswith(("/porady", "/tips")):
                 print(f"  💡 Wysłano porady do {chat_id}")
-                
                 send_reply(chat_id, t_ui(user_lang, "porady_msg", default_rano=DEFAULT_RANO, default_wieczor=DEFAULT_WIECZOR))
                 
                           

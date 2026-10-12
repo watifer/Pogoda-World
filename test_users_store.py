@@ -328,8 +328,63 @@ def test_report_settings_fail_closed_if_live_headers_are_missing():
 
 
 # ============================================================================
-# has_access / load_users_map
+# effective_access_allowed & has_access
 # ============================================================================
+class TestEffectiveAccessAllowed:
+    def test_missing_or_empty_record(self):
+        assert users_store.effective_access_allowed(None) is False
+        assert users_store.effective_access_allowed({}) is False
+        assert users_store.effective_access_allowed("invalid") is False
+
+    def test_access_status_values(self):
+        assert users_store.effective_access_allowed({"access_status": "granted"}) is True
+        assert users_store.effective_access_allowed({"access_status": "GRANTED"}) is True
+        assert users_store.effective_access_allowed({"access_status": " granted "}) is True
+        assert users_store.effective_access_allowed({"access_status": "blocked"}) is False
+        assert users_store.effective_access_allowed({"access_status": "revoked"}) is False
+        assert users_store.effective_access_allowed({"access_status": "pending"}) is False
+        assert users_store.effective_access_allowed({"access_status": ""}) is False
+
+    def test_blocked_at_flag(self):
+        row = {"access_status": "granted", "blocked_at": "2026-10-01 12:00:00"}
+        assert users_store.effective_access_allowed(row) is False
+
+        row_empty = {"access_status": "granted", "blocked_at": "  "}
+        assert users_store.effective_access_allowed(row_empty) is True
+
+    def test_access_expires_at_boundary_and_future_past(self):
+        # Format YYYY-MM-DD HH:MM:SS
+        row = {
+            "access_status": "granted",
+            "access_expires_at": "2026-10-12 12:00:00",
+        }
+        # W przyszłości (przed wygaśnięciem)
+        assert users_store.effective_access_allowed(row, now="2026-10-12 11:59:59") is True
+        # Dokładnie w chwili wygaśnięcia (granica) -> wygasło
+        assert users_store.effective_access_allowed(row, now="2026-10-12 12:00:00") is False
+        # W przeszłości (po wygaśnięciu)
+        assert users_store.effective_access_allowed(row, now="2026-10-12 12:00:01") is False
+
+    def test_access_expires_at_timezone_awareness(self):
+        from datetime import datetime, timezone, timedelta
+        # 14:00 w +02:00 to 12:00 UTC
+        row = {
+            "access_status": "granted",
+            "access_expires_at": "2026-10-12T14:00:00+02:00",
+        }
+        now_before = datetime(2026, 10, 12, 11, 59, 59, tzinfo=timezone.utc)
+        now_boundary = datetime(2026, 10, 12, 12, 0, 0, tzinfo=timezone.utc)
+        now_after = datetime(2026, 10, 12, 12, 0, 1, tzinfo=timezone.utc)
+
+        assert users_store.effective_access_allowed(row, now=now_before) is True
+        assert users_store.effective_access_allowed(row, now=now_boundary) is False
+        assert users_store.effective_access_allowed(row, now=now_after) is False
+
+    def test_invalid_expires_at_fails_closed(self):
+        row = {"access_status": "granted", "access_expires_at": "not-a-valid-date"}
+        assert users_store.effective_access_allowed(row) is False
+
+
 class TestHasAccess:
     def _ws_with_status(self, status):
         ws = FakeWorksheet()
@@ -575,6 +630,7 @@ class TestLocationBotHelpers:
         sleeps = []
         monkeypatch.setattr(lb, "send_reply", lambda cid, txt, **kw: sent.append((cid, txt)))
         monkeypatch.setattr(lb.time, "sleep", lambda s: sleeps.append(s))
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
         lb._set_pending_city("123456", lb.CTX_ONEOFF_DAY)
         lb._set_pending_delete("123456")
         lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city")
@@ -583,11 +639,11 @@ class TestLocationBotHelpers:
         assert "123456" not in lb.PENDING_SAVE
         assert "123456" not in lb.PENDING_DELETE
         # POPRAWKA #7: dokładnie dwa komunikaty — delete_me_done (bez linku),
-        # po pauzie osobny, pełny no_access (z linkiem zaproszenia).
+        # po pauzie osobny, pełny no_access (z dynamicznym kodem).
         assert len(sent) == 2, sent
         assert "usunąłem twoje dane" in sent[0][1].lower()
         assert "http" not in sent[0][1]
-        assert "brak dostępu" in sent[1][1].lower() and "http" in sent[1][1]
+        assert "dostęp testowy" in sent[1][1].lower() and "/start BETA2026A" in sent[1][1]
         assert sleeps == [lb.DELETE_NOTICE_DELAY_SEC]
 
 
