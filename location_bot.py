@@ -268,6 +268,15 @@ def _is_master_token(token) -> bool:
     return token.strip() == expected
 
 
+def _registration_block_key(reason: str) -> str:
+    """Klucz i18n komunikatu dla powodu z _registration_closed_reason().
+
+    closed (REGISTRATION_ENABLED=0) -> registration_closed: bez liczby miejsc i bez kodu,
+    full (MAX_USERS osiągnięte)    -> limit_reached z aktualnym max_users.
+    """
+    return "registration_closed" if reason == "closed" else "limit_reached"
+
+
 def _registration_closed_reason(token, users_map, clean_users) -> str:
     """CENTRALNA bramka nowych rejestracji.
 
@@ -1747,6 +1756,10 @@ def _invite_message(lang, key):
         return t_ui(lang, "invalid_link", url=_md_safe(INVITE_URL))
     elif key == "limit_reached":
         return t_ui(lang, "limit_reached", url=_md_safe(INVITE_URL), max_users=_max_users())
+    elif key == "registration_closed":
+        # Celowo BEZ liczby miejsc i BEZ kodu: przy ręcznie zamkniętej rejestracji
+        # wolne miejsca mogą istnieć, więc „200/200” byłoby nieprawdziwe.
+        return t_ui(lang, "registration_closed", url=_md_safe(INVITE_URL))
     elif key == "access_granted":
         return t_ui(lang, "access_granted")
     return t_ui(lang, key, url=_md_safe(INVITE_URL), max_users=_max_users())
@@ -3922,8 +3935,9 @@ def _main_bot_iteration(gc, offset):
                     # B. Czysty /start bez payloadu:
                     # Przy zamkniętej rejestracji nie pokazujemy kodu, którym
                     # i tak nie da się wejść — tylko limit_reached.
-                    if _registration_closed_reason("", users_map, clean_users):
-                        send_reply(chat_id, _invite_message(wykryty_jezyk, "limit_reached"))
+                    block_reason = _registration_closed_reason("", users_map, clean_users)
+                    if block_reason:
+                        send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
                     else:
                         # Nie aktywuj, wyślij no_access z dynamicznym kodem publicznym.
                         send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
@@ -3944,10 +3958,10 @@ def _main_bot_iteration(gc, offset):
                 # i przed upsert_access(). Zamknięta rejestracja albo pełny limit
                 # (liczony z Users) = limit_reached, bez tworzenia i zmiany rekordu.
                 # MASTER_TOKEN omija bramkę (P7 God mode).
-                closed_reason = _registration_closed_reason(token, users_map, clean_users)
-                if closed_reason:
-                    print(f"  [access] Rejestracja zablokowana ({closed_reason}) dla {chat_id}.")
-                    send_reply(chat_id, _invite_message(wykryty_jezyk, "limit_reached"))
+                block_reason = _registration_closed_reason(token, users_map, clean_users)
+                if block_reason:
+                    print(f"  [access] Rejestracja zablokowana ({block_reason}) dla {chat_id}.")
+                    send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
                     continue
 
                 is_valid, access_source = _validate_access_token(token, clean_users, users_map)

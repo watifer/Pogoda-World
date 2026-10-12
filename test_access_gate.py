@@ -2588,6 +2588,7 @@ def upsert_spy(monkeypatch):
 
 
 LIMIT_PL = "Osiągnięto limit miejsc"
+REG_CLOSED_PL = "Rejestracja wyłączona"
 INVALID_PL = "Nieprawidłowy"
 
 
@@ -2596,7 +2597,7 @@ class TestRegistrationGate:
     def test_public_beta_closed_creates_no_record(self, bot, monkeypatch, upsert_spy):
         monkeypatch.setenv("REGISTRATION_ENABLED", "false")
         bot.run(bot.msg(100, "/start BETAX1"))
-        assert bot.has_reply(100, LIMIT_PL)
+        assert bot.has_reply(100, REG_CLOSED_PL)
         assert bot.users.record(100) is None
         assert upsert_spy == [], "upsert_access nie może być wołane przy zamkniętej rejestracji"
 
@@ -2611,7 +2612,7 @@ class TestRegistrationGate:
 
         bot.run(bot.msg(200, f"/start {_ref_token(100)}"))
 
-        assert bot.has_reply(200, LIMIT_PL), "referral przy zamkniętej rejestracji musi dostać limit_reached"
+        assert bot.has_reply(200, REG_CLOSED_PL), "referral przy zamkniętej rejestracji musi dostać limit_reached"
         assert bot.users.record(200) is None, "referral nie może tworzyć rekordu"
         assert _users_row_count(bot) == rows_before
         assert upsert_spy == []
@@ -2662,7 +2663,7 @@ class TestRegistrationGate:
         bot.run(bot.msg(cid, text))
         assert bot.users.record(cid) is None
         assert upsert_spy == []
-        assert bot.has_reply(cid, LIMIT_PL)
+        assert bot.has_reply(cid, REG_CLOSED_PL)
         assert not bot.has_reply(cid, "/start BETAX1"), "bez kodu też nie wolno pokazać działającego kodu"
 
     def test_group_registration_closed_creates_no_group_record(self, bot, monkeypatch, upsert_spy):
@@ -2670,7 +2671,7 @@ class TestRegistrationGate:
         group_id = -100777
         bot.run(bot.msg(group_id, "/start BETAX1", user_id=502, chat_type="group"))
         assert bot.users.record(group_id) is None
-        assert bot.has_reply(group_id, LIMIT_PL)
+        assert bot.has_reply(group_id, REG_CLOSED_PL)
         assert upsert_spy == []
 
     # --- D. Zamknięcie nie nadpisuje istniejącego (nieaktywnego) rekordu -----
@@ -2682,7 +2683,7 @@ class TestRegistrationGate:
 
         bot.run(bot.msg(320, "/start BETAX1"))
 
-        assert bot.has_reply(320, LIMIT_PL)
+        assert bot.has_reply(320, REG_CLOSED_PL)
         assert _users_row(bot, 320) == before
         assert upsert_spy == []
 
@@ -2857,10 +2858,10 @@ class TestRegistrationGate:
         assert len(bot.oneoffs) == 1 and bot.oneoffs[0][0] == group_id
         assert upsert_spy == []
 
-    def test_bare_start_when_closed_shows_limit_not_public_code(self, bot, monkeypatch):
+    def test_bare_start_when_closed_shows_registration_closed_not_public_code(self, bot, monkeypatch):
         monkeypatch.setenv("REGISTRATION_ENABLED", "false")
         bot.run(bot.msg(530, "/start"))
-        assert bot.has_reply(530, LIMIT_PL)
+        assert bot.has_reply(530, REG_CLOSED_PL)
         assert not bot.has_reply(530, "/start BETAX1")
 
     # --- I. Konfiguracja -----------------------------------------------------
@@ -2922,7 +2923,7 @@ class TestMasterTokenHardening:
         monkeypatch.setattr(lb, "MASTER_TOKEN", "")
         monkeypatch.setenv("REGISTRATION_ENABLED", "false")
         bot.run(bot.msg(741, "/start DEV_TEST"))
-        assert bot.has_reply(741, LIMIT_PL)
+        assert bot.has_reply(741, REG_CLOSED_PL)
         assert bot.users.record(741) is None
         assert upsert_spy == []
 
@@ -2971,21 +2972,21 @@ class TestLimitReachedMessage:
 
 
 class TestClosedRegistrationDecisions:
-    def test_closed_invalid_code_gets_limit_reached_not_invalid_link(self, bot, monkeypatch, upsert_spy):
+    def test_closed_invalid_code_gets_registration_closed_not_invalid_link(self, bot, monkeypatch, upsert_spy):
         monkeypatch.setenv("REGISTRATION_ENABLED", "false")
         bot.run(bot.msg(760, "/start TOTALLY_BOGUS"))
-        assert bot.has_reply(760, LIMIT_PL)
+        assert bot.has_reply(760, REG_CLOSED_PL)
         assert not bot.has_reply(760, INVALID_PL)
         assert bot.users.record(760) is None
         assert upsert_spy == []
 
     @pytest.mark.parametrize("raw", ["0", "false", "off", "no"])
-    def test_bare_start_closed_returns_limit_without_code(self, bot, monkeypatch, raw):
+    def test_bare_start_closed_returns_registration_closed_without_code(self, bot, monkeypatch, raw):
         monkeypatch.setenv("REGISTRATION_ENABLED", raw)
         bot.run(bot.msg(761, "/start"))
         replies = bot.replies(761)
         assert len(replies) == 1
-        assert LIMIT_PL in replies[0]
+        assert REG_CLOSED_PL in replies[0]
         assert "/start BETAX1" not in replies[0]
         assert bot.users.record(761) is None
 
@@ -3005,3 +3006,115 @@ class TestClosedRegistrationDecisions:
         bot.run(bot.msg(902, "/start BETAX1"))
         assert bot.users.record(902) is not None, "wiersz obecny w Users nie może liczyć się podwójnie"
         assert bot.users.record(902)["access_status"] == "granted"
+
+
+# ============================================================================
+# registration_closed (ręcznie zamknięta rejestracja) vs limit_reached (pełny limit)
+# ============================================================================
+class TestRegistrationClosedMessage:
+    @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
+    def test_registration_closed_text_has_no_count_and_no_code(self, monkeypatch, lang):
+        monkeypatch.setenv("PUBLIC_BETA_CODES", "BETAX1")
+        monkeypatch.setenv("MAX_USERS", "200")
+        text = lb._invite_message(lang, "registration_closed")
+        assert "https://" in text, (lang, text)
+        assert "BETAX1" not in text, (lang, text)
+        assert not re.search(r"\d+\s*/\s*\d+", text), (lang, text)
+        assert "{" not in text and "}" not in text, (lang, text)
+        assert "50/50" not in text and "200/200" not in text
+
+    @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
+    def test_registration_closed_is_dynamic_translation_not_count_dependent(self, monkeypatch, lang):
+        monkeypatch.setenv("MAX_USERS", "7")
+        text_a = lb._invite_message(lang, "registration_closed")
+        monkeypatch.setenv("MAX_USERS", "500")
+        text_b = lb._invite_message(lang, "registration_closed")
+        assert text_a == text_b, "registration_closed nie może zależeć od MAX_USERS"
+        assert text_a == lb.t_ui(lang, "registration_closed", url=lb._md_safe(lb.INVITE_URL))
+
+    def test_registration_closed_translations_are_distinct(self):
+        texts = {lang: lb.t_ui(lang, "registration_closed", url="U") for lang in ("pl", "en", "de", "es", "fr", "no")}
+        assert len(set(texts.values())) == 6, texts
+
+    def test_block_key_mapping(self):
+        assert lb._registration_block_key("closed") == "registration_closed"
+        assert lb._registration_block_key("full") == "limit_reached"
+
+    def test_closed_wins_over_full(self, empty_bot, monkeypatch, upsert_spy):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "0")
+        monkeypatch.setenv("MAX_USERS", "1")
+        _seed_users_row(empty_bot, 800)  # miejsca też są pełne
+        upsert_spy.clear()
+        empty_bot.run(empty_bot.msg(801, "/start BETAX1"))
+        assert empty_bot.has_reply(801, REG_CLOSED_PL)
+        assert not empty_bot.has_reply(801, LIMIT_PL)
+        assert upsert_spy == []
+
+    def test_closed_with_free_seats_shows_registration_closed(self, empty_bot, monkeypatch, upsert_spy):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "0")
+        monkeypatch.setenv("MAX_USERS", "200")  # miejsca wolne
+        upsert_spy.clear()
+        empty_bot.run(empty_bot.msg(802, "/start BETAX1"))
+        assert empty_bot.has_reply(802, REG_CLOSED_PL)
+        assert not empty_bot.has_reply(802, LIMIT_PL)
+        assert empty_bot.users.record(802) is None
+        assert upsert_spy == []
+
+    def test_full_limit_with_registration_enabled_shows_limit_reached(self, empty_bot, monkeypatch, upsert_spy):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "1")
+        monkeypatch.setenv("MAX_USERS", "2")
+        _seed_users_row(empty_bot, 810)
+        _seed_users_row(empty_bot, 811)
+        upsert_spy.clear()
+        empty_bot.run(empty_bot.msg(812, "/start BETAX1"))
+        assert empty_bot.has_reply(812, LIMIT_PL)
+        assert empty_bot.has_reply(812, "(2/2)")
+        assert not empty_bot.has_reply(812, REG_CLOSED_PL)
+        assert empty_bot.users.record(812) is None
+        assert upsert_spy == []
+
+    def test_open_with_free_seat_uses_normal_payload_validation(self, empty_bot, monkeypatch):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "1")
+        monkeypatch.setenv("MAX_USERS", "5")
+        empty_bot.run(empty_bot.msg(820, "/start BETAX1"))
+        assert empty_bot.users.record(820)["access_status"] == "granted"
+        empty_bot.run(empty_bot.msg(821, "/start WRONGCODE"))
+        assert empty_bot.has_reply(821, INVALID_PL)
+        assert not empty_bot.has_reply(821, REG_CLOSED_PL)
+
+    @pytest.mark.parametrize("payload_kind", ["bare", "public", "referral", "invalid"])
+    def test_closed_all_non_master_paths_get_registration_closed(self, empty_bot, monkeypatch, upsert_spy, payload_kind):
+        _seed_users_row(empty_bot, 100)  # aktywny referrer
+        monkeypatch.setenv("REGISTRATION_ENABLED", "false")
+        upsert_spy.clear()
+        cid = 830
+        text = {
+            "bare": "/start",
+            "public": "/start BETAX1",
+            "referral": f"/start {_ref_token(100)}",
+            "invalid": "/start NIEPOPRAWNY",
+        }[payload_kind]
+        empty_bot.run(empty_bot.msg(cid, text))
+        replies = empty_bot.replies(cid)
+        assert len(replies) == 1, replies
+        assert REG_CLOSED_PL in replies[0]
+        assert "/start BETAX1" not in replies[0]
+        assert empty_bot.users.record(cid) is None
+        assert upsert_spy == []
+
+    def test_closed_blocked_account_keeps_invalid_link_and_record(self, empty_bot, monkeypatch, upsert_spy):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "0")
+        _seed_users_row(empty_bot, 840, access_status="blocked", blocked_at="2026-10-01 10:00:00")
+        upsert_spy.clear()
+        before = _users_row(empty_bot, 840)
+        empty_bot.run(empty_bot.msg(840, "/start BETAX1"))
+        assert _users_row(empty_bot, 840) == before
+        assert upsert_spy == []
+        assert empty_bot.has_reply(840, INVALID_PL)
+
+    @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
+    def test_closed_reply_is_localized_per_user_language(self, empty_bot, monkeypatch, lang):
+        monkeypatch.setenv("REGISTRATION_ENABLED", "0")
+        cid = 850 + ["pl", "en", "de", "es", "fr", "no"].index(lang)
+        empty_bot.run(empty_bot.msg(cid, "/start BETAX1", lang=lang))
+        assert empty_bot.replies(cid) == [lb._invite_message(lang, "registration_closed")], lang
