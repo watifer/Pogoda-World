@@ -11,6 +11,12 @@ geopy
 Pillow
 tzdata
 
+# Python 3.8 (produkcja): `zoneinfo` jest w stdlib dopiero od 3.9, a importy
+# w kodzie mają fallback `from backports.zoneinfo import ZoneInfo`
+# (main_card, weather_payload, worth_knowing, prepare_*, location_bot,
+# guest_bot_handler, dev_preview). Marker wyklucza paczkę na Pythonie >= 3.9.
+backports.zoneinfo; python_version < "3.9"
+
 # --- Moduł nadmorski (coast / marine_storm / beach) ---
 # Wymagane przez coast_detector.py. Import ma fallback, żeby lekkie workery
 # i testy dało się uruchomić bez tych paczek, ALE środowisko generujące karty
