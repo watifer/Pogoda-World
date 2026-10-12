@@ -22,6 +22,7 @@ Konwencje techniczne:
 
 import gspread
 from datetime import datetime, timezone
+from typing import Optional
 
 # =====================================================================
 # KONFIGURACJA
@@ -229,7 +230,7 @@ def has_access_in_map(users_map: dict, chat_id, now=None) -> bool:
     return effective_access_allowed(u, now=now)
 
 
-def _to_utc_datetime(val) -> datetime | None:
+def _to_utc_datetime(val) -> Optional[datetime]:
     """Parsuje ciąg znaków lub obiekt datetime do UTC datetime."""
     if val is None:
         return None
@@ -263,7 +264,7 @@ def _to_utc_datetime(val) -> datetime | None:
         return None
 
 
-def effective_access_allowed(user_row: dict | None, now=None) -> bool:
+def effective_access_allowed(user_row: Optional[dict], now=None) -> bool:
     """
     Zwraca True wyłącznie, gdy:
     - rekord istnieje (user_row to niepusty dict);
