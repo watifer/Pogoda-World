@@ -718,7 +718,7 @@ class TestLocationBotHelpers:
         assert len(sent) == 2, sent
         assert "usunąłem twoje dane" in sent[0][1].lower()
         assert "http" not in sent[0][1]
-        assert "dostęp testowy" in sent[1][1].lower() and "/start BETA2026A" in sent[1][1]
+        assert "bot prywatny" in sent[1][1].lower() and "/start BETA2026A" in sent[1][1]
         assert sleeps == [lb.DELETE_NOTICE_DELAY_SEC]
 
 
