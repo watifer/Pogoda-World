@@ -1614,8 +1614,11 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
         send_reply(chat_id, t_ui(lang, "delete_me_done"), reply_markup=remove_keyboard)
         # POPRAWKA #7: drugi, osobny komunikat po krótkiej pauzie — pokazuje, że
         # razem z danymi zniknął dostęp i że powrót wymaga ponownego zaproszenia.
+        # Ten sam komunikat no_access co w gatekeeperze, więc ten sam przycisk
+        # kopiujący /start CODE.
         time.sleep(DELETE_NOTICE_DELAY_SEC)
-        send_reply(chat_id, _invite_message(lang, "no_access"))
+        no_access_text, no_access_markup = _no_access_parts(lang)
+        send_reply(chat_id, no_access_text, reply_markup=no_access_markup)
     else:
         send_reply(chat_id, t_ui(lang, "no_data"), reply_markup=remove_keyboard)
 
@@ -1732,6 +1735,38 @@ def _md_safe(text):
     return "".join(escaped)
 
 
+def _no_access_parts(lang):
+    """Zwraca (tekst, reply_markup) dla ``no_access``.
+
+    Kod publiczny jest pobierany RAZ, więc placeholder ``{public_code}``
+    w treści i ``copy_text`` w przycisku zawsze niosą tę samą wartość —
+    także bezpośrednio po rotacji ``PUBLIC_BETA_CODES``.
+
+    Przycisk używa natywnego pola Bot API ``InlineKeyboardButton.copy_text``
+    (Bot API >= 7.11). Nie generuje ``callback_query``, nie wchodzi w gałęzie
+    Gatekeepera P7 i nie zmienia stanu użytkownika — renderuje się po stronie
+    klienta. Do schowka trafia wyłącznie kod PUBLICZNY: MASTER_TOKEN ani kody
+    prywatne tą ścieżką nie płyną.
+
+    Gdy ``PUBLIC_BETA_CODES`` jest puste, wysyłamy ``no_access_no_code``
+    BEZ przycisku (nie ma czego kopiować) i logujemy problem.
+    """
+    code = _primary_public_code()
+    if not code:
+        print("  ⚠️ [access] PUBLIC_BETA_CODES jest puste lub niepoprawne.")
+        return t_ui(lang, "no_access_no_code"), None
+    text = t_ui(lang, "no_access", public_code=_md_safe(code))
+    markup = {
+        "inline_keyboard": [[
+            {
+                "text": t_ui(lang, "copy_access_command"),
+                "copy_text": {"text": f"/start {code}"},
+            },
+        ]],
+    }
+    return text, markup
+
+
 def _invite_message(lang, key):
     """Render an invite/access message with dynamic code or link.
 
@@ -1739,19 +1774,16 @@ def _invite_message(lang, key):
     Używa dynamicznego kodu public_code pobranego z PUBLIC_BETA_CODES.
     Gdy lista jest pusta lub niepoprawna, używa bezpiecznego wariantu
     no_access_no_code i loguje problem bez ujawniania sekretów.
+    Przycisk kopiujący /start CODE buduje _no_access_parts(); tutaj zwracamy
+    sam tekst, bo kontrakt _invite_message() to str.
 
-    Dla key == 'invalid_link' oraz 'limit_reached':
-    Wstawia bezpieczny link INVITE_URL.
-    'limit_reached' dostaje też aktualne MAX_USERS (placeholder {max_users}),
-    więc komunikat nie zawiera zahardkodowanej liczby miejsc.
+    Dla key == 'invalid_link', 'limit_reached' oraz 'registration_closed':
+    Teksty nie zawierają już linku zaproszenia ani liczby miejsc, więc
+    przekazywane argumenty są tylko zachowaniem kompatybilności
+    (str.format() pomija nieużyte placeholdery).
     """
     if key == "no_access":
-        code = _primary_public_code()
-        if code:
-            return t_ui(lang, "no_access", public_code=_md_safe(code))
-        else:
-            print("  ⚠️ [access] PUBLIC_BETA_CODES jest puste lub niepoprawne.")
-            return t_ui(lang, "no_access_no_code")
+        return _no_access_parts(lang)[0]
     elif key == "invalid_link":
         return t_ui(lang, "invalid_link", url=_md_safe(INVITE_URL))
     elif key == "limit_reached":
@@ -3939,8 +3971,10 @@ def _main_bot_iteration(gc, offset):
                     if block_reason:
                         send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
                     else:
-                        # Nie aktywuj, wyślij no_access z dynamicznym kodem publicznym.
-                        send_reply(chat_id, _invite_message(wykryty_jezyk, "no_access"))
+                        # Nie aktywuj, wyślij no_access z dynamicznym kodem publicznym
+                        # + przycisk kopiujący /start CODE (patrz _no_access_parts).
+                        no_access_text, no_access_markup = _no_access_parts(wykryty_jezyk)
+                        send_reply(chat_id, no_access_text, reply_markup=no_access_markup)
                     continue
 
                 # C. /start z payloadem (kod publiczny, referral, MASTER, deep link):
