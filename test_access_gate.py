@@ -394,6 +394,15 @@ class BotHarness:
     def replies(self, cid):
         return [t for (c, t) in self.sent if c == cid]
 
+    def replies_since(self, cid, idx):
+        """Odpowiedzi do chatu cid wysłane PO indeksie idx w self.sent.
+
+        Potrzebne tam, gdzie asercja 'brak komunikatu X' musi dotyczyć
+        wyłącznie odpowiedzi po danej akcji — bez wchodzenia w treść
+        onboardingowego access_granted (który zawiera okno 05:00–15:59).
+        """
+        return [t for i, (c, t) in enumerate(self.sent) if i >= idx and c == cid]
+
     def markups_for(self, cid):
         """reply_markup wiadomości wysłanych do danego czatu (None = brak)."""
         return [m for (c, _t), m in zip(self.sent, self.markups) if c == cid]
@@ -474,7 +483,7 @@ class TestStrangerIsSilent:
 
     def test_start_without_code_gets_no_access(self, bot):
         bot.run(bot.msg(100, "/start"))
-        assert bot.has_reply(100, "dostęp testowy")
+        assert bot.has_reply(100, "bot prywatny")
         assert bot.has_reply(100, "/start BETAX1")
 
     def test_invalid_start_token(self, bot):
@@ -531,7 +540,7 @@ class TestStartRegistersAccessOnly:
         # PR2 UX cleanup: krótki onboarding, bez obietnicy automatycznych raportów
         # (te pojawią się dopiero w PR3) i bez technicznych komend /save_location.
         bot.run(bot.msg(100, "/start BETAX1"))
-        assert bot.has_reply(100, "Dostęp aktywowany")
+        assert bot.has_reply(100, "Dostęp aktywny")
         assert bot.has_reply(100, "/dzien")
         assert bot.has_reply(100, "/teraz")
         assert bot.has_reply(100, "/trend")
@@ -544,7 +553,7 @@ class TestStartRegistersAccessOnly:
 
     def test_start_without_code_hint(self, bot):
         bot.run(bot.msg(100, "/start"))
-        assert bot.has_reply(100, "dostęp testowy")
+        assert bot.has_reply(100, "bot prywatny")
         assert bot.has_reply(100, "/start BETAX1")
 
     def test_referral_from_access_only_user(self, bot):
@@ -553,7 +562,7 @@ class TestStartRegistersAccessOnly:
         token = base64.urlsafe_b64encode(b"100").decode().rstrip("=")
         bot.run(bot.msg(200, f"/start {token}"))
         assert bot.users.record(200) is not None, "referral od usera z samym access-em odrzucony"
-        assert bot.has_reply(200, "Dostęp aktywowany")
+        assert bot.has_reply(200, "Dostęp aktywny")
 
 
 class TestAccessWithoutProfile:
@@ -738,7 +747,7 @@ class TestAccessWithoutProfile:
         # handle_guest_now jest wołane dla każdej wiadomości (dla komend zwraca False),
         # więc na liście jest też "/start BETAX1" — ale ".n Hel" MUSI do niego trafić
         assert bot.guest_calls[-1] == ".n Hel", "skrót .n nie doszedł do trybu gościa"
-        assert bot.has_reply(100, "Dostęp aktywowan")  # a wcześniej rejestracja się udała
+        assert bot.has_reply(100, "Dostęp aktywn")  # a wcześniej rejestracja się udała
 
 
 class TestLegacyUserUnchanged:
@@ -874,7 +883,7 @@ class TestPrivacyCommands:
         after = [t for c, t in bot.sent[before:] if c == 100]
         assert len(after) == 2, f"oczekiwane dwa komunikaty, jest {len(after)}: {after}"
         assert "Usunąłem Twoje dane" in after[0]
-        assert "dostęp testowy" in after[1] and "/start BETAX1" in after[1]
+        assert "bot prywatny" in after[1] and "/start BETAX1" in after[1]
         assert fake_sleep == [lb.DELETE_NOTICE_DELAY_SEC], "brak pauzy przed drugim komunikatem"
         assert bot.users.record(100) is None, "wiersz Users nieusunięty"
         assert "100" not in lb.PENDING_CITY, "PENDING_CITY nie wyczyszczone"
@@ -1096,7 +1105,7 @@ class TestPr2UxCleanup:
         after = [t for c, t in bot.sent[before:] if c == 100]
         assert len(after) == 2
         assert "Usunąłem Twoje dane" in after[0]
-        assert "dostęp testowy" in after[1] and "/start BETAX1" in after[1]
+        assert "bot prywatny" in after[1] and "/start BETAX1" in after[1]
 
     def test_g_usun_dane_cancellation_keeps_data(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -1221,9 +1230,11 @@ class TestPr2UxCleanup:
     def test_day_inside_window_generates_card(self, bot, monkeypatch):
         freeze_local_hour(monkeypatch, 9, 30)
         bot.run(bot.msg(100, "/start BETAX1"))
+        before = len(bot.sent)
         bot.run(bot.msg(100, "/dzien Warszawa"))
         assert len(bot.oneoffs) == 1
-        assert not bot.has_reply(100, "05:00")
+        # brak komunikatu o oknie czasowym PO wywołaniu /dzien
+        assert not any("05:00" in t for t in bot.replies_since(100, before))
 
     def test_now_and_trend_have_no_time_limit(self, bot, monkeypatch):
         freeze_local_hour(monkeypatch, 23, 0)
@@ -1318,22 +1329,27 @@ class TestPr2UxCleanup:
 
     # --- onboarding (pkt 1) ----------------------------------------------------
     def test_welcome_access_lists_commands_on_separate_lines(self, bot):
+        """Komendy leżą bezpośrednio pod sobą; sekcje rozdzielone \n\n."""
         bot.run(bot.msg(100, "/start BETAX1"))
         welcome = bot.replies(100)[-1]
-        assert welcome.startswith("✅ Dostęp aktywowany!")
-        for line in ("/dzien — prognoza dzienna", "/teraz — prognoza na 12 godzin",
-                     "/trend — prognoza na 14 dni", "/miasto", "/priv", "/dane"):
-            assert any(l.strip().startswith(line) for l in welcome.split("\n")), line
+        assert welcome.startswith("✅ Dostęp aktywny! Witaj w Pogoda World 🌍")
 
-        # POPRAWKA #2: akapit "Najpierw Twoja prywatność..." po powitaniu,
-        # a na dole sama "Administracja Twoimi danymi".
-        lines = [l.strip() for l in welcome.split("\n")]
-        assert lines[lines.index("Witaj w Pogoda World 🌍") + 2].startswith(
-            "Najpierw Twoja prywatność, przeczytaj:")
-        assert lines[lines.index("Najpierw Twoja prywatność, przeczytaj:") + 1] == "/priv"
-        assert lines[-2] == "Administracja Twoimi danymi:"
-        assert lines[-1] == "/dane"
-        assert "Prywatność i administracja" not in welcome
+        lines = welcome.split("\n")
+        # sekcje rozdzielone DOKŁADNIE jedną pustą linią
+        assert lines[1] == "", "po powitaniu pusta linia"
+        assert lines[2].startswith("🌤")
+        # trzy komendy pod sobą bez pustych linii
+        assert lines[3].startswith("/dzien")
+        assert lines[4].startswith("/teraz")
+        assert lines[5].startswith("/trend")
+        assert lines[6] == "", "przed 🔔 pusta linia"
+        assert lines[7].startswith("🔔")
+        assert "/miasto" in lines[8]
+        assert lines[9] == "", "przed 🔒 pusta linia"
+        assert lines[10].startswith("🔒")
+        assert lines[10].endswith("/dane")
+        # komendy zwykłym tekstem, nigdy w backtickach
+        assert "`" not in welcome
 
 
 # ============================================================================
@@ -1727,7 +1743,7 @@ class TestPostDeleteUx:
         msgs = [t for c, t in bot.sent[before:] if c == 500]
         assert len(msgs) == 2, f"oczekiwane dokładnie 2 komunikaty: {msgs}"
         assert "Usunąłem Twoje dane" in msgs[0]
-        assert "dostęp testowy" in msgs[1] and "/start BETAX1" in msgs[1]
+        assert "bot prywatny" in msgs[1] and "/start BETAX1" in msgs[1]
         assert fake_sleep == [lb.DELETE_NOTICE_DELAY_SEC], "brak pauzy 1 s między komunikatami"
         assert bot.users.record(500) is None
 
@@ -1747,15 +1763,18 @@ class TestPostDeleteUx:
             assert msgs[1] == lb._invite_message(lang, "no_access"), lang
             assert "/start BETA2026A" in msgs[1], lang
 
-    def test_access_invite_messages_escape_url_in_six_languages(self, monkeypatch):
+    def test_access_invite_messages_no_link_in_block_messages(self, monkeypatch):
+        """D2: invalid_link / limit_reached / registration_closed nie zawierają
+        już linku PUBLIC_INVITE_URL — tylko sam no_access niesie kod."""
         monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
 
         for lang in ("pl", "en", "de", "es", "fr", "no"):
             no_access_text = lb._invite_message(lang, "no_access")
             assert "/start BETA2026A" in no_access_text, (lang, no_access_text)
-            for key in ("invalid_link", "limit_reached"):
+            for key in ("invalid_link", "limit_reached", "registration_closed"):
                 text = lb._invite_message(lang, key)
-                assert "https://" in text, (lang, key, text)
+                assert "https://" not in text, (lang, key, text)
+                assert "{" not in text and "}" not in text, (lang, key, text)
 
     def test_no_access_start_sends_dynamic_code_link_in_six_languages(self, monkeypatch):
         monkeypatch.setenv("PUBLIC_BETA_CODES", "BETA2026A")
@@ -1794,7 +1813,7 @@ class TestPostDeleteUx:
         # /start bez kodu -> pełny no_access
         before = len(bot.sent)
         bot.run(bot.msg(500, "/start"))
-        assert bot.has_reply(500, "dostęp testowy")
+        assert bot.has_reply(500, "bot prywatny")
         assert "/start BETAX1" in bot.replies(500)[-1]
 
         # /start zły kod -> invalid_link (nadal ścieżka /start)
@@ -1803,7 +1822,7 @@ class TestPostDeleteUx:
 
         # /start poprawny kod -> aktywacja i powrót do normalnej obsługi
         bot.run(bot.msg(500, "/start BETAX1"))
-        assert bot.has_reply(500, "Dostęp aktywowany")
+        assert bot.has_reply(500, "Dostęp aktywny")
         bot.run(bot.msg(500, "/info"))
         assert bot.has_reply(500, "JAK DZIAŁA")
         assert len([t for c, t in bot.sent[before:] if c == 500]) == 4  # 3 x /start + /info
@@ -1816,7 +1835,7 @@ class TestPostDeleteUx:
         bot.run(bot.webapp_location(999))
         assert len(bot.sent) == before, "nowy czat bez kodu: cisza na wszystko poza /start"
         bot.run(bot.msg(999, "/start"))
-        assert bot.has_reply(999, "dostęp testowy")
+        assert bot.has_reply(999, "bot prywatny")
         assert "/start BETAX1" in bot.replies(999)[-1]
 
     def test_batch_after_delete_stays_silent_for_rest_of_batch(self, bot, fake_sleep):
@@ -1835,7 +1854,7 @@ class TestPostDeleteUx:
         assert len(msgs) == 3, f"pytanie + 2 komunikaty kasacji, nic więcej: {msgs}"
         assert "Czy na pewno" in msgs[0]
         assert "Usunąłem Twoje dane" in msgs[1]
-        assert "dostęp testowy" in msgs[2] and "/start BETAX1" in msgs[2]
+        assert "bot prywatny" in msgs[2] and "/start BETAX1" in msgs[2]
 
     def test_delete_without_any_rows_sends_only_no_data(self, bot, fake_sleep, monkeypatch):
         # Ścieżka obronna: rejestr nie potwierdził usunięcia żadnego wiersza
@@ -1888,6 +1907,7 @@ class TestGroupPinSavesProfile:
     ):
         freeze_local_hour(monkeypatch, 22, 0)  # poza oknem 05:00-15:59
         bot.run(bot.msg(100, "/start BETAX1"))
+        before = len(bot.sent)
         bot.run(
             bot.pin(
                 100,
@@ -1907,7 +1927,8 @@ class TestGroupPinSavesProfile:
         assert bot.oneoffs == [] and bot.cards == []
         assert bot.has_reply(100, "✅ *Zapisana lokalizacja:*")
         assert not bot.has_reply(100, "Użyta lokalizacja")
-        assert not bot.has_reply(100, "05:00")
+        # brak komunikatu o oknie czasowym PO pinezce (onboarding ma 05:00–15:59)
+        assert not any("05:00" in t for t in bot.replies_since(100, before))
 
     # --- B. Grupa — pinezka jako odpowiedź na komunikat bota -----------------
     def test_b_group_pin_reply_to_bot_saves_group_profile_without_day_card(
@@ -1923,6 +1944,7 @@ class TestGroupPinSavesProfile:
         )
 
         bot.run(bot.msg(GROUP_PIN_CHAT, "/start BETAX1", user_id=GROUP_ADMIN_ID))
+        before = len(bot.sent)
         bot.run(
             bot.pin(
                 GROUP_PIN_CHAT,
@@ -1949,7 +1971,8 @@ class TestGroupPinSavesProfile:
         assert bot.has_reply(GROUP_PIN_CHAT, "✅ *Zapisana lokalizacja:*")
         assert bot.has_reply(GROUP_PIN_CHAT, "Hel, Polska")
         assert not bot.has_reply(GROUP_PIN_CHAT, "Użyta lokalizacja")
-        assert not bot.has_reply(GROUP_PIN_CHAT, "05:00")
+        # brak komunikatu o oknie czasowym PO pinezce (onboarding ma 05:00–15:59)
+        assert not any("05:00" in t for t in bot.replies_since(GROUP_PIN_CHAT, before))
         assert bot.oneoffs == [], "nie wolno wywoływać generatora karty one-off"
         assert bot.cards == [], "nie wolno wywoływać generatora karty legacy"
         assert day_oneoff_calls == [], "nie wolno wywoływać _run_city_oneoff"
@@ -2243,7 +2266,7 @@ class TestPublicBetaCodesDynamicRotation:
         replies = bot.replies(101)
         assert len(replies) == 1
         assert "/start BETAX1" in replies[0]
-        assert "dostęp testowy" in replies[0].lower() or "dostępu" in replies[0].lower()
+        assert "bot prywatny" in replies[0].lower()
         # Komendy klikalne => brak backticków
         assert "`/start" not in replies[0]
 
@@ -2268,7 +2291,7 @@ class TestPublicBetaCodesDynamicRotation:
         rec = bot.users.record(104)
         assert rec is not None
         assert rec["access_status"] == "granted"
-        assert bot.has_reply(104, "Dostęp aktywowany")
+        assert bot.has_reply(104, "Dostęp aktywny")
 
     def test_empty_public_beta_codes_safe_no_code_variant(self, bot, monkeypatch):
         monkeypatch.setenv("PUBLIC_BETA_CODES", "")
@@ -2293,11 +2316,11 @@ class TestPublicBetaCodesDynamicRotation:
         assert bot.users.record(106) is None
 
     @pytest.mark.parametrize("lang,expected_snippet", [
-        ("pl", "Skopiuj poniższą komendę i wyślij ją na czacie:"),
-        ("en", "Copy the command below and send it in the chat:"),
+        ("pl", "Skopiuj i wyślij poniższą komendę na czacie:"),
+        ("en", "Copy and send the command below in the chat:"),
         ("de", "Kopiere den folgenden Befehl und sende ihn im Chat:"),
         ("fr", "Copiez la commande ci-dessous et envoyez-la dans le chat :"),
-        ("es", "Copia el siguiente comando y envíalo en el chat:"),
+        ("es", "Copia y envía el siguiente comando en el chat:"),
         ("no", "Kopier kommandoen nedenfor og send den i chatten:"),
     ])
     def test_no_access_all_supported_languages(self, bot, monkeypatch, lang, expected_snippet):
@@ -2311,12 +2334,12 @@ class TestPublicBetaCodesDynamicRotation:
         assert "`/start" not in replies[0]
 
     @pytest.mark.parametrize("lang,expected_snippet", [
-        ("pl", "Skontaktuj się z administratorem, aby uzyskać dostęp."),
-        ("en", "Please contact the administrator to get access."),
-        ("de", "Bitte kontaktiere den Administrator, um Zugang zu erhalten."),
-        ("fr", "Veuillez contacter l'administrateur pour obtenir un accès."),
-        ("es", "Ponte en contacto con el administrador para obtener acceso."),
-        ("no", "Vennligst kontakt administrator for å få tilgang."),
+        ("pl", "Jeśli otrzymasz kod lub link z zaproszeniem od znajomego, użyj go, aby odblokować dostęp."),
+        ("en", "If you receive a code or invite link from a friend, use it to unlock access."),
+        ("de", "Wenn du einen Code oder Einladungslink von einem Freund bekommst, nutze ihn, um den Zugang freizuschalten."),
+        ("fr", "Si un ami vous transmet un code ou un lien d'invitation, utilisez-le pour déverrouiller votre accès."),
+        ("es", "Si recibes de un amigo un código o enlace de invitación, úsalo para desbloquear el acceso."),
+        ("no", "Hvis du får en kode eller invitasjonslenke fra en venn, bruk den for å låse opp tilgangen."),
     ])
     def test_no_access_no_code_all_supported_languages(self, bot, monkeypatch, lang, expected_snippet):
         monkeypatch.setenv("PUBLIC_BETA_CODES", "")
@@ -2378,7 +2401,7 @@ class TestP7AuthorizationMatrix:
         assert rec["access_status"] == "granted"
         assert rec["access_source"] == "public_beta"
         assert rec["profile_status"] == "none"
-        assert bot.has_reply(304, "Dostęp aktywowany")
+        assert bot.has_reply(304, "Dostęp aktywny")
 
     def test_stranger_start_with_bad_code_sends_invalid_link_and_no_record(self, bot):
         bot.run(bot.msg(305, "/start TOTALLY_BOGUS"))
@@ -2388,12 +2411,12 @@ class TestP7AuthorizationMatrix:
     def test_stranger_start_at_bot_syntax(self, bot):
         # /start@PogodaWorld_bot bez kodu -> no_access
         bot.run(bot.msg(306, f"/start@{lb.BOT_USERNAME}"))
-        assert bot.has_reply(306, "dostęp testowy")
+        assert bot.has_reply(306, "bot prywatny")
         assert bot.users.record(306) is None
 
         # /start@PogodaWorld_bot z poprawnym kodem -> access_granted
         bot.run(bot.msg(307, f"/start@{lb.BOT_USERNAME} BETAX1"))
-        assert bot.has_reply(307, "Dostęp aktywowany")
+        assert bot.has_reply(307, "Dostęp aktywny")
         assert bot.users.record(307) is not None
 
         # /start@PogodaWorld_bot ze złym kodem -> invalid_link
@@ -2458,7 +2481,7 @@ class TestP7AuthorizationMatrix:
         rec_group = bot.users.record(group_id)
         assert rec_group is not None
         assert rec_group["access_status"] == "granted"
-        assert bot.has_reply(group_id, "Dostęp aktywowany")
+        assert bot.has_reply(group_id, "Dostęp aktywny")
 
         # 4. Teraz sender BEZ prywatnego dostępu może pytać bota na aktywowanej grupie
         bot.run(bot.msg(group_id, "/dzien Warszawa", user_id=sender_without_access, chat_type="group"))
@@ -2500,7 +2523,7 @@ class TestP7AuthorizationMatrix:
         assert rec_reloaded["location_label"] == "Berlin"
         assert rec_reloaded["lang"] == "de"  # język profilu zachowany
         assert rec_reloaded["location_consent_version"] == lb.PRIVACY_VERSION
-        assert bot.has_reply(310, "Zugang aktiviert") or bot.has_reply(310, "Dostęp aktywowany")
+        assert bot.has_reply(310, "Zugang aktiv") or bot.has_reply(310, "Dostęp aktywny")
 
         # 4. Profil jest aktywny i działa natychmiast bez ponownego podawania miasta
         bot.run(bot.msg(310, "/teraz", lang="de"))
@@ -2587,8 +2610,8 @@ def upsert_spy(monkeypatch):
     return calls
 
 
-LIMIT_PL = "Osiągnięto limit miejsc"
-REG_CLOSED_PL = "Rejestracja wyłączona"
+LIMIT_PL = "limit miejsc wyczerpany"
+REG_CLOSED_PL = "rejestracja wstrzymana"
 INVALID_PL = "Nieprawidłowy"
 
 
@@ -2818,7 +2841,7 @@ class TestRegistrationGate:
         assert rec["access_status"] == "granted"
         assert rec["blocked_at"] == ""
         if unblocked_status == "revoked":
-            assert empty_bot.has_reply(430, "Dostęp aktywowany")
+            assert empty_bot.has_reply(430, "Dostęp aktywny")
             assert rec["access_source"] == "public_beta"
         else:
             assert empty_bot.has_reply(430, "Witaj")
@@ -2947,28 +2970,35 @@ class TestMasterTokenHardening:
 
 
 class TestLimitReachedMessage:
+    """D1: komunikat limit_reached NIE zawiera liczby miejsc ani linku.
+    Sama logika MAX_USERS działa bez zmian — zmienił się tylko tekst."""
+
     @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
-    def test_limit_reached_shows_configured_max_users(self, monkeypatch, lang):
+    def test_limit_reached_has_no_seat_count(self, monkeypatch, lang):
         monkeypatch.setenv("MAX_USERS", "7")
         text = lb._invite_message(lang, "limit_reached")
-        assert "7/7" in text, (lang, text)
-        assert "50/50" not in text, (lang, text)
+        assert not re.search(r"\d+\s*/\s*\d+", text), (lang, text)
         assert "{max_users}" not in text and "{url}" not in text, (lang, text)
-        assert "https://" in text
+        assert "https://" not in text, (lang, text)
+        assert "{" not in text and "}" not in text, (lang, text)
 
     @pytest.mark.parametrize("lang", ["pl", "en", "de", "es", "fr", "no"])
-    def test_limit_reached_default_is_200(self, monkeypatch, lang):
-        monkeypatch.delenv("MAX_USERS", raising=False)
-        text = lb._invite_message(lang, "limit_reached")
-        assert "200/200" in text, (lang, text)
-        assert "50/50" not in text
+    def test_limit_reached_text_is_independent_of_max_users(self, monkeypatch, lang):
+        """Tekst nie zależy od MAX_USERS (brak liczby miejsc)."""
+        monkeypatch.setenv("MAX_USERS", "7")
+        text_a = lb._invite_message(lang, "limit_reached")
+        monkeypatch.setenv("MAX_USERS", "500")
+        text_b = lb._invite_message(lang, "limit_reached")
+        assert text_a == text_b, (lang, text_a, text_b)
 
-    def test_limit_reached_sent_to_user_uses_max_users(self, empty_bot, monkeypatch):
+    def test_limit_reached_still_blocks_registration_on_full_slots(self, empty_bot, monkeypatch):
+        """MAX_USERS nadal blokuje rejestrację — komunikat to tylko limit_reached."""
         monkeypatch.setenv("MAX_USERS", "1")
         _seed_users_row(empty_bot, 750)
         empty_bot.run(empty_bot.msg(751, "/start BETAX1"))
-        assert empty_bot.has_reply(751, "(1/1)")
-        assert not empty_bot.has_reply(751, "50/50")
+        assert empty_bot.has_reply(751, LIMIT_PL)
+        assert empty_bot.users.record(751) is None, "pełny limit nie tworzy rekordu"
+        assert not empty_bot.has_reply(751, INVALID_PL)
 
 
 class TestClosedRegistrationDecisions:
@@ -3017,7 +3047,7 @@ class TestRegistrationClosedMessage:
         monkeypatch.setenv("PUBLIC_BETA_CODES", "BETAX1")
         monkeypatch.setenv("MAX_USERS", "200")
         text = lb._invite_message(lang, "registration_closed")
-        assert "https://" in text, (lang, text)
+        assert "https://" not in text, (lang, text)
         assert "BETAX1" not in text, (lang, text)
         assert not re.search(r"\d+\s*/\s*\d+", text), (lang, text)
         assert "{" not in text and "}" not in text, (lang, text)
@@ -3068,7 +3098,8 @@ class TestRegistrationClosedMessage:
         upsert_spy.clear()
         empty_bot.run(empty_bot.msg(812, "/start BETAX1"))
         assert empty_bot.has_reply(812, LIMIT_PL)
-        assert empty_bot.has_reply(812, "(2/2)")
+        # D1: komunikat limit_reached nie pokazuje liczby miejsc
+        assert not any(re.search(r"\d+\s*/\s*\d+", t) for t in empty_bot.replies(812))
         assert not empty_bot.has_reply(812, REG_CLOSED_PL)
         assert empty_bot.users.record(812) is None
         assert upsert_spy == []
