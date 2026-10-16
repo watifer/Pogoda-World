@@ -88,8 +88,8 @@ PENDING_DELETE_TTL_SEC = 300
 # =====================================================================
 # W grupach Telegram nie pozwala na reply-keyboard z web_app, a prywatny
 # WebApp został odcięty od zapisu godzin — dlatego panel godzin jest teraz
-# zwykłym dialogiem tekstowym: /raport pokazuje aktualne godziny, pyta o ich
-# zachowanie, a potem zbiera dwie odpowiedzi („brak” wyłącza slot).
+# zwykłym dialogiem tekstowym: /raport pokazuje aktualne godziny, pyta, czy je
+# zmienić, a potem zbiera dwie odpowiedzi („brak” wyłącza slot).
 # Stan żyje WYŁĄCZNIE w RAM (jak PENDING_CITY): wygasa po TTL, a po restarcie
 # procesu znika. Nic nie trafia do arkusza ani do nowej bazy.
 #
@@ -110,7 +110,7 @@ PENDING_REPORT = {}
 PENDING_REPORT_TTL_SEC = 600   # 10 minut na przejście całego dialogu
 
 # Etapy dialogu
-STAGE_REPORT_CONFIRM = "confirm"      # czy zachować obecne godziny?
+STAGE_REPORT_CONFIRM = "confirm"      # czy zmienić obecne godziny?
 STAGE_REPORT_MORNING = "morning"      # godzina raportu porannego
 STAGE_REPORT_AFTERNOON = "afternoon"  # godzina raportu popołudniowego
 
@@ -850,7 +850,7 @@ def _report_change_allowed(chat_id, user_id):
 
 
 def _start_report_dialog(chat_id, user_id, lang, users_map):
-    """Pierwszy ekran /raport: aktualne godziny + pytanie o ich zachowanie.
+    """Pierwszy ekran /raport: aktualne godziny + pytanie, czy je zmienić.
 
     Zwraca True (komenda została obsłużona). Dialog nie startuje — i nic nie
     zapisuje — gdy użytkownik nie ma uprawnień, gdy nie udało się ich sprawdzić
@@ -997,18 +997,9 @@ def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) 
     stage = pending.get("stage")
 
     if stage == STAGE_REPORT_CONFIRM:
+        # Pytanie brzmi „Czy chcesz ZMIENIĆ te godziny?”: „tak” otwiera
+        # ustawianie godzin, „nie” zostawia wszystko bez zmian i kończy dialog.
         if answer in report_words(lang, "yes"):
-            # „tak”: godziny zostają dokładnie takie, jakie są — zapisujemy
-            # wyłącznie nowe ustawienia, i to dopiero na końcu dialogu.
-            settings = users_store.get_report_settings(users_map, chat_id) or {}
-            _clear_pending_report(chat_id, user_id)
-            send_reply(chat_id, t_ui(
-                lang, "report_kept",
-                morning=_report_slot_display(settings.get("report_morning_time"), lang),
-                afternoon=_report_slot_display(settings.get("report_afternoon_time"), lang),
-            ))
-            return True
-        if answer in report_words(lang, "no"):
             # Ten sam klucz (czat + autor), nowy etap i nowy TTL.
             _set_pending_report(chat_id, pending.get("user_id"),
                                 STAGE_REPORT_MORNING)
@@ -1016,6 +1007,17 @@ def _handle_report_settings_dialog(message, chat_id, lang, users_map, users_ws) 
                 lang, "report_ask_morning",
                 lo=REPORT_MORNING_WINDOW[0], hi=REPORT_MORNING_WINDOW[1],
                 off=report_word(lang, "off"),
+            ))
+            return True
+        if answer in report_words(lang, "no"):
+            # „nie”: godziny zostają dokładnie takie, jakie są — Users nie jest
+            # dotykane, a stan dialogu znika (nic nie przechwyci kolejnego tekstu).
+            settings = users_store.get_report_settings(users_map, chat_id) or {}
+            _clear_pending_report(chat_id, user_id)
+            send_reply(chat_id, t_ui(
+                lang, "report_kept",
+                morning=_report_slot_display(settings.get("report_morning_time"), lang),
+                afternoon=_report_slot_display(settings.get("report_afternoon_time"), lang),
             ))
             return True
         send_reply(chat_id, t_ui(
@@ -1241,8 +1243,26 @@ def _run_oneoff_report(
     return True
 
 
+# Komunikat oczekiwania dla karty z ZAPISANEJ lokalizacji (ścieżka Users).
+# Ta sama trójka, którą od zawsze wysyła ścieżka legacy; zapytania jednorazowe
+# (/dzien X, prompt o miasto) mają wyłącznie search_loc i nie korzystają z tego.
+SAVED_PROFILE_WAIT_KEYS = {
+    "day": "prep_main",
+    "now": "scanning",
+    "future": "prep_future",
+}
+
+
 def _run_saved_profile_report(chat_id, profile, lang, card_type):
-    """Raport dla wcześniej zapisanego profilu — bez tworzenia nowego pending."""
+    """Raport dla wcześniej zapisanego profilu — bez tworzenia nowego pending.
+
+    Użytkownik dostaje NATYCHMIAST komunikat oczekiwania właściwy dla karty
+    (prep_main / scanning / prep_future), a dopiero potem generowanie. Nic tu
+    nie jest geokodowane, więc search_loc w tej ścieżce nigdy nie pada.
+    """
+    wait_key = SAVED_PROFILE_WAIT_KEYS.get(card_type)
+    if wait_key:
+        send_reply(chat_id, t_ui(lang, wait_key))
     if not _send_oneoff_report(chat_id, profile["lat"], profile["lon"], profile["city"], lang, card_type):
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
         return False
@@ -1387,7 +1407,13 @@ def _handle_privacy(chat_id, cmd, lang, users_ws, main_sheet, users_map, clean_u
     pytają o potwierdzenie (PR2 UX cleanup, decyzja D2).
     """
     if cmd == "/privacy":
-        send_reply(chat_id, t_ui(lang, "privacy_msg", url=PRIVACY_URL, version=PRIVACY_VERSION))
+        # URL przechodzi przez _md_safe: send_reply używa legacy Markdown, więc
+        # adres z „_” (np. nadpisany przez ENV) nie może rozsypać formatowania.
+        # version zostaje w kontrakcie wywołania, nawet gdy tekst go nie używa.
+        send_reply(chat_id, t_ui(
+            lang, "privacy_msg",
+            url=_md_safe(PRIVACY_URL), version=PRIVACY_VERSION,
+        ))
 
     elif cmd == "/my_data":
         _handle_my_data(chat_id, lang, users_map, clean_users)
@@ -4363,8 +4389,8 @@ def _main_bot_iteration(gc, offset):
             # 0.7 KONWERSACYJNA ZMIANA GODZIN RAPORTÓW (/raport, /report)
             # ==============================================================
             # Ten sam dialog w grupie i w czacie prywatnym, bez WebApp i bez
-            # inline keyboard: /raport pokazuje aktualne godziny, pyta o ich
-            # zachowanie, a potem zbiera dwie odpowiedzi. W grupie zmianę może
+            # inline keyboard: /raport pokazuje aktualne godziny, pyta, czy je
+            # zmienić, a potem zbiera dwie odpowiedzi. W grupie zmianę może
             # przeprowadzić wyłącznie administrator/creator. Stan żyje w RAM
             # (jak PENDING_CITY) i wygasa po PENDING_REPORT_TTL_SEC.
             if _handle_report_settings_dialog(
@@ -4644,7 +4670,9 @@ def _main_bot_iteration(gc, offset):
                             _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_FUTURE)
                     continue
 
-                send_reply(chat_id, t_ui(user_lang, "prep_future"))
+                # Ścieżka legacy: najpierw sprawdzamy, czy jest skąd liczyć kartę.
+                # prep_future leci dopiero po potwierdzeniu lokalizacji — bez niej
+                # użytkownik dostaje wyłącznie missing_loc (ten sam klucz co /day i /now).
                 try:
                     raw = _load_future_users_from_sheet(gc)
                     sklejone = wirtualne_scalanie(raw)
@@ -4652,11 +4680,12 @@ def _main_bot_iteration(gc, offset):
                     user = next((u for u in users if str(u["chat_id"]) == str(chat_id)), None)
                     
                     if user and user.get("lat") and user.get("lon"):
+                        send_reply(chat_id, t_ui(user_lang, "prep_future"))
                         sukces = main_card._send_card_to_user(user, is_quiet=False, is_now=False, is_future=True)
                         if not sukces:
                             send_reply(chat_id, "❌ Wystąpił problem wewnętrzny. Karta nie została wysłana.")
                     else:
-                        send_reply(chat_id, "❌ Najpierw musisz ustawić lokalizację (wyślij Pinezkę).")
+                        send_reply(chat_id, t_ui(user_lang, "missing_loc"))
                 except SheetsRateLimitError:
                     raise
                 except Exception as e:

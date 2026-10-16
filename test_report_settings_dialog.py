@@ -4,8 +4,9 @@ test_report_settings_dialog.py — PR3 GRUPY: konwersacyjna zmiana godzin raport
 Uruchomienie: pytest test_report_settings_dialog.py -v
 
 Zakres (bez Telegram API i bez Google Sheets — atrapy z test_access_gate):
-- A. administrator grupy: /raport pokazuje godziny, „tak” zachowuje, „nie”
-     przechodzi do pytań, wpisane wartości zapisują się dopiero na końcu,
+- A. administrator grupy: /raport pokazuje godziny i pyta „Czy chcesz zmienić
+     te godziny?” — „nie” zachowuje, „tak” przechodzi do pytań, wpisane
+     wartości zapisują się dopiero na końcu,
 - B. zwykły członek grupy: /raport nie startuje, nic się nie zapisuje,
 - C. walidacja: 05:00 i 10:00 przechodzą rano, 13:00 i 16:00 po południu,
      wartości spoza okna są odrzucane bez przejścia dalej, „8:26” -> „08:26”,
@@ -96,7 +97,7 @@ def pending_report(chat_id, user_id):
 # ============================================================================
 class TestGroupAdminDialog:
 
-    def test_report_shows_current_hours_and_asks_to_keep_them(self, bot, as_admin):
+    def test_report_shows_current_hours_and_asks_whether_to_change_them(self, bot, as_admin):
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
@@ -105,29 +106,29 @@ class TestGroupAdminDialog:
         assert "GODZINY RAPORTÓW" in panel
         assert "Rano: 08:00" in panel
         assert "Popołudnie: 14:00" in panel
-        assert "Czy zachować te ustawienia?" in panel
+        assert "Czy chcesz zmienić te godziny?" in panel
         # Stan dialogu: czat + autor + etap + czas wygaśnięcia.
         pending = lb.PENDING_REPORT[lb._report_state_key(GROUP, ADMIN)]
         assert pending["stage"] == lb.STAGE_REPORT_CONFIRM
         assert pending["user_id"] == str(ADMIN)
         assert pending["expires_at"] > time.time()
 
-    def test_yes_keeps_hours_without_touching_users(self, bot, as_admin):
+    def test_no_keeps_hours_without_touching_users(self, bot, as_admin):
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
 
         assert "Zachowano obecne godziny raportów" in last(bot, GROUP)
         assert "rano 08:00, popołudnie 14:00" in last(bot, GROUP)
         assert bot.gc.users.record(GROUP) == before
         assert lb.PENDING_REPORT == {}
 
-    def test_no_goes_to_morning_question(self, bot, as_admin):
+    def test_yes_goes_to_morning_question(self, bot, as_admin):
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
 
         prompt = last(bot, GROUP)
         assert "raportu porannego" in prompt
@@ -139,7 +140,7 @@ class TestGroupAdminDialog:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "08:26", user_id=ADMIN))
 
         # Po pierwszej odpowiedzi NIE ma częściowego zapisu.
@@ -165,7 +166,7 @@ class TestGroupAdminDialog:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN))
 
@@ -187,7 +188,7 @@ class TestGroupAdminDialog:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "07:30", user_id=ADMIN))
         assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_AFTERNOON
 
@@ -198,7 +199,7 @@ class TestGroupAdminDialog:
         assert pending["morning"] is None and pending["afternoon"] is None
         assert "Rano: 08:00" in last(bot, GROUP)
 
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN))
         record = bot.gc.users.record(GROUP)
@@ -219,7 +220,7 @@ class TestGroupAdminDialog:
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "anuluj", user_id=ADMIN))
 
         assert "Anulowano zmianę godzin raportów." in last(bot, GROUP)
@@ -254,7 +255,7 @@ class TestGroupPermissions:
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
 
         # Odpowiedź zwykłego członka: zero zmian stanu i zero zapisów.
@@ -285,7 +286,7 @@ class TestGroupPermissions:
 
         panel = last(bot, GROUP)
         assert "REPORT HOURS" in panel, "język grupy, nie język administratora"
-        assert "Czy zachować" not in panel
+        assert "Czy chcesz zmienić" not in panel
         assert i18n.report_word("en", "yes") in panel
 
 
@@ -310,7 +311,7 @@ class TestValidation:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, value, user_id=ADMIN))
 
         assert "raportu popołudniowego" in last(bot, GROUP)
@@ -324,7 +325,7 @@ class TestValidation:
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, value, user_id=ADMIN))
 
         # Błędna wartość: powtórzone to samo pytanie, bez przejścia dalej.
@@ -344,7 +345,7 @@ class TestValidation:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "08:00", user_id=ADMIN))
         bot.run(bot.msg(GROUP, value, user_id=ADMIN))
 
@@ -360,7 +361,7 @@ class TestValidation:
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "08:00", user_id=ADMIN))
         bot.run(bot.msg(GROUP, value, user_id=ADMIN))
 
@@ -373,7 +374,7 @@ class TestValidation:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, word, user_id=ADMIN))
         assert pending_report(GROUP, ADMIN)["morning"] == "brak"
         bot.run(bot.msg(GROUP, "14:00", user_id=ADMIN))
@@ -388,7 +389,7 @@ class TestValidation:
         before = seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "   ", user_id=ADMIN))
 
         assert pending_report(GROUP, ADMIN)["stage"] == lb.STAGE_REPORT_MORNING
@@ -430,7 +431,7 @@ class TestDialogState:
         key_confirm = list(lb.PENDING_REPORT)[0]
         expires_confirm = pending_report(GROUP, ADMIN)["expires_at"]
 
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         key_morning = list(lb.PENDING_REPORT)[0]
         entry = pending_report(GROUP, ADMIN)
         assert entry["stage"] == lb.STAGE_REPORT_MORNING
@@ -449,7 +450,7 @@ class TestDialogState:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         key = list(lb.PENDING_REPORT)[0]
 
         for bad in ("04:59", "10:01", "abc"):
@@ -503,7 +504,7 @@ class TestDialogState:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         assert len(lb.PENDING_REPORT) == 1
 
         bot.run(bot.msg(GROUP, "/raport anuluj", user_id=ADMIN))
@@ -516,7 +517,7 @@ class TestDialogState:
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
         pending_report(GROUP, ADMIN)["expires_at"] = time.time() - 1
 
-        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
 
         assert "Zachowano obecne godziny raportów" not in last(bot, GROUP)
         assert lb.PENDING_REPORT == {}
@@ -547,7 +548,7 @@ class TestDialogState:
         headers = list(bot.gc.users.grid[0])
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
 
         assert list(bot.gc.users.grid[0]) == headers, "żadnych nowych kolumn stanu"
         values = [str(cell) for row in bot.gc.users.grid[1:] for cell in row]
@@ -565,7 +566,7 @@ class TestDataAndScheduler:
         headers = list(bot.gc.users.grid[0])
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "08:26", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "14:30", user_id=ADMIN))
 
@@ -581,7 +582,7 @@ class TestDataAndScheduler:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "08:26", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "14:30", user_id=ADMIN))
 
@@ -595,7 +596,7 @@ class TestDataAndScheduler:
         seed_chat(bot, GROUP, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "brak", user_id=ADMIN))
 
@@ -607,7 +608,7 @@ class TestDataAndScheduler:
         seed_chat(bot, GROUP, with_profile=False, user_id=ADMIN)
 
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
-        bot.run(bot.msg(GROUP, "nie", user_id=ADMIN))
+        bot.run(bot.msg(GROUP, "tak", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "08:00", user_id=ADMIN))
         bot.run(bot.msg(GROUP, "14:00", user_id=ADMIN))
 
@@ -643,7 +644,7 @@ class TestPrivateChat:
         panel = last(bot, PRIVATE)
         assert "GODZINY RAPORTÓW" in panel
         assert "Rano: 08:00" in panel
-        assert "Czy zachować te ustawienia?" in panel
+        assert "Czy chcesz zmienić te godziny?" in panel
         # WebApp nie jest już oferowany do zmiany godzin (także prywatnie):
         # własna wiadomość panelu nie niesie żadnej klawiatury.
         assert bot.markups_for(PRIVATE)[-1] is None
@@ -653,7 +654,7 @@ class TestPrivateChat:
         seed_chat(bot, PRIVATE)
 
         bot.run(bot.msg(PRIVATE, "/raport"))
-        bot.run(bot.msg(PRIVATE, "nie"))
+        bot.run(bot.msg(PRIVATE, "tak"))
         bot.run(bot.msg(PRIVATE, "9:30"))
         bot.run(bot.msg(PRIVATE, "15:00"))
 
@@ -694,7 +695,7 @@ class TestPrivateChat:
 def test_report_entry_points_have_no_keyboard(bot, as_admin, chat_id, command):
     seed_chat(bot, chat_id, user_id=ADMIN)
     bot.run(bot.msg(chat_id, command, user_id=ADMIN))
-    assert "Czy zachować te ustawienia?" in last(bot, chat_id)
+    assert "Czy chcesz zmienić te godziny?" in last(bot, chat_id)
     assert bot.markups_for(chat_id)[-1] is None
 
 
@@ -702,7 +703,7 @@ def test_report_entry_points_have_no_keyboard(bot, as_admin, chat_id, command):
                                                ("9", "09:00"), ("09", "09:00")])
 def test_whole_hours_are_saved_with_minutes(bot, morning, expected):
     seed_chat(bot, PRIVATE)
-    for text in ("/raport", "nie", morning, "14"):
+    for text in ("/raport", "tak", morning, "14"):
         bot.run(bot.msg(PRIVATE, text))
     record = bot.gc.users.record(PRIVATE)
     assert record["report_morning_time"] == expected

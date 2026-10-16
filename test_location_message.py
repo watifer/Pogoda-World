@@ -63,7 +63,8 @@ def test_polish_location_messages_are_exact():
     )
     assert i18n.UI_TEXTS["pl"]["location_saved"] == (
         "✅ *Zapisana lokalizacja:*\n{display_location}\n\n"
-        "Pomyłka? Powtórz jeszcze raz komendę."
+        "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę "
+        "(np. Olsztyn, koło Częstochowa, śląskie lub Olsztyn 42-256)."
     )
     # Legacy Formularz path uses the same safe saved-location wording.
     assert i18n.UI_TEXTS["pl"]["search_success"] == i18n.UI_TEXTS["pl"]["location_saved"]

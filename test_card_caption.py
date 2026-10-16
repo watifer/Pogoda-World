@@ -42,9 +42,18 @@ def tg_posts(monkeypatch, fake_png):
     """Przechwytuje POST-y do Telegram API i wycina cały pipeline pogodowy."""
     posts = []
 
-    def fake_post(url, data=None, files=None, timeout=None, **kwargs):
-        posts.append({"url": url, "data": dict(data or {})})
-        return None
+    class _OkResp:
+        status_code = 200
+
+        @staticmethod
+        def json():
+            return {"ok": True, "result": {}}
+
+    def fake_post(url, data=None, files=None, timeout=None, json=None, **kwargs):
+        # sendMessage (komunikat „Przygotowuję…” przed kartą) leci jako json=,
+        # sendPhoto jako data= — zbieramy oba, żeby policzyć wysyłki.
+        posts.append({"url": url, "data": dict(data or json or {})})
+        return _OkResp()
 
     monkeypatch.setattr(lb.requests, "post", fake_post)
     monkeypatch.setattr(lb, "build_payload_for_location",
@@ -77,6 +86,11 @@ def test_users_profile_card_has_no_caption(tg_posts, card_type):
     data = photos[0]["data"]
     assert "caption" not in data, f"karta {card_type} nie może mieć podpisu z lokalizacją"
     assert "parse_mode" not in data, "bez captionu parse_mode jest zbędne w payloadzie"
+    # Przed kartą leci wyłącznie komunikat oczekiwania (prep_main / scanning /
+    # prep_future) — nic po karcie i żadnego „Szukam lokalizacji”.
+    messages = [p for p in tg_posts if p["url"].endswith("/sendMessage")]
+    assert len(messages) == 1 and tg_posts.index(messages[0]) < tg_posts.index(photos[0])
+    assert messages[0]["data"]["text"] == lb.t_ui("pl", lb.SAVED_PROFILE_WAIT_KEYS[card_type])
 
 
 @pytest.mark.parametrize("card_type", ["day", "now", "future"])
