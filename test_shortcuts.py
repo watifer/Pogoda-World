@@ -125,25 +125,29 @@ def test_gate_constant_is_derived_from_parser():
 
 
 # ============================================================================
-# 3. /porady, SEKCJA 10: PROMUJEMY TYLKO NOWE SKRÓTY
+# 3. /porady, SEKCJA „⚡ Błyskawiczne skróty”: PROMUJEMY TYLKO NOWE SKRÓTY
 # ============================================================================
+
+def _shortcut_section(lang):
+    """Pierwsza sekcja porad (⚡) — od nagłówka do pustej linii."""
+    tips = i18n.UI_TEXTS[lang]["porady_msg"]
+    return tips[tips.index("⚡ *"):].split("\n\n", 1)[0]
+
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_tips_promote_local_daily_and_globals(lang):
-    tips = i18n.UI_TEXTS[lang]["porady_msg"]
-    section = "*10." + tips.split("*10.", 1)[1]
+    section = _shortcut_section(lang)
     daily = DAILY_EXPECTED[lang]
-    assert re.search(rf"^{re.escape(daily)} \S+ — ", section, flags=re.MULTILINE), \
-        f"{lang}: brak dziennego skrótu {daily} w sekcji 10"
-    assert re.search(r"^\?12 \S+ — ", section, flags=re.MULTILINE), f"{lang}: brak ?12"
-    assert re.search(r"^\?14 \S+ — ", section, flags=re.MULTILINE), f"{lang}: brak ?14"
+    assert re.search(rf"^• {re.escape(daily)} \S+ \(", section, flags=re.MULTILINE), \
+        f"{lang}: brak dziennego skrótu {daily} w sekcji skrótów"
+    assert re.search(r"^• \?12 \S+ \(", section, flags=re.MULTILINE), f"{lang}: brak ?12"
+    assert re.search(r"^• \?14 \S+ \(", section, flags=re.MULTILINE), f"{lang}: brak ?14"
 
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_tips_do_not_advertise_legacy(lang):
-    """Legacy działa, ale nie może być promowany (ani kropka, ani ?n/?f)."""
-    tips = i18n.UI_TEXTS[lang]["porady_msg"]
-    section = "*10." + tips.split("*10.", 1)[1]
+    """Legacy działa, ale nie może być promowany (?n/?f/?p ani .n/.f/.p)."""
+    section = _shortcut_section(lang)
     for legacy in (".n ", ".f ", ".p ", "?n ", "?f ", "?p "):
         assert legacy not in section, f"{lang}: legacy {legacy!r} promowany w /porady"
     for note in ("Zamiast kropki", "Statt des Punktes", "in place of a dot",
@@ -154,19 +158,25 @@ def test_tips_do_not_advertise_legacy(lang):
 
 @pytest.mark.parametrize("lang", LANGS)
 def test_tips_mention_dot_as_easier_alternative(lang):
-    """Notka odwrotna: promujemy "?", a kropka jest wygodną alternatywą."""
-    tips = i18n.UI_TEXTS[lang]["porady_msg"]
-    section = "*10." + tips.split("*10.", 1)[1]
-    last_line = [l for l in section.split("\n") if l.strip()][-1]
+    """Promujemy „?”, a kropka jest alternatywą pokazaną w nawiasie przy
+    każdym skrócie: „• ?d Warszawa (lub .d Warszawa) — …”."""
+    section = _shortcut_section(lang)
+    intro = section.split("\n")[1]
+    assert "?" in intro and "." in intro, f"{lang}: wstęp musi wspominać oba znaki"
+    daily = DAILY_EXPECTED[lang]
+    dotted = daily.replace("?", ".")
+    bullets = [l for l in section.split("\n") if l.startswith("• ")]
+    assert len(bullets) == 3, f"{lang}: trzy skróty: {bullets}"
+    for prefix in (daily, "?12", "?14"):
+        line = next(l for l in bullets if l.startswith(f"• {prefix} "))
+        city = line.split(" ")[2]
+        assert f"({_or_word(lang)} .{prefix[1:]} {city})" in line, f"{lang}: {line!r}"
+    assert dotted in section
+    assert "`" not in section, f"{lang}: backticki w sekcji renderują się jako kod"
 
-    assert last_line.startswith("*(") and last_line.endswith(")*"), \
-        f"{lang}: notka o kropce powinna być ostatnią, kursywą"
-    assert "?" in last_line and "." in last_line, \
-        f"{lang}: notka musi wspominać oba znaki"
-    # przykład w nocie używa formy kropkowej lokalnego skrótu dziennego
-    daily = DAILY_EXPECTED[lang].replace("?", ".")
-    assert daily in last_line, f"{lang}: brak przykładu {daily} w nocie"
-    assert "`" not in last_line, f"{lang}: backticki w nocie renderują się jako kod"
+
+def _or_word(lang):
+    return {"pl": "lub", "en": "or", "de": "oder", "es": "o", "fr": "ou", "no": "eller"}[lang]
 
 
 @pytest.mark.parametrize("lang", LANGS)

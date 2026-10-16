@@ -37,6 +37,8 @@ wzmianka @bot. Cache trybu gościa przyjmuje wyłącznie GEOCODE_OK.
 Uruchomienie: pytest test_geocode_validation.py -v
 """
 
+import re
+
 import pytest
 
 import guest_bot_handler as gbh
@@ -300,7 +302,17 @@ def test_status_messages_exist_in_every_language(lang, key):
     text = i18n.UI_TEXTS[lang][key]
     assert len(text) > 15
     assert "`" not in text, "żadnego formatu, który zabiera klikalność"
-    assert "/" not in text, "komunikat statusowy nie reklamuje komend"
+    # Jedyna dozwolona komenda to ta naprawcza (/miasto, /city) — i tylko
+    # w komunikacie „nie ma takiego miejsca”, który tekstem właściciela
+    # produktu odsyła do ponownego /miasto z doprecyzowaną nazwą.
+    commands = set(re.findall(r"/[A-Za-z_]+", text))
+    allowed = {"/miasto"} if lang == "pl" else {"/city"}
+    if key == "geocode_no_match":
+        assert commands == allowed, f"{lang}: {commands}"
+        assert text == i18n.UI_TEXTS[lang]["search_fail"], \
+            "NO_MATCH i NOT_FOUND mówią użytkownikowi to samo"
+    else:
+        assert not commands, "komunikat statusowy nie reklamuje komend"
     assert text.count("*") % 2 == 0
 
 

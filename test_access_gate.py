@@ -534,7 +534,7 @@ class TestStartRegistersAccessOnly:
         # (bez klawiatury WebApp — także w czacie prywatnym).
         assert "Rano: 07:00" in panel
         assert "06:00" not in panel and "16:00" not in panel
-        assert "Czy zachować te ustawienia?" in panel
+        assert "Czy chcesz zmienić te godziny?" in panel
 
     def test_onboarding_is_short_and_points_to_city_and_data(self, bot):
         # PR2 UX cleanup: krótki onboarding, bez obietnicy automatycznych raportów
@@ -708,7 +708,7 @@ class TestAccessWithoutProfile:
         # POPRAWKA #4: komunikat to pełny opis zapisanej lokalizacji.
         assert bot.has_reply(103, "Zapisana lokalizacja")
         assert bot.has_reply(103, "Warszawa, Polska")
-        assert bot.has_reply(103, "Pomyłka? Powtórz jeszcze raz komendę.")
+        assert bot.has_reply(103, "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę")
 
     def test_city_command_with_argument_saves_profile_immediately(self, bot):
         bot.run(bot.msg(104, "/start BETAX1"))
@@ -816,11 +816,15 @@ class TestPrivacyCommands:
     def test_privacy_works_with_access(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/privacy"))
-        assert bot.has_reply(100, "PRYWATNOŚĆ")
-        assert bot.has_reply(100, "https://")
-        assert lb.PRIVACY_VERSION.replace("-", "-") in [
-            t for t in bot.replies(100) if "PRYWATNOŚĆ" in t
-        ][0]
+        assert bot.has_reply(100, "PRYWATNOŚĆ I TWOJE DANE")
+        privacy = [t for t in bot.replies(100) if "PRYWATNOŚĆ" in t][0]
+        assert lb._md_safe(lb.PRIVACY_URL) in privacy
+        assert privacy.rstrip().endswith(lb._md_safe(lb.PRIVACY_URL)), \
+            "link do pełnej polityki zamyka wiadomość"
+        # Numer wersji polityki nie jest już częścią treści — zostaje tylko
+        # w kontrakcie wywołania t_ui (version=PRIVACY_VERSION).
+        assert lb.PRIVACY_VERSION not in privacy
+        assert "{url}" not in privacy and "{version}" not in privacy
 
     def test_my_data_shows_access(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
@@ -1037,16 +1041,14 @@ class TestPr2UxCleanup:
         bot.run(bot.msg(100, "/miasto"))
 
         assert bot.has_reply(100, "Obecna lokalizacja:\nWarszawa")
-        assert bot.has_reply(100, "Wpisz nową miejscowość")
-        assert bot.has_reply(100, "współrzędne są zaokrąglane")
-
-        # POPRAWKA #3: pinezka z mapy + "Szczegóły:" z klikalnym /porady
-        # w jednej linii, bez bloku "Przykłady:" z renderowanymi miastami.
-        assert bot.has_reply(100, "wyślij pinezkę z mapy lub lokalizację GPS. Szczegóły:")
-        assert bot.has_reply(100, "\n/porady\n")
-        assert bot.has_reply(100, "poranne lub popołudniowe raporty pogodowe")
+        assert bot.has_reply(100, "Jeśli zgadzasz się na zapis lokalizacji:")
+        assert bot.has_reply(100, "👉 Wpisz nazwę miejscowości lub użyj GPS:")
+        assert bot.replies(100)[-1] == lb.t_ui("pl", "city_prompt_active", city="Warszawa")
+        # Skrócony prompt: bez bloku "Przykłady:", bez backticków i bez
+        # komend prognoz — szczegóły mieszkają w /info i /porady.
         assert not bot.has_reply(100, "Przykłady:")
         assert not bot.has_reply(100, "`Warszawa`")
+        assert "/porady" not in bot.replies(100)[-1]
 
     def test_d_saved_profile_makes_dzien_work_without_city(self, bot, monkeypatch):
         freeze_local_hour(monkeypatch, 10, 0)
@@ -1284,7 +1286,7 @@ class TestPr2UxCleanup:
         # PR3 GRUPY: panel godzin jest dialogiem tekstowym — bez przycisku
         # WebApp także w czacie prywatnym (godziny zmienia się odpowiedziami).
         assert bot.keyboards_for(100) == []
-        assert "Czy zachować te ustawienia?" in panel
+        assert "Czy chcesz zmienić te godziny?" in panel
 
     def test_legacy_only_report_settings_are_not_read_from_formularz(self, bot):
         bot.run(bot.msg(700, "/raport"))
@@ -1300,9 +1302,11 @@ class TestPr2UxCleanup:
         bot.run(bot.msg(100, "/info"))
         info = bot.replies(100)[-1]
         for needle in ("/dzien", "/teraz", "/trend", "/miasto", "/raport",
-                       "/zapros", "/dane", "/porady", "/priv",
-                       "/bezGPS", "/usunDane"):
+                       "/zapros", "/dane", "/porady", "/priv"):
             assert needle in info, needle
+        # Komendy zarządzania danymi mieszkają w /dane i /priv, nie w /info.
+        assert "/bezGPS" not in info and "/usunDane" not in info
+        assert "/zapros — zaproszenie znajomego lub dodanie bota do grupy" in info
         # POPRAWKA #5: techniczny alias /save_location znika z /info
         # (nadal działa w kodzie jako ukryta komenda kompatybilnościowa).
         assert "/save_location" not in info.replace("\\", "")
@@ -1311,7 +1315,7 @@ class TestPr2UxCleanup:
     def test_porady_command_still_works_but_is_not_in_menu(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/porady"))
-        assert bot.has_reply(100, "PORADY I TRIKI")
+        assert bot.has_reply(100, "PORADY I PRZYDATNE FUNKCJE")
         assert not bot.has_reply(100, "/miasto Rzym`")
         # treść porad nie obiecuje już karty z /miasto ani "promienia 3 km"
         assert not bot.has_reply(100, "3 km")
@@ -1367,7 +1371,7 @@ class TestLocationDescription:
         assert bot.users.record(110)["profile_status"] == "active"
         assert bot.has_reply(110, "✅ *Zapisana lokalizacja:*")
         assert bot.has_reply(110, "Hel, Polska")
-        assert bot.has_reply(110, "Pomyłka? Powtórz jeszcze raz komendę.")
+        assert bot.has_reply(110, "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę")
 
     def test_webapp_gps_in_city_flow_shows_full_address(self, bot):
         bot.run(bot.msg(111, "/start BETAX1"))
@@ -1429,7 +1433,7 @@ class TestLocationDescription:
         bot.run(bot.msg(115, "/miasto"))
         bot.run(bot.msg(115, "Xyzzz"))
 
-        assert bot.has_reply(115, "Nie mogłem znaleźć takiego miejsca na mapie")
+        assert bot.has_reply(115, "Na mapie nie ma miejsca o takiej nazwie")
 
     # ------------------------------------------------------------------
     # ETAP 1: krótkie i niepasujące zapytania geokodera
@@ -1700,16 +1704,17 @@ class TestInfoAndTipsContent:
 
         info = bot.replies(100)[-1]
         assert "/save_location" not in info.replace("\\", "")
-        assert "/bezGPS" in info and "/usunDane" in info, \
-            "dwie komendy zarządzania danymi muszą zostać"
-        assert "*Komendy rzadziej używane:*" in info
+        assert "/bezGPS" not in info and "/usunDane" not in info, \
+            "komendy zarządzania danymi są w /dane i /priv, nie w /info"
+        assert "*Komendy rzadziej używane:*" not in info
+        assert info == lb.t_ui("pl", "info_msg")
 
     def test_tips_reply_has_no_french_leak_in_polish(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/porady"))
 
         tips = bot.replies(100)[-1]
-        assert tips.startswith("💡 *PORADY I TRIKI")
+        assert tips.startswith("💡 *PORADY I PRZYDATNE FUNKCJE*")
         assert "TRUCS ET ASTUCES" not in tips
         assert not BACKTICKED_COMMAND.search(tips)
         assert tips.count("`") % 2 == 0 and tips.count("*") % 2 == 0
@@ -1824,7 +1829,7 @@ class TestPostDeleteUx:
         bot.run(bot.msg(500, "/start BETAX1"))
         assert bot.has_reply(500, "Dostęp aktywny")
         bot.run(bot.msg(500, "/info"))
-        assert bot.has_reply(500, "JAK DZIAŁA")
+        assert bot.has_reply(500, "POMOC I KOMENDY")
         assert len([t for c, t in bot.sent[before:] if c == 500]) == 4  # 3 x /start + /info
 
     def test_no_access_chat_only_start_answers(self, bot):
