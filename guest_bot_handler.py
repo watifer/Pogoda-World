@@ -365,7 +365,7 @@ def handle_guest_now(
     ``resolve_labels_fn`` (HOTFIX, opcjonalny, callback injection — guest
     handler NIE importuje location_bot) deleguje do
     ``location_bot._resolve_location_labels``: ten sam resolver, który buduje
-    etykiety dla /miasto i stopki "Użyta lokalizacja". Sygnatura wywołania:
+    etykiety dla /miasto i podpisu karty. Sygnatura wywołania:
     ``resolve_labels_fn(lat, lon, lang, used_query_or_None, fallback_short,
     fallback_display) -> (short_label, display_location, status)``. Gdy
     dostarczony, jest GŁÓWNYM źródłem tytułu i opisu karty gościa — bez
@@ -442,7 +442,7 @@ def handle_guest_now(
                 short_label, display_location = None, None
             if short_label:
                 oficjalna_nazwa = short_label
-                full_address = display_location or short_label
+                full_address = display_location
         elif get_city_fn:
             try:
                 ckey = (round(lat, 3), round(lon, 3), user_lang)
@@ -454,7 +454,6 @@ def handle_guest_now(
                 
                 if city_name and "Lokalizacja" not in city_name and "Location" not in city_name and not any(ch.isdigit() for ch in city_name):
                     oficjalna_nazwa = city_name
-                    full_address = city_name
             except Exception:
                 pass
                 
@@ -534,13 +533,13 @@ def handle_guest_now(
                 effective_used_query = (used_query or query).strip() if (used_query or query) else ""
                 if short_label:
                     oficjalna_nazwa = short_label
-                    full_address = display_location or short_label
+                    full_address = display_location
                 elif fallback_short and fallback_display:
                     oficjalna_nazwa = fallback_short
                     full_address = fallback_display
                 else:
                     oficjalna_nazwa = fallback_short or effective_used_query or fallback_city
-                    full_address = fallback_display or oficjalna_nazwa
+                    full_address = fallback_display
             else:
                 # Stara ścieżka (bez resolve_labels_fn): tytuł z reverse
                 # get_city_fn, opis z forward fallbacku — bez zmian.
@@ -605,8 +604,7 @@ def handle_guest_now(
         
         if img_path:
             # 3. Wysłanie gotowej karty z wstrzyknięciem pełnego adresu z geokodera!
-            final_address = full_address if full_address else oficjalna_nazwa
-            send_photo_fn(chat_id, img_path, oficjalna_nazwa, final_address)
+            send_photo_fn(chat_id, img_path, oficjalna_nazwa, full_address)
             
     except Exception as e:
         print(f"❌ [GuestMode] KRYTYCZNY BŁĄD generowania karty: {e}")

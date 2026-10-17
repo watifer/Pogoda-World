@@ -106,7 +106,7 @@ class TestSavedProfile:
         order = []
         monkeypatch.setattr(
             lb, "_send_oneoff_report",
-            lambda chat_id, lat, lon, city, lang, card_type:
+            lambda chat_id, lat, lon, city, lang, card_type, display_location=None:
                 (order.append(("card", list(bot.sent))), True)[1],
         )
 
@@ -196,7 +196,8 @@ class TestOneOffWithProfile:
         replies = bot.replies_since(PRIVATE, with_profile)
         assert replies[0] == SEARCH_LOC
         assert not ALL_WAIT_TEXTS & set(replies), "jednorazowa karta: bez prep_*"
-        assert any("Użyta lokalizacja" in r for r in replies), replies
+        assert not any("Użyta lokalizacja" in r for r in replies), replies
+        assert bot.oneoff_descriptions[-1]
         assert [o[5] for o in bot.oneoffs] == [card]
         assert bot.oneoffs[0][3] == "Rzym" and bot.oneoffs[0][1] == 41.9028
         assert bot.users.record(PRIVATE) == record_before, "profil Users bez zmian"
