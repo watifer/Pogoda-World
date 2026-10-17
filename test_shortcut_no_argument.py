@@ -1,26 +1,22 @@
 """test_shortcut_no_argument.py — skróty ?d / ?12 / ?14 BEZ argumentu.
 
-Zgłoszony błąd: `?d` (oraz `?12` i `?14`) wysyłał prompt o miasto, ale
-odpowiedź „Warszawa” nie była przechwytywana — `guest_bot_handler` nie
-ustawiał `PENDING_CITY`, więc gałąź 8B nie miała czego obsłużyć, a użytkownik
-z zapisanym profilem i tak dostawał prompt zamiast karty.
+Zasada produktowa (korekta poprzedniego przekierowania na /day, /now, /future):
 
-Naprawa (location_bot, blok 0A, PO globalnym guardzie P7): skrót bez argumentu
-w czacie prywatnym jest przekierowywany na istniejącą komendę:
-    ?d  -> /day     ?12 -> /now     ?14 -> /future
-Dzięki temu działa JEDNA, sprawdzona ścieżka:
-    - zapisany profil Users -> prep_* -> karta, bez search_loc i bez pending,
-    - brak profilu -> PENDING_CITY + oneoff_prompt_* -> miasto -> search_loc
-      -> geokoder -> karta jednorazowa,
-    - legacy-only -> dotychczasowe /day, /now, /future,
-    - grupa -> bez zmian (cisza dla skrótu bez argumentu).
+    Skrót bez argumentu w czacie prywatnym dla autoryzowanego użytkownika
+    ZAWSZE otwiera dialog jednorazowego zapytania o miejscowość — niezależnie
+    od tego, czy użytkownik ma zapisaną lokalizację.
 
-UWAGA (dlaczego ten plik nie używa atrapy guest handlera): `BotHarness`
-podmienia `location_bot.handle_guest_now` na atrapę, która zwraca True bez
-wysyłania promptu i bez ustawiania stanu — właśnie dlatego błąd nie był
-widoczny w testach. Tutaj atrapa jest NATYCHMIAST zastępowana cienkim spy,
-który woła PRAWDZIWY `guest_bot_handler.handle_guest_now` z tymi samymi
-argumentami, jakie dostaje produkcja.
+    ?d  -> CTX_ONEOFF_DAY    -> oneoff_prompt_day
+    ?12 -> CTX_ONEOFF_NOW    -> oneoff_prompt_now
+    ?14 -> CTX_ONEOFF_FUTURE -> oneoff_prompt_future
+
+Wpisana miejscowość idzie przez gałąź 8B (PENDING_CITY) -> search_loc ->
+geokoder -> karta jednorazowa. Stała lokalizacja NIE jest używana jako
+lokalizacja karty, NIE jest zmieniana i NIE jest zapisywana na nowo. Ścieżka
+/day, /now, /future ani _run_saved_profile_report() nie są w tym przepływie
+wołane.
+
+Skróty z argumentem (?d Warszawa) zachowują dotychczasową ścieżkę guest handlera.
 
 Uruchomienie: pytest test_shortcut_no_argument.py -v
 """
@@ -47,6 +43,11 @@ LEGACY_NO_LOC = 704
 LEGACY_NO_LOC_ROW = ["2026-01-01 08:00:00", str(LEGACY_NO_LOC), "NoLocLegacy", "",
                      "", "", "08:00", "14:00", "pl"]
 
+# Współrzędne i nazwy używane w testach „stała lokalizacja vs. zapytanie”.
+SAVED_CITY = "Warszawa"        # stała lokalizacja (profil) — zob. with_profile
+QUERY_CITY = "Kraków"          # miejscowość wpisana po skrócie
+QUERY_LAT, QUERY_LON = 50.0647, 19.9450
+
 # (skrót, typ karty, kontekst pending, klucz promptu, klucz komunikatu oczekiwania)
 SHORTCUT_CASES = [
     pytest.param("?d", "day", lb.CTX_ONEOFF_DAY, "oneoff_prompt_day", "prep_main", id="day"),
@@ -64,6 +65,14 @@ ALIAS_CASES = [
     )
     for alias in aliases
 ]
+
+# Klucze promptów oneoff per typ karty (lustro ONEOFF_PROMPT_KEYS z location_bot).
+SHORTCUT_PROMPT = {
+    "day": "oneoff_prompt_day",
+    "now": "oneoff_prompt_now",
+    "future": "oneoff_prompt_future",
+}
+
 
 WAIT_TEXTS = {lb.t_ui("pl", key) for key in lb.SAVED_PROFILE_WAIT_KEYS.values()}
 SEARCH_LOC = lb.t_ui("pl", "search_loc")
@@ -87,16 +96,54 @@ def bot(monkeypatch):
 
     monkeypatch.setattr(lb, "handle_guest_now", real_guest_handler)
     harness.real_guest_calls = real_calls
+
+    # Zapis do arkusza Formularz w ścieżce legacy — rejestrujemy, żeby sprawdzić,
+    # że skrót ani odpowiedź z miastem jej nie dotykają.
+    form_writes = []
+    monkeypatch.setattr(
+        lb, "_form_update_cell",
+        lambda main_sheet, row, col, value: form_writes.append((row, col, value)),
+    )
+    harness.form_writes = form_writes
     return harness
 
 
 @pytest.fixture
-def with_profile(bot):
+def with_profile(bot, monkeypatch):
+    """Użytkownik Users z aktywnym profilem: stała lokalizacja = Warszawa."""
     bot.run(bot.msg(PRIVATE, "/start BETAX1"))
     bot.run(bot.msg(PRIVATE, "/miasto"))
-    bot.run(bot.msg(PRIVATE, "Warszawa"))
+    bot.run(bot.msg(PRIVATE, SAVED_CITY))
     assert bot.users.record(PRIVATE)["profile_status"] == "active"
     return len(bot.sent)
+
+
+@pytest.fixture
+def query_geocoder(bot, monkeypatch):
+    """Geokoder zwraca Kraków dla wpisanej nazwy i rejestruje wywołania.
+
+    Zapisuje też stan czatu PRZED zapytaniem, żeby sprawdzić kolejność
+    search_loc -> geokoder oraz brak prep_* przed wpisaniem miasta.
+    """
+    calls = []
+
+    def fake_geocode(city, lang="pl"):
+        calls.append({"city": city, "sent_before": list(bot.sent), "lang": lang})
+        return (lb.GEOCODE_OK, QUERY_LAT, QUERY_LON, city, f"{city}, Polska")
+
+    monkeypatch.setattr(lb, "geocode_city_accepted", fake_geocode)
+    # Etykiety z reverse geocodera muszą pokazywać Kraków, nie domyślną Warszawę
+    # z atrapy harnessu — inaczej test nie odróżniłby karty od stałej lokalizacji.
+    monkeypatch.setattr(
+        lb, "get_city_from_coords", lambda lat, lon, lang="pl": QUERY_CITY,
+    )
+    monkeypatch.setattr(
+        lb, "get_location_details_from_coords",
+        lambda lat, lon, lang="pl", query=None, mode=None: (
+            QUERY_CITY, f"{QUERY_CITY}, Polska", lb.GEO_OK,
+        ),
+    )
+    return calls
 
 
 @pytest.fixture
@@ -140,62 +187,198 @@ def guest_card(monkeypatch):
     return rec
 
 
+def _forbid_saved_profile_path(monkeypatch):
+    """Dowód, że ścieżka zapisanego profilu NIE jest używana przez skrót."""
+    calls = []
+
+    def boom(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("skrót bez argumentu nie może wołać _run_saved_profile_report")
+
+    monkeypatch.setattr(lb, "_run_saved_profile_report", boom)
+    return calls
+
+
+def _forbid_command_paths(monkeypatch):
+    """Zabezpiecza, że skrót nie uruchamia zwykłych komend /day, /now, /future."""
+    calls = []
+    monkeypatch.setattr(
+        lb, "_run_city_oneoff",
+        lambda *a, **k: calls.append(("city_oneoff", a)) or False,
+    )
+    return calls
+
+
 # ============================================================================
 # 1. ?d / ?12 / ?14 BEZ ARGUMENTU — UŻYTKOWNIK Z ZAPISANYM PROFILEM
 # ============================================================================
 
 class TestSavedProfile:
+    """Zapisany profil NIE zmienia faktu, że skrót bez argumentu pyta o miasto."""
 
     @pytest.mark.parametrize("shortcut,card,ctx,prompt_key,wait_key", SHORTCUT_CASES)
-    def test_card_with_wait_message_without_search_loc(
+    def test_shortcut_opens_oneoff_prompt_not_card(
         self, bot, monkeypatch, with_profile, shortcut, card, ctx, prompt_key, wait_key
     ):
         freeze_local_hour(monkeypatch, 10, 0)
+        _forbid_saved_profile_path(monkeypatch)
 
         bot.run(bot.msg(PRIVATE, shortcut))
 
         replies = bot.replies_since(PRIVATE, with_profile)
-        assert replies == [lb.t_ui("pl", wait_key)], replies
+        assert replies == [lb.t_ui("pl", prompt_key)], replies
         assert SEARCH_LOC not in replies
         assert GUEST_PROMPT not in replies
-        assert [o[5] for o in bot.oneoffs] == [card]
-        assert lb.SHORTCUT_NO_ARG_COMMANDS[card] in ("/day", "/now", "/future")
-        # Zapisany profil: żaden stan oczekiwania nie powstaje.
-        assert str(PRIVATE) not in lb.PENDING_CITY
+        assert not WAIT_TEXTS & set(replies), "brak komunikatu oczekiwania ze stałej lokalizacji"
+        # Nie może zostać wysłana karta przed wpisaniem miasta.
+        assert bot.oneoffs == []
+        assert bot.cards == []
+        # Stan oczekiwania na miasto jest zapisany z właściwym kontekstem.
+        assert lb.PENDING_CITY[str(PRIVATE)]["ctx"] == ctx
 
     @pytest.mark.parametrize("shortcut,card,ctx,prompt_key,wait_key", SHORTCUT_CASES)
-    def test_profile_is_not_mutated(
+    def test_never_calls_saved_profile_report_or_guest_handler(
+        self, bot, monkeypatch, with_profile, shortcut, card, ctx, prompt_key, wait_key
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        saved_calls = _forbid_saved_profile_path(monkeypatch)
+        command_calls = _forbid_command_paths(monkeypatch)
+        guest_before = len(bot.real_guest_calls)
+
+        bot.run(bot.msg(PRIVATE, shortcut))
+
+        assert saved_calls == [], "skrót bez argumentu nie przechodzi przez _run_saved_profile_report()"
+        assert command_calls == [], "skrót nie wywołuje ścieżki /day, /now, /future"
+        # Fixture with_profile też przepuszcza zwykły tekst przez guest handler,
+        # więc sprawdzamy wyłącznie wywołania dla TEJ wiadomości.
+        shortcut_guest_calls = [
+            c for c in bot.real_guest_calls[guest_before:]
+            if (c["message"].get("text") or "") == shortcut
+        ]
+        assert shortcut_guest_calls == [], "guest_bot_handler nie jest wołany dla skrótu bez argumentu"
+
+    @pytest.mark.parametrize("shortcut,card,ctx,prompt_key,wait_key", SHORTCUT_CASES)
+    def test_profile_is_not_mutated_by_shortcut(
         self, bot, monkeypatch, with_profile, shortcut, card, ctx, prompt_key, wait_key
     ):
         record_before = bot.users.record(PRIVATE)
+        form_before = list(bot.form_writes)
 
         bot.run(bot.msg(PRIVATE, shortcut))
 
         assert bot.users.record(PRIVATE) == record_before
-        assert bot.oneoffs[-1][0] == PRIVATE
+        assert bot.form_writes == form_before
+        assert bot.oneoffs == []
 
-    def test_day_outside_window_keeps_05_00_15_59_limit(
+    @pytest.mark.parametrize("alias,card,ctx,prompt_key", ALIAS_CASES)
+    def test_existing_aliases_also_open_prompt_with_profile(
+        self, bot, monkeypatch, with_profile, alias, card, ctx, prompt_key
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        saved_calls = _forbid_saved_profile_path(monkeypatch)
+
+        bot.run(bot.msg(PRIVATE, alias))
+
+        assert bot.replies_since(PRIVATE, with_profile) == [lb.t_ui("pl", prompt_key)]
+        assert lb.PENDING_CITY[str(PRIVATE)]["ctx"] == ctx
+        assert saved_calls == []
+        assert bot.oneoffs == []
+
+    @pytest.mark.parametrize("shortcut,card,ctx,prompt_key,wait_key", SHORTCUT_CASES)
+    def test_city_reply_uses_queried_city_not_saved_location(
+        self, bot, monkeypatch, with_profile, query_geocoder,
+        shortcut, card, ctx, prompt_key, wait_key,
+    ):
+        """saved location = Warszawa, query = Kraków, result card = Kraków."""
+        freeze_local_hour(monkeypatch, 10, 0)
+        record_before = bot.users.record(PRIVATE)
+        form_before = list(bot.form_writes)
+
+        bot.run(bot.msg(PRIVATE, shortcut))
+        prompt_idx = len(bot.sent)
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
+
+        # Karta dla NOWEGO miasta, jednorazowo.
+        assert len(bot.oneoffs) == 1
+        chat_id, lat, lon, city, _lang, card_type = bot.oneoffs[0]
+        assert chat_id == PRIVATE
+        assert card_type == card
+        assert (lat, lon) == (QUERY_LAT, QUERY_LON), "karta z zapytanego miasta, nie z profilu"
+        assert city == QUERY_CITY
+
+        # Geokoder dostał wpisaną nazwę; search_loc tylko przed nim.
+        assert [c["city"] for c in query_geocoder] == [QUERY_CITY]
+        sent_before = [t for c, t in query_geocoder[0]["sent_before"][prompt_idx:] if c == PRIVATE]
+        assert sent_before == [SEARCH_LOC], "search_loc wyłącznie przed geokoderem"
+
+        replies = bot.replies_since(PRIVATE, prompt_idx)
+        assert replies[0] == SEARCH_LOC
+        assert not WAIT_TEXTS & set(replies), "brak prep_* przed wpisaniem miasta ani po nim"
+
+        # Stała lokalizacja nadal Warszawa: brak zapisu, brak zmiany profilu.
+        assert bot.users.record(PRIVATE) == record_before
+        assert bot.users.record(PRIVATE)["location_label"] == record_before["location_label"]
+        assert bot.form_writes == form_before
+        assert str(PRIVATE) not in lb.PENDING_CITY, "stan skonsumowany po sukcesie"
+
+    def test_saved_location_stays_warszawa_after_two_shortcuts(
+        self, bot, monkeypatch, with_profile, query_geocoder
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        record_before = bot.users.record(PRIVATE)
+
+        bot.run(bot.msg(PRIVATE, "?d"))
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
+        bot.run(bot.msg(PRIVATE, "?14"))
+        bot.run(bot.msg(PRIVATE, "Gdańsk"))
+
+        assert [o[5] for o in bot.oneoffs] == ["day", "future"]
+        assert bot.users.record(PRIVATE) == record_before
+        assert bot.users.record(PRIVATE)["lat_round"] == record_before["lat_round"]
+        assert bot.users.record(PRIVATE)["lon_round"] == record_before["lon_round"]
+
+    def test_expired_pending_with_profile_does_not_fall_back_to_profile(
         self, bot, monkeypatch, with_profile
     ):
-        """?d korzysta z tej samej bramki godziny co /dzien (bez zmian)."""
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(PRIVATE, "?12"))
+        lb.PENDING_CITY[str(PRIVATE)]["expires_ts"] = time.time() - 1
+        before = len(bot.sent)
+
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
+
+        assert bot.replies_since(PRIVATE, before) == []
+        assert bot.oneoffs == []
+        assert str(PRIVATE) not in lb.PENDING_CITY
+
+    def test_day_window_is_checked_after_city_not_before_prompt(
+        self, bot, monkeypatch, with_profile, query_geocoder
+    ):
+        """Poza 05:00–15:59 prompt się pojawia; limit okna działa dopiero po mieście."""
         freeze_local_hour(monkeypatch, 22, 0)
 
         bot.run(bot.msg(PRIVATE, "?d"))
-
-        replies = bot.replies_since(PRIVATE, with_profile)
-        assert len(replies) == 1 and "05:00" in replies[0], replies
-        assert lb.t_ui("pl", "prep_main") not in replies
+        prompt_replies = bot.replies_since(PRIVATE, with_profile)
+        assert prompt_replies == [lb.t_ui("pl", "oneoff_prompt_day")], prompt_replies
         assert bot.oneoffs == []
 
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
+
+        replies = bot.replies_since(PRIVATE, with_profile)
+        assert any("05:00" in r for r in replies), replies
+        assert bot.oneoffs == []
+        assert bot.users.record(PRIVATE)["profile_status"] == "active"
+
     def test_original_update_object_is_not_mutated(self, bot, monkeypatch, with_profile):
-        """Przekierowanie używa kopii — update z Telegrama zostaje nietknięty."""
+        """Skrót nie zmienia wiadomości Telegrama, bo nie jest przekierowywany."""
         freeze_local_hour(monkeypatch, 10, 0)
         update = bot.msg(PRIVATE, "?d")
 
         bot.run(update)
 
         assert update["message"]["text"] == "?d"
-        assert [o[5] for o in bot.oneoffs] == ["day"]
+        assert bot.oneoffs == []
+        assert bot.replies_since(PRIVATE, with_profile) == [lb.t_ui("pl", "oneoff_prompt_day")]
 
 
 # ============================================================================
@@ -217,6 +400,7 @@ class TestNoProfile:
         assert replies == [lb.t_ui("pl", prompt_key)], replies
         assert GUEST_PROMPT not in replies
         assert lb.PENDING_CITY[str(NO_PROFILE)]["ctx"] == ctx
+        assert bot.real_guest_calls == []
 
     @pytest.mark.parametrize("shortcut,card,ctx,prompt_key,wait_key", SHORTCUT_CASES)
     def test_city_reply_geocodes_and_generates_oneoff(
@@ -281,7 +465,7 @@ class TestNoProfile:
 class TestExistingAliases:
 
     @pytest.mark.parametrize("alias,card,ctx,prompt_key", ALIAS_CASES)
-    def test_alias_redirects_to_same_command_family(
+    def test_alias_opens_prompt_for_same_card_family(
         self, bot, alias, card, ctx, prompt_key
     ):
         bot.run(bot.msg(NO_PROFILE, "/start BETAX1"))
@@ -291,15 +475,18 @@ class TestExistingAliases:
 
         assert bot.replies_since(NO_PROFILE, before) == [lb.t_ui("pl", prompt_key)]
         assert lb.PENDING_CITY[str(NO_PROFILE)]["ctx"] == ctx
+        assert bot.oneoffs == []
 
-    def test_redirect_map_covers_only_existing_card_types(self):
-        assert set(lb.SHORTCUT_NO_ARG_COMMANDS) == {"day", "now", "future"}
-        assert set(lb.SHORTCUT_NO_ARG_COMMANDS.values()) == {"/day", "/now", "/future"}
+    def test_context_map_covers_only_existing_card_types(self):
+        assert set(lb.SHORTCUT_NO_ARG_CONTEXTS) == {"day", "now", "future"}
+        assert set(lb.SHORTCUT_NO_ARG_CONTEXTS.values()) == {
+            lb.CTX_ONEOFF_DAY, lb.CTX_ONEOFF_NOW, lb.CTX_ONEOFF_FUTURE,
+        }
 
     @pytest.mark.parametrize("text", ["?1", "?11", "?13", "?15", "?g", "?x", "?.", "??d"])
     def test_no_new_alias_is_recognized(self, text):
         assert gbh.resolve_shortcut(text) == (None, None, None)
-        assert lb._redirect_shortcut_without_argument(
+        assert lb._shortcut_without_argument_ctx(
             {"text": text, "chat": {"id": PRIVATE, "type": "private"}}
         ) is None
 
@@ -347,11 +534,12 @@ class TestShortcutWithArgument:
         assert bot.users.record(PRIVATE) == record_before
         assert bot.replies_since(PRIVATE, with_profile) == []
         assert bot.oneoffs == []
+        assert str(PRIVATE) not in lb.PENDING_CITY
 
     def test_shortcut_reply_to_location_stays_in_guest_handler(
         self, bot, monkeypatch, guest_card
     ):
-        """Wyjątek z audytu: skrót jako odpowiedź na pinezkę nie jest przekierowany."""
+        """Wyjątek z audytu: skrót jako odpowiedź na pinezkę nie otwiera promptu."""
         freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(PRIVATE, "/start BETAX1"))
         update = bot.msg(PRIVATE, "?d")
@@ -374,21 +562,28 @@ class TestShortcutWithArgument:
 
 class TestMessageOrder:
 
-    def test_saved_profile_wait_message_comes_before_card(
-        self, bot, monkeypatch, with_profile
+    def test_saved_profile_prompt_then_city_search_then_card(
+        self, bot, monkeypatch, with_profile, query_geocoder
     ):
+        """Najpierw prompt, potem (po miastu) search_loc, a dopiero na końcu karta."""
+        freeze_local_hour(monkeypatch, 10, 0)
         order = []
         monkeypatch.setattr(
             lb, "_send_oneoff_report",
             lambda chat_id, lat, lon, city, lang, card_type:
-                (order.append(list(bot.sent)), True)[1],
+                (order.append((card_type, [t for c, t in bot.sent if c == PRIVATE][with_profile:])), True)[1],
         )
 
         bot.run(bot.msg(PRIVATE, "?12"))
+        assert order == [], "przed wpisaniem miasta karta nie może powstać"
+
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
 
         assert len(order) == 1
-        sent_before_card = [t for c, t in order[0][with_profile:] if c == PRIVATE]
-        assert sent_before_card == [lb.t_ui("pl", "scanning")]
+        card_type, sent_before_card = order[0]
+        assert card_type == "now"
+        assert sent_before_card == [lb.t_ui("pl", "oneoff_prompt_now"), SEARCH_LOC]
+        assert not WAIT_TEXTS & set(sent_before_card)
 
     def test_no_profile_prompt_then_search_loc_then_card(
         self, bot, monkeypatch, geocoder_log
@@ -444,6 +639,27 @@ class TestPendingCity:
         assert entry.get("ctx") == ctx, "stan zapisany PRZED promptem"
         assert entry.get("expires_ts", 0) > time.time()
 
+    @pytest.mark.parametrize("shortcut,card,ctx,prompt_key,wait_key", SHORTCUT_CASES)
+    def test_state_is_saved_before_prompt_with_profile(
+        self, bot, monkeypatch, with_profile, shortcut, card, ctx, prompt_key, wait_key
+    ):
+        snapshots = []
+        real_send_reply = lb.send_reply
+
+        def spy_send_reply(chat_id, text, reply_markup=None):
+            if str(chat_id) == str(PRIVATE):
+                snapshots.append((dict(lb.PENDING_CITY.get(str(PRIVATE)) or {}), text))
+            return real_send_reply(chat_id, text, reply_markup)
+
+        monkeypatch.setattr(lb, "send_reply", spy_send_reply)
+        snapshots.clear()
+
+        bot.run(bot.msg(PRIVATE, shortcut))
+
+        assert snapshots and snapshots[0][1] == lb.t_ui("pl", prompt_key)
+        assert snapshots[0][0].get("ctx") == ctx
+        assert snapshots[0][0].get("expires_ts", 0) > time.time()
+
     def test_ttl_matches_existing_pending_city(self, bot):
         before = time.time()
         bot.run(bot.msg(NO_PROFILE, "/start BETAX1"))
@@ -481,6 +697,34 @@ class TestPendingCity:
         assert bot.oneoffs == []
         assert str(NO_PROFILE) not in lb.PENDING_CITY
 
+    def test_state_is_cleared_after_geocoder_error_with_profile(
+        self, bot, monkeypatch, with_profile
+    ):
+        monkeypatch.setattr(
+            lb, "geocode_city_accepted",
+            lambda city, lang="pl": (lb.GEOCODE_NOT_FOUND, None, None, None, None),
+        )
+        record_before = bot.users.record(PRIVATE)
+        bot.run(bot.msg(PRIVATE, "?d"))
+
+        bot.run(bot.msg(PRIVATE, "Xyzzz"))
+
+        assert str(PRIVATE) not in lb.PENDING_CITY
+        assert bot.oneoffs == []
+        assert bot.users.record(PRIVATE) == record_before
+
+    def test_state_is_cleared_after_success_with_profile(
+        self, bot, monkeypatch, with_profile, query_geocoder
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(PRIVATE, "?14"))
+        assert str(PRIVATE) in lb.PENDING_CITY
+
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
+
+        assert str(PRIVATE) not in lb.PENDING_CITY
+        assert [o[5] for o in bot.oneoffs] == ["future"]
+
     def test_new_shortcut_overrides_pending_context(self, bot, monkeypatch, geocoder_log):
         freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(NO_PROFILE, "/start BETAX1"))
@@ -509,25 +753,20 @@ class TestPendingCity:
 # ============================================================================
 
 class TestShortcutDuringReportDialog:
-    """Zaakceptowana reguła produktowa.
+    """Skrót bez argumentu kończy dialog godzin, zanim otworzy prompt o miasto.
 
-    W czacie prywatnym skrót bez argumentu jest przekierowany na komendę, więc
-    w trakcie dialogu /raport działa jak KAŻDA inna komenda: kończy dialog bez
-    zapisu godzin (``_handle_report_settings_dialog`` czyści stan, gdy tekst
-    zaczyna się od „/”) i realizuje swoje zadanie. Wcześniej skrót ginął
-    w wadliwym prompcie gościa, a dialog godzin zostawał otwarty.
-
-    Dialog godzin jest prywatny (autor = czat), więc stanu nie ruszają skróty
-    z argumentem — te nadal należą do guest handlera.
+    Blok skrótów (0A) jest wyżej niż dialog godzin (0.7) i kończy obsługę
+    update. Bez jawnego czyszczenia wpis dialogu zostałby otwarty i kolejne
+    miasto trafiłoby do dialogu godzin zamiast do gałęzi 8B.
     """
 
-    @pytest.mark.parametrize("shortcut,card,wait_key", [
-        ("?d", "day", "prep_main"),
-        ("?12", "now", "scanning"),
-        ("?14", "future", "prep_future"),
+    @pytest.mark.parametrize("shortcut,card,ctx", [
+        ("?d", "day", lb.CTX_ONEOFF_DAY),
+        ("?12", "now", lb.CTX_ONEOFF_NOW),
+        ("?14", "future", lb.CTX_ONEOFF_FUTURE),
     ])
-    def test_shortcut_ends_dialog_and_runs_its_command(
-        self, bot, monkeypatch, with_profile, shortcut, card, wait_key
+    def test_shortcut_ends_dialog_and_opens_prompt(
+        self, bot, monkeypatch, with_profile, shortcut, card, ctx
     ):
         freeze_local_hour(monkeypatch, 10, 0)
         record_before = bot.users.record(PRIVATE)
@@ -540,9 +779,24 @@ class TestShortcutDuringReportDialog:
 
         assert lb.PENDING_REPORT == {}, "skrót kończy dialog godzin"
         assert bot.users.record(PRIVATE) == record_before, "dialog nic nie zapisuje"
-        assert bot.replies_since(PRIVATE, before) == [lb.t_ui("pl", wait_key)]
-        assert [o[5] for o in bot.oneoffs] == [card]
-        assert str(PRIVATE) not in lb.PENDING_CITY
+        assert bot.replies_since(PRIVATE, before) == [lb.t_ui("pl", SHORTCUT_PROMPT[card])]
+        assert bot.oneoffs == []
+        assert lb.PENDING_CITY[str(PRIVATE)]["ctx"] == ctx
+
+    def test_city_after_shortcut_goes_to_oneoff_not_to_report_dialog(
+        self, bot, monkeypatch, with_profile, query_geocoder
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        record_before = bot.users.record(PRIVATE)
+
+        bot.run(bot.msg(PRIVATE, "/raport"))
+        bot.run(bot.msg(PRIVATE, "?12"))
+        bot.run(bot.msg(PRIVATE, QUERY_CITY))
+
+        assert [o[5] for o in bot.oneoffs] == ["now"]
+        assert bot.oneoffs[0][1:3] == (QUERY_LAT, QUERY_LON)
+        assert lb.PENDING_REPORT == {}
+        assert bot.users.record(PRIVATE) == record_before
 
     def test_shortcut_with_argument_does_not_touch_report_dialog(
         self, bot, monkeypatch, guest_card, with_profile
@@ -585,6 +839,15 @@ class TestP7SilentGuard:
                     "oneoff_prompt_future", "search_loc"):
             assert lb.t_ui("pl", key) not in sent
 
+    @pytest.mark.parametrize("shortcut", ["?d", "?12", "?14"])
+    def test_unauthorized_city_reply_after_shortcut_is_silent(self, bot, shortcut, query_geocoder):
+        bot.run(bot.msg(STRANGER, shortcut))
+        bot.run(bot.msg(STRANGER, QUERY_CITY))
+
+        assert bot.replies(STRANGER) == []
+        assert bot.oneoffs == []
+        assert bot.users.record(STRANGER) is None
+
 
 # ============================================================================
 # 8. GRUPY — POLITYKA BEZ ZMIAN
@@ -602,9 +865,31 @@ class TestGroups:
         assert bot.replies_since(GROUP, before) == []
         assert bot.oneoffs == []
         assert str(GROUP) not in lb.PENDING_CITY
-        # Grupa nie jest przekierowywana — skrót nadal trafia do guest handlera,
+        # Grupa nie otwiera promptu — skrót nadal trafia do guest handlera,
         # który w grupie zachowuje ciszę.
         assert bot.real_guest_calls[-1]["message"]["text"] == shortcut
+
+    @pytest.mark.parametrize("shortcut", ["?d", "?12", "?14"])
+    def test_shortcut_without_argument_stays_silent_with_group_profile(
+        self, bot, monkeypatch, shortcut
+    ):
+        monkeypatch.setattr(
+            lb, "_telegram_chat_member_status",
+            lambda chat_id, user_id: "administrator",
+        )
+        bot.run(bot.msg(GROUP, "/start BETAX1", user_id=GROUP_ADMIN))
+        bot.run(bot.msg(GROUP, "/miasto", user_id=GROUP_ADMIN))
+        bot.run(bot.msg(GROUP, SAVED_CITY, user_id=GROUP_ADMIN))
+        assert bot.users.record(GROUP)["profile_status"] == "active"
+        before = len(bot.sent)
+        record_before = bot.users.record(GROUP)
+
+        bot.run(bot.msg(GROUP, shortcut, user_id=GROUP_ADMIN, chat_type="group"))
+
+        assert bot.replies_since(GROUP, before) == []
+        assert bot.oneoffs == []
+        assert str(GROUP) not in lb.PENDING_CITY
+        assert bot.users.record(GROUP) == record_before
 
     def test_group_profile_is_read_from_group_chat_id(self, bot, monkeypatch):
         monkeypatch.setattr(
@@ -641,75 +926,116 @@ class TestGroups:
 
 
 # ============================================================================
-# 9. LEGACY-ONLY — DOTYCHCZASOWE /day, /now, /future
+# 9. LEGACY-ONLY — SKRÓT BEZ ARGUMENTU TEŻ OTWIERA PROMPT, BEZ ZAPISU
 # ============================================================================
 
 class TestLegacyOnly:
+    """Użytkownik tylko w Formularz (bez Users) też dostaje prompt o miasto.
 
-    def test_legacy_day_shortcut_uses_legacy_command_path(self, bot, monkeypatch):
+    Karta jednorazowa z odpowiedzi nic nie zapisuje — zwłaszcza nie zmienia
+    lokalizacji w Formularz, nawet gdy użytkownik ma już zapisane współrzędne.
+    """
+
+    @pytest.mark.parametrize("shortcut,ctx,prompt_key", [
+        ("?d", lb.CTX_ONEOFF_DAY, "oneoff_prompt_day"),
+        ("?12", lb.CTX_ONEOFF_NOW, "oneoff_prompt_now"),
+        ("?14", lb.CTX_ONEOFF_FUTURE, "oneoff_prompt_future"),
+    ])
+    def test_legacy_shortcut_opens_prompt_without_card(
+        self, bot, monkeypatch, shortcut, ctx, prompt_key
+    ):
         freeze_local_hour(monkeypatch, 10, 0)
         before = len(bot.sent)
 
-        bot.run(bot.msg(LEGACY_WITH_LOC, "?d"))
+        bot.run(bot.msg(LEGACY_WITH_LOC, shortcut))
 
-        assert bot.replies_since(LEGACY_WITH_LOC, before) == [lb.t_ui("pl", "prep_main")]
-        assert bot.cards == [str(LEGACY_WITH_LOC)]
+        assert bot.replies_since(LEGACY_WITH_LOC, before) == [lb.t_ui("pl", prompt_key)]
+        assert bot.cards == []
         assert bot.oneoffs == []
-        assert str(LEGACY_WITH_LOC) not in lb.PENDING_CITY
-        # Legacy nie jest migrowany do Users.
+        assert lb.PENDING_CITY[str(LEGACY_WITH_LOC)]["ctx"] == ctx
         assert bot.users.record(LEGACY_WITH_LOC) is None
 
-    def test_legacy_without_location_gets_missing_loc(self, bot):
+    def test_legacy_without_location_gets_prompt_not_missing_loc(self, bot, monkeypatch):
+        freeze_local_hour(monkeypatch, 10, 0)
         before = len(bot.sent)
 
         bot.run(bot.msg(LEGACY_NO_LOC, "?12"))
 
-        assert bot.replies_since(LEGACY_NO_LOC, before) == [lb.t_ui("pl", "missing_loc")]
+        assert bot.replies_since(LEGACY_NO_LOC, before) == [lb.t_ui("pl", "oneoff_prompt_now")]
         assert bot.oneoffs == []
-        assert str(LEGACY_NO_LOC) not in lb.PENDING_CITY
         assert bot.users.record(LEGACY_NO_LOC) is None
 
+    def test_legacy_city_reply_after_shortcut_is_oneoff_and_does_not_write_formularz(
+        self, bot, monkeypatch, query_geocoder
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        bot.run(bot.msg(LEGACY_WITH_LOC, "?12"))
+        form_before = list(bot.form_writes)
+
+        bot.run(bot.msg(LEGACY_WITH_LOC, QUERY_CITY))
+
+        assert [o[5] for o in bot.oneoffs] == ["now"]
+        assert bot.oneoffs[0][0] == LEGACY_WITH_LOC
+        assert bot.oneoffs[0][1:3] == (QUERY_LAT, QUERY_LON)
+        assert bot.form_writes == form_before, "Formularz nie może zmienić lokalizacji"
+        assert bot.users.record(LEGACY_WITH_LOC) is None
+        assert str(LEGACY_WITH_LOC) not in lb.PENDING_CITY
+
+    def test_legacy_shortcut_with_argument_keeps_guest_path(
+        self, bot, monkeypatch, guest_card
+    ):
+        freeze_local_hour(monkeypatch, 10, 0)
+        before = len(bot.sent)
+
+        bot.run(bot.msg(LEGACY_WITH_LOC, "?d Warszawa"))
+
+        assert guest_card.layouts == ["day"]
+        assert bot.replies_since(LEGACY_WITH_LOC, before) == []
+        assert bot.oneoffs == []
+        assert str(LEGACY_WITH_LOC) not in lb.PENDING_CITY
+
 
 # ============================================================================
-# 10. KONTRAKT POMOCNIKA PRZEKIEROWANIA
+# 10. KONTRAKT POMOCNIKA KONTEKSTU SKRÓTU
 # ============================================================================
 
-class TestRedirectHelper:
+class TestShortcutContextHelper:
 
-    def _redirect(self, text, chat_type="private", reply=None):
+    def _ctx(self, text, chat_type="private", reply=None):
         message = {"text": text, "chat": {"id": 1, "type": chat_type}}
         if reply is not None:
             message["reply_to_message"] = reply
-        return lb._redirect_shortcut_without_argument(message)
+        return lb._shortcut_without_argument_ctx(message)
 
-    @pytest.mark.parametrize("text,command", [
-        ("?d", "/day"), (".d", "/day"), ("?t", "/day"), ("?j", "/day"),
-        ("?12", "/now"), (".12", "/now"), ("?n", "/now"), ("?p", "/now"),
-        ("?14", "/future"), (".14", "/future"), ("?f", "/future"),
+    @pytest.mark.parametrize("text,ctx", [
+        ("?d", lb.CTX_ONEOFF_DAY), (".d", lb.CTX_ONEOFF_DAY),
+        ("?t", lb.CTX_ONEOFF_DAY), ("?j", lb.CTX_ONEOFF_DAY),
+        ("?12", lb.CTX_ONEOFF_NOW), (".12", lb.CTX_ONEOFF_NOW),
+        ("?n", lb.CTX_ONEOFF_NOW), ("?p", lb.CTX_ONEOFF_NOW),
+        ("?14", lb.CTX_ONEOFF_FUTURE), (".14", lb.CTX_ONEOFF_FUTURE),
+        ("?f", lb.CTX_ONEOFF_FUTURE),
     ])
-    def test_private_shortcut_without_argument_maps_to_command(self, text, command):
-        redirected = self._redirect(text)
-        assert redirected is not None
-        assert redirected["text"] == command
+    def test_private_shortcut_without_argument_maps_to_oneoff_context(self, text, ctx):
+        assert self._ctx(text) == ctx
 
     @pytest.mark.parametrize("text", [
         "?d Warszawa", "?12 Warszawa", "?14 05-462 Wiązowna", "?dWarszawa",
         "@Bot ?d", "Cześć", "/dzien", "", "   ",
     ])
-    def test_other_messages_are_not_redirected(self, text):
-        assert self._redirect(text) is None
+    def test_other_messages_have_no_context(self, text):
+        assert self._ctx(text) is None
 
     @pytest.mark.parametrize("chat_type", ["group", "supergroup", "channel"])
-    def test_groups_are_not_redirected(self, chat_type):
-        assert self._redirect("?d", chat_type=chat_type) is None
+    def test_groups_have_no_context(self, chat_type):
+        assert self._ctx("?d", chat_type=chat_type) is None
 
-    def test_reply_to_location_is_not_redirected(self):
-        assert self._redirect("?d", reply={"location": {"latitude": 1, "longitude": 2}}) is None
+    def test_reply_to_location_has_no_context(self):
+        assert self._ctx("?d", reply={"location": {"latitude": 1, "longitude": 2}}) is None
 
-    def test_helper_returns_a_copy(self):
+    def test_helper_does_not_mutate_message(self):
         original = {"text": "?d", "chat": {"id": 1, "type": "private"}}
-        redirected = lb._redirect_shortcut_without_argument(original)
+        snapshot = dict(original)
 
-        assert redirected is not original
+        assert lb._shortcut_without_argument_ctx(original) == lb.CTX_ONEOFF_DAY
+        assert original == snapshot
         assert original["text"] == "?d"
-        assert redirected["text"] == "/day"
