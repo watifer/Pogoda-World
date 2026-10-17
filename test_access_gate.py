@@ -602,7 +602,7 @@ class TestAccessWithoutProfile:
                          ("/now", lb.CTX_ONEOFF_NOW),
                          ("/future", lb.CTX_ONEOFF_FUTURE)):
             bot.run(bot.msg(100, cmd))
-            assert bot.has_reply(100, "Wpisz poniżej samą nazwę miejscowości"), cmd
+            assert bot.has_reply(100, "Wpisz poniżej nazwę miejscowości"), cmd
             assert not bot.has_reply(100, "Brak dostępu"), cmd
             assert not bot.has_reply(100, "Profil nie jest"), cmd
             assert lb.PENDING_CITY["100"]["ctx"] == ctx, cmd
@@ -715,6 +715,8 @@ class TestAccessWithoutProfile:
         bot.run(bot.msg(104, "/miasto Warszawa"))
         assert bot.users.record(104)["profile_status"] == "active"
         assert bot.oneoffs == []
+        # Punkt 1: nazwa WPISANA ręcznie zachowuje pełny komunikat z dopiskiem.
+        assert bot.has_reply(104, "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę")
 
     def test_gps_in_city_flow_saves_profile_without_card(self, bot):
         # D4: GPS wysłany w trakcie flow /miasto zapisuje profil (bez karty),
@@ -957,8 +959,10 @@ class TestPr2UxCleanup:
         bot.run(bot.msg(100, "/start BETAX1"))
         bot.run(bot.msg(100, "/dzien"))
 
-        assert bot.has_reply(100, "Wpisz poniżej samą nazwę miejscowości dla prognozy dziennej")
-        assert bot.has_reply(100, "`Warszawa`")            # backticki TYLKO dla przykładów
+        assert bot.has_reply(100, "Wpisz poniżej nazwę miejscowości dla prognozy dziennej")
+        # Punkt 4: przykład bez backticków (ta sama czcionka co tekst) i lokalny.
+        assert bot.has_reply(100, "np. Olsztyn, koło Częstochowa, śląskie lub Olsztyn 42-256")
+        assert not bot.has_reply(100, "`")
         assert not bot.has_reply(100, "profil nieaktywny")
         assert not bot.has_reply(100, "Profil nie jest")
         assert not bot.has_reply(100, "Brak dostępu")
@@ -1015,7 +1019,9 @@ class TestPr2UxCleanup:
         # (POPRAWKA #4: krótka etykieta i bezpieczny opis lokalizacji)
         assert bot.has_reply(100, "📍 *Użyta lokalizacja:*")
         assert bot.has_reply(100, "Warszawa, Polska")
-        assert bot.has_reply(100, "Pomyłka? Powtórz jeszcze raz komendę.")
+        assert bot.has_reply(
+            100, "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę"
+        )
 
     # --- d) /miasto + miasto zapisuje profil i nie generuje karty -----------
     def test_d_city_flow_saves_profile_without_card(self, bot):
@@ -1369,9 +1375,14 @@ class TestLocationDescription:
         bot.run(bot.pin(110, reply=False))
 
         assert bot.users.record(110)["profile_status"] == "active"
+        # Punkt 1: pinezka nie prosi o doprecyzowanie nazwy — pełny adres TAK,
+        # akapit „Nie to miejsce?…” NIE.
         assert bot.has_reply(110, "✅ *Zapisana lokalizacja:*")
         assert bot.has_reply(110, "Hel, Polska")
-        assert bot.has_reply(110, "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę")
+        assert not bot.has_reply(110, "Nie to miejsce?")
+        assert bot.replies(110)[-1] == lb.t_ui(
+            "pl", "location_saved_short", display_location=lb._md_safe("Hel, Polska")
+        )
 
     def test_webapp_gps_in_city_flow_shows_full_address(self, bot):
         bot.run(bot.msg(111, "/start BETAX1"))
@@ -1380,6 +1391,8 @@ class TestLocationDescription:
 
         assert bot.users.record(111)["profile_status"] == "active"
         assert bot.has_reply(111, "Warszawa, Polska")
+        # Punkt 1: WebApp/GPS również bez „Nie to miejsce?…”.
+        assert not bot.has_reply(111, "Nie to miejsce?")
 
     def test_field_location_uses_message_from_code(self, bot, monkeypatch):
         """Pustynia/góry: geokoder nie zna miejscowości, ale zna teren."""
@@ -1932,6 +1945,8 @@ class TestGroupPinSavesProfile:
         assert bot.oneoffs == [] and bot.cards == []
         assert bot.has_reply(100, "✅ *Zapisana lokalizacja:*")
         assert not bot.has_reply(100, "Użyta lokalizacja")
+        # Punkt 1: pinezka = brak akapitu „Nie to miejsce?…”.
+        assert not bot.has_reply(100, "Nie to miejsce?")
         # brak komunikatu o oknie czasowym PO pinezce (onboarding ma 05:00–15:59)
         assert not any("05:00" in t for t in bot.replies_since(100, before))
 
@@ -1976,6 +1991,8 @@ class TestGroupPinSavesProfile:
         assert bot.has_reply(GROUP_PIN_CHAT, "✅ *Zapisana lokalizacja:*")
         assert bot.has_reply(GROUP_PIN_CHAT, "Hel, Polska")
         assert not bot.has_reply(GROUP_PIN_CHAT, "Użyta lokalizacja")
+        # Punkt 1: pinezka w grupie (odpowiedź na czat bota) też bez dopisku.
+        assert not bot.has_reply(GROUP_PIN_CHAT, "Nie to miejsce?")
         # brak komunikatu o oknie czasowym PO pinezce (onboarding ma 05:00–15:59)
         assert not any("05:00" in t for t in bot.replies_since(GROUP_PIN_CHAT, before))
         assert bot.oneoffs == [], "nie wolno wywoływać generatora karty one-off"

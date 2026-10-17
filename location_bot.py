@@ -77,6 +77,13 @@ ONEOFF_CARD_TYPES = {
 PENDING_SAVE = {}       # { str(chat_id): {lat, lon, city, lang, source, expires_ts} }
 PENDING_SAVE_TTL_SEC = 600
 
+# Źródła lokalizacji, po których użytkownik NIE wpisywał nazwy ręcznie (GPS,
+# pinezka, WebApp). Potwierdzenie zapisu nie prosi go wtedy o „doprecyzowanie
+# nazwy” — dostaje krótszy komunikat bez akapitu „Nie to miejsce?…”.
+# Nazwa wpisana z klawiatury (source="city") zachowuje pełny komunikat, bo tam
+# doprecyzowanie faktycznie pomaga.
+LOCATION_SAVED_SHORT_SOURCES = ("gps", "webapp")
+
 # Potwierdzenie usunięcia danych (/usunDane oraz /delete_me — obie komendy
 # najpierw pytają). Bez callbacków: odpowiedź przychodzi przyciskiem klawiatury
 # reply ("Tak, chcę" / "Nie, nie chcę") albo ukrytą komendą techniczną.
@@ -1378,10 +1385,20 @@ def _save_profile_from_location(
 
     # Tylko oczyszczony display_location trafia do komunikatu; profil i karta
     # nadal używają osobnego short_label.
+    #
+    # Punkt 1 zakresu: po lokalizacji z GPS/pinezki (także pinezki w grupie
+    # wysłanej jako odpowiedź na czat bota) i z WebApp użytkownik nie wpisywał
+    # nazwy ręcznie, więc potwierdzenie nie zawiera akapitu „Nie to miejsce?…”.
+    # Pełny komunikat zostaje wyłącznie dla source="city" (wpisana nazwa).
     safe_display = _md_safe(display_location) or _md_safe(short_label)
+    message_key = (
+        "location_saved_short"
+        if str(source or "").strip().lower() in LOCATION_SAVED_SHORT_SOURCES
+        else "location_saved"
+    )
     send_reply(
         chat_id,
-        t_ui(lang, "location_saved", display_location=safe_display),
+        t_ui(lang, message_key, display_location=safe_display),
         reply_markup={"remove_keyboard": True},
     )
     return True

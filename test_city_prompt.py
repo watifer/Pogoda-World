@@ -17,7 +17,9 @@ Co pilnujemy:
   3. brak „Przykłady:” / backticków (render na czerwono) i brak starych,
      dłuższych zakończeń,
   4. bezpieczeństwo legacy Markdown (send_reply leci z parse_mode=Markdown),
-  5. prompty kart jednorazowych (oneoff_prompt_*) celowo BEZ ZMIAN.
+  5. prompty kart jednorazowych (oneoff_prompt_*) mają NOWY kontrakt z punktu 4:
+     bez „samą”, bez backticków (ta sama czcionka co tekst) i z przykładem
+     doprecyzowania z kraju danego języka.
 
 Uruchomienie: pytest test_city_prompt.py -v
 """
@@ -153,12 +155,27 @@ def test_markdown_parse_mode_safe(lang):
 
 
 # ============================================================================
-# 5. ZAKRES: oneoff_prompt_* świadomie BEZ ZMIAN
+# 5. ZAKRES: oneoff_prompt_* — nowy kontrakt (punkt 4 zadania)
 # ============================================================================
 
+EXAMPLE_MARKERS = {
+    "pl": "np. ", "en": "e.g. ", "de": "z. B. ",
+    "es": "p. ej. ", "fr": "par ex. ", "no": "f.eks. ",
+}
+
 @pytest.mark.parametrize("lang", LANGS)
-def test_oneoff_prompts_untouched_for_now(lang):
+def test_oneoff_prompts_follow_the_new_contract(lang):
+    """Punkt 4: „Przykłady:” + jeden lokalny przykład, bez „samą” i bez formatu."""
     data = i18n.UI_TEXTS[lang]
     for key in ("oneoff_prompt_day", "oneoff_prompt_now", "oneoff_prompt_future"):
-        assert any(w in data[key] for w in EXAMPLES_WORD), \
-            f"{lang}:{key} — ten prompt miał zostać bez zmian"
+        text = data[key]
+        assert any(w in text for w in EXAMPLES_WORD), f"{lang}:{key}: brak „Przykłady:”"
+        assert "`" not in text, f"{lang}:{key}: backtick zmienia czcionkę przykładu"
+        example = text.split("\n")[-1]
+        assert example.startswith(EXAMPLE_MARKERS[lang]), f"{lang}:{key}: {example!r}"
+        filler = {
+            "pl": ("samą ", "sam "), "en": ("just ",), "de": ("nur ",),
+            "es": ("solo ",), "fr": ("uniquement ",), "no": ("bare ",),
+        }[lang]
+        for word in filler:
+            assert word not in text, f"{lang}:{key}: zostało {word!r}"

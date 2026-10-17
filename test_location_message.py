@@ -45,7 +45,7 @@ def _clean_geo_cache():
 # ============================================================================
 
 @pytest.mark.parametrize("lang", LANGS)
-@pytest.mark.parametrize("key", ["location_saved", "used_location"])
+@pytest.mark.parametrize("key", ["location_saved", "location_saved_short", "used_location"])
 def test_messages_use_display_location_placeholder(lang, key):
     text = i18n.UI_TEXTS[lang][key]
     assert "{display_location}" in text
@@ -59,12 +59,17 @@ def test_messages_use_display_location_placeholder(lang, key):
 def test_polish_location_messages_are_exact():
     assert i18n.UI_TEXTS["pl"]["used_location"] == (
         "📍 *Użyta lokalizacja:*\n{display_location}\n\n"
-        "Pomyłka? Powtórz jeszcze raz komendę."
+        "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę "
+        "(np. Olsztyn, koło Częstochowa, śląskie lub Olsztyn 42-256)."
     )
     assert i18n.UI_TEXTS["pl"]["location_saved"] == (
         "✅ *Zapisana lokalizacja:*\n{display_location}\n\n"
         "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę "
         "(np. Olsztyn, koło Częstochowa, śląskie lub Olsztyn 42-256)."
+    )
+    # Punkt 1: GPS / pinezka / WebApp — bez akapitu „Nie to miejsce?…”.
+    assert i18n.UI_TEXTS["pl"]["location_saved_short"] == (
+        "✅ *Zapisana lokalizacja:*\n{display_location}"
     )
     # Legacy Formularz path uses the same safe saved-location wording.
     assert i18n.UI_TEXTS["pl"]["search_success"] == i18n.UI_TEXTS["pl"]["location_saved"]
@@ -72,7 +77,8 @@ def test_polish_location_messages_are_exact():
 
 def test_changed_location_messages_are_translated_and_do_not_advertise_hidden_aliases():
     for lang in LANGS:
-        for key in ("search_success", "used_location", "location_saved"):
+        for key in ("search_success", "used_location", "location_saved",
+                    "location_saved_short"):
             text = i18n.UI_TEXTS[lang][key]
             assert "{display_location}" in text
             assert "/save_location" not in text
@@ -80,10 +86,19 @@ def test_changed_location_messages_are_translated_and_do_not_advertise_hidden_al
             assert "`" not in text
 
 
-def test_short_variants_are_gone():
+def test_short_variant_is_the_intended_gps_confirmation():
+    """Punkt 1: jedyny wariant skrócony to location_saved_short (GPS/pinezka).
+
+    Stare, nieużywane klucze *_short nie wracają, a wariant krótki jest
+    dokładnie pełnym komunikatem bez akapitu „Nie to miejsce?…”.
+    """
     for lang in LANGS:
-        assert "location_saved_short" not in i18n.UI_TEXTS[lang]
         assert "used_location_short" not in i18n.UI_TEXTS[lang]
+        assert "search_success_short" not in i18n.UI_TEXTS[lang]
+        full = i18n.UI_TEXTS[lang]["location_saved"]
+        short = i18n.UI_TEXTS[lang]["location_saved_short"]
+        assert short == full.split("\n\n")[0], f"{lang}: wariant krótki != nagłówek + lokalizacja"
+        assert "\n\n" not in short, f"{lang}: wariant krótki nie ma drugiego akapitu"
 
 
 def test_message_helpers_escape_dynamic_display_location():
@@ -393,7 +408,8 @@ def test_message_helper_uses_full_display_but_not_as_short_label():
     assert message == (
         "📍 *Użyta lokalizacja:*\n"
         f"{DISPLAY_LOCATION}\n\n"
-        "Pomyłka? Powtórz jeszcze raz komendę."
+        "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę "
+        "(np. Olsztyn, koło Częstochowa, śląskie lub Olsztyn 42-256)."
     )
     assert SHORT_LABEL in message
     assert "/save_location" not in message and "/oneoff" not in message

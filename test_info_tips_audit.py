@@ -181,7 +181,7 @@ def test_tips_shortcuts_section_uses_own_daily_letter(lang):
     """?d/?12/?14 (de: ?t, fr: ?j) z przykładowym miastem danego języka."""
     text = i18n.UI_TEXTS[lang]["porady_msg"]
     letter = {"de": "t", "fr": "j"}.get(lang, "d")
-    city = {"pl": "Warszawa", "en": "Warsaw", "de": "Berlin",
+    city = {"pl": "Warszawa", "en": "London", "de": "Berlin",
             "es": "Madrid", "fr": "Paris", "no": "Oslo"}[lang]
     for prefix in (f"?{letter}", "?12", "?14"):
         assert f"• {prefix} {city} (" in text, f"{lang}: brak skrótu {prefix} {city}"
@@ -192,8 +192,11 @@ def test_tips_shortcuts_section_uses_own_daily_letter(lang):
 @pytest.mark.parametrize("lang", LANGS)
 def test_tips_oneoff_examples_and_trend_command(lang):
     text = i18n.UI_TEXTS[lang]["porady_msg"]
+    # Punkt 5b: przykłady z kraju języka (Zakopane tylko po polsku).
+    now_city = {"pl": "Zakopane", "en": "Edinburgh", "de": "Hamburg",
+                "es": "Barcelona", "fr": "Lyon", "no": "Bergen"}[lang]
     assert f"• {_cmd(lang, '/dzien', '/day')} " in text
-    assert f"• {_cmd(lang, '/teraz', '/now')} Zakopane" in text
+    assert f"• {_cmd(lang, '/teraz', '/now')} {now_city}" in text
     assert "/trend" in text
     assert _cmd(lang, "/miasto", "/city") in text
 
