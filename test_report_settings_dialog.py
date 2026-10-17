@@ -668,7 +668,8 @@ class TestPrivateChat:
 
         bot.run(bot.msg(PRIVATE, "/raport"))
 
-        assert "BERICHTSZEITEN" in last(bot, PRIVATE)
+        # Punkt 3: nowy nagłówek panelu godzin (DE).
+        assert "WETTER-RAPPORTZEITEN" in last(bot, PRIVATE)
         assert i18n.report_word("de", "yes") in last(bot, PRIVATE)
 
     def test_private_webapp_location_flow_still_works(self, bot, monkeypatch):
