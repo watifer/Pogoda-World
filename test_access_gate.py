@@ -1706,6 +1706,8 @@ class TestStage11ValidatedTopResult:
         assert kwargs["get_coords_fn"] is lb.get_coords_from_city
         assert kwargs["shortening_ok_fn"] is lb.geocode_shortening_is_safe
         assert callable(kwargs["geocode_status_fn"])
+        # Ta sama walidacja długości co komendy — bez kopiowania progu do gościa.
+        assert kwargs["too_short_fn"] is lb._geocode_query_is_too_short
 
 
 # ============================================================================

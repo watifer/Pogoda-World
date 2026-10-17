@@ -324,6 +324,23 @@ def _normalize_guest_lang(raw):
     return code if code in _GUEST_LANGS else None
 
 
+def _query_is_too_short(query, too_short_fn=None):
+    """Czy zapytanie przechodzi walidację długości geokodera?
+
+    Guest handler NIE zna progu ``GEOCODE_MIN_QUERY_CHARS`` ani parsera
+    kontekstu — pyta funkcję wstrzykniętą przez location_bot
+    (``_geocode_query_is_too_short``). Bez callbacku nie blokujemy komunikatu
+    (stare wywołania zachowują się jak dotąd), a wyjątek callbacku traktujemy
+    jak brak wiedzy — nigdy jak powód do ciszy.
+    """
+    if too_short_fn is None:
+        return False
+    try:
+        return bool(too_short_fn(query))
+    except Exception:
+        return False
+
+
 # ============================================================================
 # GŁÓWNY HANDLER TRYBU GOŚCIA
 # ============================================================================
@@ -342,6 +359,7 @@ def handle_guest_now(
     shortening_ok_fn=None,
     resolve_labels_fn=None,
     effective_lang=None,
+    too_short_fn=None,
 ) -> bool:
     """Tryb gościa: skróty (?d/.n/?12/?14 ...) i wzmianki @bot.
 
@@ -372,6 +390,14 @@ def handle_guest_now(
     mieszania tytułu z ``get_city_fn`` i opisu z innego źródła. Bez niego
     zostaje stara ścieżka (tytuł z ``get_city_fn``, opis z forward fallbacku)
     — wyłącznie dla kompatybilności wstecznej.
+
+    ``too_short_fn`` (opcjonalny, wstrzykiwany przez location_bot jako
+    ``_geocode_query_is_too_short``) — TA SAMA walidacja długości zapytania,
+    której używa geokoder komend. Skrót z argumentem wysyła ``search_loc``
+    dokładnie raz, PRZED cache/geokoderem; wyjątkiem jest TOO_SHORT, gdzie
+    użytkownik dostaje dotychczasowy komunikat walidacji, a nie pozorowane
+    wyszukiwanie. Guest handler nie kopiuje progu ani parsera — tylko pyta
+    callback.
     """
     
     text = (message.get("text") or "").strip()
@@ -477,7 +503,27 @@ def handle_guest_now(
                     prompt_city = "📍 Podaj nazwę miejscowości lub kod pocztowy."
                 send_reply_fn(chat_id, prompt_city)
             return True
-            
+
+        # --- KOMUNIKAT OCZEKIWANIA: SKRÓT Z ARGUMENTEM ---
+        # Ten sam ``search_loc``, który wysyła /teraz Warszawa i miasto wpisane
+        # po prompcie — i w tej samej kolejności: komunikat -> cache/geokoder
+        # -> generowanie -> zdjęcie.
+        #
+        # * DOKŁADNIE RAZ: wysyłka jest tutaj, PRZED cache'em, więc trafienie
+        #   w cache też daje jeden komunikat, a dwie próby geokodowania
+        #   (skrót ratunkowy do dwóch tokenów) nie dublują komunikatu.
+        # * TOO_SHORT nie udaje wyszukiwania: walidację długości rozstrzyga
+        #   wstrzyknięty callback (ta sama funkcja co w komendach), a zapytanie
+        #   dostaje dotychczasowy komunikat walidacji z dalszego przepływu.
+        # * Sama wzmianka @bot bez skrótu zachowuje się jak dotąd (bez
+        #   komunikatu), bo nowa gałąź wymaga ``is_shortcut``.
+        # * Grupa z dostępem też dostaje komunikat — gość jest wołany dopiero
+        #   po globalnym guardzie P7, więc brak dostępu pozostaje ciszą.
+        # * Pinezka z odpowiedzi (gałąź ``loc`` powyżej) nie wysyła go wcale.
+        if is_shortcut and not _query_is_too_short(query, too_short_fn):
+            from i18n import t_ui
+            send_reply_fn(chat_id, t_ui(user_lang, "search_loc"))
+
         try:
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)

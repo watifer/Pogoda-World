@@ -16,7 +16,9 @@ lokalizacja karty, NIE jest zmieniana i NIE jest zapisywana na nowo. Ścieżka
 /day, /now, /future ani _run_saved_profile_report() nie są w tym przepływie
 wołane.
 
-Skróty z argumentem (?d Warszawa) zachowują dotychczasową ścieżkę guest handlera.
+Skróty z argumentem (?d Warszawa) obsługuje nadal guest handler, ale przed
+wyszukaniem lokalizacji wysyłają dokładnie jeden search_loc — ten sam, który
+dostają komendy z miastem (/dzien Warszawa) i miasto wpisane po prompcie.
 
 Uruchomienie: pytest test_shortcut_no_argument.py -v
 """
@@ -492,7 +494,7 @@ class TestExistingAliases:
 
 
 # ============================================================================
-# 4. SKRÓTY Z ARGUMENTEM — ZACHOWANIE BEZ ZMIAN (GUEST HANDLER)
+# 4. SKRÓTY Z ARGUMENTEM — POZOSTAJĄ W GUEST HANDLERZE (JEDEN search_loc)
 # ============================================================================
 
 class TestShortcutWithArgument:
@@ -515,9 +517,9 @@ class TestShortcutWithArgument:
 
         assert guest_card.layouts == [card]
         assert guest_card.photos and guest_card.photos[0][0] == PRIVATE
-        # Żadnego prep_*, search_loc ani promptu; żadnego pending i żadnej
-        # karty jednorazowej ścieżki Users.
-        assert bot.replies_since(PRIVATE, before) == []
+        # Skrót z argumentem ma DOKŁADNIE JEDEN zapowiadający search_loc (ten
+        # sam co komendy), bez prep_*, promptu, pending i karty jednorazowej.
+        assert bot.replies_since(PRIVATE, before) == [SEARCH_LOC]
         assert bot.oneoffs == []
         assert str(PRIVATE) not in lb.PENDING_CITY
         assert bot.users.record(PRIVATE)["profile_status"] == "none"
@@ -532,7 +534,7 @@ class TestShortcutWithArgument:
 
         assert guest_card.layouts == ["future"]
         assert bot.users.record(PRIVATE) == record_before
-        assert bot.replies_since(PRIVATE, with_profile) == []
+        assert bot.replies_since(PRIVATE, with_profile) == [SEARCH_LOC]
         assert bot.oneoffs == []
         assert str(PRIVATE) not in lb.PENDING_CITY
 
@@ -921,7 +923,8 @@ class TestGroups:
 
         assert guest_card.layouts == ["now"]
         assert guest_card.photos and guest_card.photos[0][0] == GROUP
-        assert bot.replies_since(GROUP, before) == []
+        # Grupa z dostępem dostaje dokładnie jeden search_loc (bez prep_*).
+        assert bot.replies_since(GROUP, before) == [SEARCH_LOC]
         assert bot.oneoffs == []
 
 
@@ -990,7 +993,8 @@ class TestLegacyOnly:
         bot.run(bot.msg(LEGACY_WITH_LOC, "?d Warszawa"))
 
         assert guest_card.layouts == ["day"]
-        assert bot.replies_since(LEGACY_WITH_LOC, before) == []
+        # Legacy z argumentem: ten sam pojedynczy search_loc, nadal bez zapisu.
+        assert bot.replies_since(LEGACY_WITH_LOC, before) == [SEARCH_LOC]
         assert bot.oneoffs == []
         assert str(LEGACY_WITH_LOC) not in lb.PENDING_CITY
 
