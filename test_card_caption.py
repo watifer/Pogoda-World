@@ -399,8 +399,20 @@ def test_real_guest_keeps_hero_and_only_captions_full_description(
     if pin:
         update["message"]["reply_to_message"] = {"location": {"latitude": 52.15, "longitude": 21.29}}
     bot.run(update)
-    assert len(tg_posts) == 1
-    photo = _photo_posts(tg_posts)[0]["data"]
+    # Skrót z argumentem ma teraz DOKŁADNIE JEDEN komunikat search_loc PRZED
+    # kartą. Wzmianka @bot i pinezka pozostają bez tego komunikatu.
+    is_shortcut_with_arg = text.split()[0] in {"?d", "?12", "?14"}
+    photos_only = _photo_posts(tg_posts)
+    messages = [p for p in tg_posts if p["url"].endswith("/sendMessage")]
+    if is_shortcut_with_arg:
+        assert len(tg_posts) == 2, tg_posts
+        assert [m["data"]["text"] for m in messages] == [lb.t_ui("pl", "search_loc")]
+        assert tg_posts.index(messages[0]) < tg_posts.index(photos_only[0])
+    else:
+        assert len(tg_posts) == 1, tg_posts
+        assert messages == []
+    assert len(photos_only) == 1
+    photo = photos_only[0]["data"]
     if description:
         assert photo["caption"] == lb._guest_location_caption(description)
         assert photo["parse_mode"] == "HTML"

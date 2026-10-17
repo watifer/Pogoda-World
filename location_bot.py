@@ -4210,6 +4210,11 @@ def _main_bot_iteration(gc, offset):
                 # ETAP 1.1: skrót ratunkowy (pierwsze 2 tokeny) nie może zgubić
                 # jawnego kraju ani kodu pocztowego — decyduje helper z tego pliku.
                 shortening_ok_fn=geocode_shortening_is_safe,
+                # NOWE: TA SAMA walidacja długości, której używa geokoder
+                # komend. Guest pyta ją PRZED wysłaniem search_loc, żeby przy
+                # TOO_SHORT nie pozorować wyszukiwania (bez kopiowania progu
+                # i bez importu location_bot w guest handlerze).
+                too_short_fn=_geocode_query_is_too_short,
                 
                 build_payload_fn=lambda lat, lon, lang, c_type, city_name: build_payload_for_location(
                     lat=lat,
