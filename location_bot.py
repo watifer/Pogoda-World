@@ -1186,15 +1186,13 @@ def _oneoff_message(lang, key, **kwargs):
     return messages[key].format(**kwargs)
 
 
-def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
-    """Generuje kartę bez odczytu lub zapisu Formularz/Users.
+def _send_oneoff_report(
+    chat_id, lat, lon, city, lang, card_type, display_location=None
+) -> bool:
+    """Render using the short hero name; caption only the supplied full description.
 
-    POPRAWKA #1 (captions): karta leci jako SAM obrazek — bez podpisu (caption)
-    z nazwą lokalizacji. Dotąd pod zdjęciem pojawiał się dopisek identyczny z
-    tytułem karty (np. „Wiązowna”), bo nazwa miejscowości jest już wtopiona
-    w grafikę. Dotyczy to ścieżki Users (profil zapisany w arkuszu oraz karta
-    jednorazowa dla podanego miasta: /day, /now, /future). Tryb gościa
-    (.d/.n/.f, wzmianka @bot) ma własny send_photo_fn i pozostaje bez zmian.
+    Saved-profile callers omit display_location and continue sending bare cards.
+    No location data is read, geocoded or persisted here.
     """
     try:
         payload = _timed_call(
@@ -1216,9 +1214,7 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
         )
         if not image_path:
             return False
-        # POPRAWKA #1: zero captionu — sama karta (nazwa lokalizacji jest
-        # tytułem grafiki, więc podpis pod zdjęciem tylko ją dublował).
-        send_photo(chat_id, image_path, card_caption=False)
+        send_photo(chat_id, image_path, caption=_location_caption(display_location))
         return True
     except Exception as e:
         print(f"  ❌ [oneoff] Błąd generowania dla {chat_id}: {e}")
@@ -1228,7 +1224,7 @@ def _send_oneoff_report(chat_id, lat, lon, city, lang, card_type) -> bool:
 
 
 def _used_location_message(lang, short_label, display_location=None):
-    """Stopka one-off: krótka nazwa pozostaje osobna od display_location."""
+    """Compatibility formatter; report paths no longer send this message."""
     safe_display = _md_safe(display_location) or _md_safe(short_label)
     return t_ui(lang, "used_location", display_location=safe_display)
 
@@ -1275,7 +1271,7 @@ def _run_oneoff_report(
     chat_id, lat, lon, short_label, lang, source, card_type, display_location=None
 ):
     """One-off report: forecast coordinates and short card name stay separate
-    from the full, safe label shown in the confirmation message.
+    from the full, safe label shown in the photo caption.
 
     Nothing is persisted to Users or Formularz. The original coordinates are
     kept in RAM only for the existing hidden technical alias.
@@ -1285,15 +1281,12 @@ def _run_oneoff_report(
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
         return False
     if not _send_oneoff_report(
-        chat_id, lat, lon, pending["city"], pending["lang"], card_type
+        chat_id, lat, lon, pending["city"], pending["lang"], card_type,
+        display_location=display_location,
     ):
         PENDING_SAVE.pop(str(chat_id), None)
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
         return False
-    send_reply(
-        chat_id,
-        _used_location_message(pending["lang"], pending["city"], display_location),
-    )
     return True
 
 
@@ -1823,6 +1816,40 @@ def _md_safe(text):
             escaped.append("\\")
         escaped.append(char)
     return "".join(escaped)
+
+
+def _location_caption(display_location):
+    """Italic description for Telegram legacy Markdown, without a city fallback.
+
+    Legacy Markdown only permits escapes OUTSIDE entities. Close the italic
+    run before each reserved character, escape it with the existing helper,
+    then start a new run. Never emit an empty italic entity.
+    """
+    value = str(display_location or "").strip()
+    parts = []
+    run = []
+
+    def flush():
+        if run:
+            parts.append("_" + "".join(run) + "_")
+            run.clear()
+
+    for char in value:
+        if char in "\\_*`[":
+            flush()
+            parts.append(_md_safe(char))
+        else:
+            run.append(char)
+    flush()
+    return "".join(parts)
+
+
+def _guest_location_caption(display_location):
+    """Guest captions retain HTML, but contain no duplicated hero title."""
+    from html import escape
+
+    value = str(display_location or "").strip()
+    return "<i>" + escape(value) + "</i>" if value else ""
 
 
 def _no_access_parts(lang):
@@ -3936,13 +3963,7 @@ def send_reply(chat_id, text, reply_markup=None):
         
         
 def send_photo(chat_id, photo_path, caption=None, parse_mode="Markdown", card_caption=True):
-    """Bezpośredni wysyłacz kart graficznych PNG dla trybu gościa i nie tylko.
-
-    POPRAWKA #1: ``card_caption=False`` wysyła SAMĄ kartę — bez podpisu
-    (caption) pod zdjęciem. Ścieżka Users (/day, /now, /future) korzysta z tego
-    trybu w ``_send_oneoff_report``; tryb gościa wysyła kartę z adresem, więc
-    dla niego parametr pozostaje domyślnie włączony.
-    """
+    """Send a photo, optionally with a caption in the caller's parse mode."""
     try:
         with open(photo_path, "rb") as photo:
             payload = {"chat_id": chat_id}
@@ -4212,7 +4233,7 @@ def _main_bot_iteration(gc, offset):
                 send_photo_fn=lambda c_id, path, city_name, f_address: send_photo(
                     c_id, 
                     path, 
-                    caption=f"<b>{str(city_name).replace('<', '').replace('>', '')}</b>\n<i>{str(f_address).replace('<', '').replace('>', '')}</i>" if f_address else f"<b>{str(city_name).replace('<', '').replace('>', '')}</b>", 
+                    caption=_guest_location_caption(f_address),
                     parse_mode="HTML"
                 ),
                 send_reply_fn=lambda c_id, txt: send_reply(c_id, txt),
@@ -4883,7 +4904,7 @@ def _main_bot_iteration(gc, offset):
                 print(f"  📍 Znaleziono po nazwie: {city_query} -> {lat}, {lon}")
 
                 # PR2 UX cleanup: KONTEKST decyduje, co robimy z wpisaną miejscowością.
-                #   oneoff_*      -> karta jednorazowa + stopka "użyta lokalizacja"
+                #   oneoff_*      -> karta jednorazowa z opisem lokalizacji w caption
                 #   save_profile  -> świadomy zapis profilu w Users, BEZ karty
                 # Legacy-only (brak wiersza w Users) zachowuje dotychczasowy zapis
                 # do Formularz — bez migracji i bez zmiany schedulera.

@@ -2562,8 +2562,7 @@ def test_guest_caption_does_not_mix_resolver_title_with_forward_subtitle():
     )
     _chat, title, subtitle = photos[0]
     assert title == "Resolver Short"
-    assert subtitle == "Resolver Short"
-    assert "Forward" not in subtitle
+    assert subtitle is None  # No caption fallback to the hero name.
 
 
 def test_guest_caption_get_city_fn_never_feeds_the_title_when_resolver_exists():
