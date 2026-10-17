@@ -292,7 +292,7 @@ def test_all_oneoff_call_sites_send_description_on_same_photo(monkeypatch, tg_po
     import copy
     from test_access_gate import BotHarness, LEGACY_ROW, freeze_local_hour
 
-    bot = BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW])
+    bot = BotHarness(monkeypatch, seed_profiles=[LEGACY_ROW])
     freeze_local_hour(monkeypatch, 10, 0)
     cid = 700 if flow == "legacy_shortcut" else CHAT_ID
     if cid != 700:

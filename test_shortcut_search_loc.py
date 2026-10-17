@@ -99,7 +99,7 @@ class CardRecorder:
 def bot(monkeypatch):
     """Harness z PRAWDZIWYM guest_bot_handler pod cienkim spy."""
     harness = BotHarness(monkeypatch,
-                         formularz_rows=[LEGACY_ROW, LEGACY_NO_LOC_ROW])
+                         seed_profiles=[LEGACY_ROW, LEGACY_NO_LOC_ROW])
     real_calls = []
 
     def real_guest_handler(**kwargs):
@@ -109,12 +109,7 @@ def bot(monkeypatch):
     monkeypatch.setattr(lb, "handle_guest_now", real_guest_handler)
     harness.real_guest_calls = real_calls
 
-    writes = []
-    monkeypatch.setattr(
-        lb, "_form_update_cell",
-        lambda main_sheet, row, col, value: writes.append((row, col, value)),
-    )
-    harness.form_writes = writes
+    harness.form_writes = harness.gc.formularz.operations
 
     # Cache gościa jest globalny — każdy test zaczyna od czystego stanu.
     monkeypatch.setattr(gbh, "_GEO_CACHE", {})
@@ -352,16 +347,16 @@ def test_effective_lang_beats_telegram_language(bot, monkeypatch, guest_card,
     assert geocoder.calls[0]["lang"] == "pl"
 
 
-def test_legacy_language_drives_the_message_without_users_record(
+def test_migrated_users_language_drives_the_message(
     bot, monkeypatch, guest_card, geocoder, resolver
 ):
-    """Legacy wiersz (pl) wygrywa z językiem Telegrama (de)."""
+    """Users.lang (pl) wygrywa z językiem Telegrama (de)."""
     freeze_local_hour(monkeypatch, 10, 0)
     before = len(bot.sent)
 
     bot.run(bot.msg(LEGACY_WITH_LOC, "?12 Warszawa", lang="de"))
 
-    assert bot.users.record(LEGACY_WITH_LOC) is None
+    assert bot.users.record(LEGACY_WITH_LOC)["profile_status"] == "active"
     assert _messages_since(bot, LEGACY_WITH_LOC, before) == [_search_loc("pl")]
     assert bot.form_writes == []
     assert guest_card.photos
@@ -444,7 +439,7 @@ def test_without_profile_message_is_sent_and_nothing_is_saved(
     assert bot.oneoffs == []
 
 
-def test_legacy_user_gets_message_and_no_formularz_write(
+def test_migrated_user_gets_message_and_no_formularz_write(
     bot, monkeypatch, guest_card, geocoder, resolver
 ):
     freeze_local_hour(monkeypatch, 10, 0)
@@ -454,7 +449,7 @@ def test_legacy_user_gets_message_and_no_formularz_write(
 
     assert _messages_since(bot, LEGACY_WITH_LOC, before) == [_search_loc("pl")]
     assert guest_card.photos and guest_card.photos[0][0] == LEGACY_WITH_LOC
-    assert bot.users.record(LEGACY_WITH_LOC) is None
+    assert bot.users.record(LEGACY_WITH_LOC)["profile_status"] == "active"
     assert bot.form_writes == []
 
 

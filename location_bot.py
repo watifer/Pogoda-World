@@ -7,8 +7,6 @@ import tempfile
 from urllib.parse import parse_qs, urlsplit
 import requests
 import gspread
-from gspread.utils import numericise_all
-import main_card
 from i18n import (
     t_ui,
     t_geocode,
@@ -24,7 +22,7 @@ from i18n import (
 )
 from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
-from main_card import _parse_users, _send_card_to_user, wirtualne_scalanie, DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
+from main_card import DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
 from geopy.geocoders import Nominatim
 from guest_bot_handler import handle_guest_now, resolve_shortcut, iter_shortcut_keys
 from prepare_now_layout import prepare_now_layout_data
@@ -40,8 +38,6 @@ load_dotenv()
 # WYŁĄCZONA (patrz _is_master_token). Nigdy nie akceptujemy wartości zgadywalnej.
 MASTER_TOKEN = os.environ.get("MASTER_TOKEN", "").strip()
 import time
-
-
 
 
 # =====================================================================
@@ -177,8 +173,6 @@ COMMAND_ALIASES = {
 }
 
 
-
-
 # ==============================================================
 # WŁASNE FUNKCJE POMOCNICZE (Zamiast importu z main)
 # ==============================================================
@@ -243,22 +237,10 @@ def _max_users() -> int:
     return value
 
 
-def _active_seats_count(users_map, clean_users) -> int:
-    """Liczba zajętych miejsc.
-
-    - Źródłem prawdy jest Users: liczymy wyłącznie wiersze z effective_access_allowed
-      (blocked / revoked / wygasłe / bez granted nie zajmują miejsca).
-    - Użytkownik legacy bez wiersza w Users (Formularz) ma dostęp domniemany
-      (fallback _chat_has_access), więc też zajmuje miejsce. Jeśli wiersz Users
-      istnieje, Users rozstrzyga i Formularz nie jest liczony drugi raz.
-    """
-    users_map = users_map or {}
-    seats = sum(1 for row in users_map.values() if users_store.effective_access_allowed(row))
-    for legacy in clean_users or ():
-        cid = users_store.norm_chat_id(legacy.get("Chat ID", ""))
-        if cid and cid not in users_map:
-            seats += 1
-    return seats
+def _active_seats_count(users_map) -> int:
+    """Count effective Users access, including each group's own record."""
+    return sum(1 for row in (users_map or {}).values()
+               if users_store.effective_access_allowed(row))
 
 
 def _is_master_token(token) -> bool:
@@ -284,7 +266,7 @@ def _registration_block_key(reason: str) -> str:
     return "registration_closed" if reason == "closed" else "limit_reached"
 
 
-def _registration_closed_reason(token, users_map, clean_users) -> str:
+def _registration_closed_reason(token, users_map) -> str:
     """CENTRALNA bramka nowych rejestracji.
 
     Zwraca "" gdy nowa rejestracja jest dozwolona, w przeciwnym razie "closed"
@@ -299,12 +281,12 @@ def _registration_closed_reason(token, users_map, clean_users) -> str:
         return ""
     if not _registration_enabled():
         return "closed"
-    if _active_seats_count(users_map, clean_users) >= _max_users():
+    if _active_seats_count(users_map) >= _max_users():
         return "full"
     return ""
 
 
-def _validate_access_token(token: str, clean_users, users_map) -> tuple:
+def _validate_access_token(token: str, users_map) -> tuple:
     """
     Waliduje token zaproszenia/dostępu (istniejący mechanizm P7):
     - MASTER_TOKEN (admin/dev)
@@ -334,10 +316,7 @@ def _validate_access_token(token: str, clean_users, users_map) -> tuple:
     except Exception:
         referrer_id = clean_token
 
-    is_referral = (
-        any(str(u.get("Chat ID", "")).strip() == str(referrer_id) for u in (clean_users or ()))
-        or users_store.has_access_in_map(users_map, referrer_id)
-    )
+    is_referral = users_store.has_access_in_map(users_map, referrer_id)
     if is_referral:
         return True, "referral"
 
@@ -444,32 +423,9 @@ def _norm_lang(raw):
     return None
 
 
-def _legacy_user_row(clean_users, chat_id):
-    """Wiersz legacy z zakładki Formularz dla chat_id (albo None)."""
-    for u in clean_users or ():
-        if str(u.get("Chat ID", "")).strip() == str(chat_id):
-            return u
-    return None
-
-
-def _effective_lang(message, chat_id, users_map=None, legacy_row=None):
-    """JEDNO źródło języka tekstów i etykiet (komendy, prompty, guest, WebApp).
-
-    Priorytet: 1) Users.lang tego chat_id (także grupy — własny rekord grupy,
-    nigdy język prywatnego użytkownika); 2) legacy wiersz Formularz (tylko gdy
-    brak rekordu Users); 3) Telegram ``message.from.language_code``; 4) en.
-
-    Users.lang wygrywa nawet wtedy, gdy różni się od języka Telegrama. Język
-    interfejsu NIE służy do wnioskowania kraju — to wyłącznie wybór tekstów.
-    """
-    lang = users_store.get_lang(users_map, chat_id)
-    if lang:
-        return lang
-    if legacy_row:
-        lang = _norm_lang(legacy_row.get("Lang", legacy_row.get("Język", "")))
-        if lang:
-            return lang
-    return get_user_lang(message)
+def _effective_lang(message, chat_id, users_map=None):
+    """Users language for this chat (not the group author), then Telegram/en."""
+    return users_store.get_lang(users_map, chat_id) or get_user_lang(message)
 
 
 def _is_guest_trigger(text, bot_username):
@@ -535,35 +491,14 @@ def _shortcut_without_argument_ctx(message):
     return SHORTCUT_NO_ARG_CONTEXTS.get(card_type)
 
 
-def _chat_has_access(users_map, clean_users, chat_id, now=None) -> bool:
-    """
-    Bramka dostępu (P7 Gatekeeper):
-    - Jeśli istnieje wiersz w Users — rozstrzyga effective_access_allowed
-      (granted, nie blocked_at, nie wygasło; blocked/revoked/expired = brak dostępu, nawet przy wierszu legacy).
-    - Jeśli NIE ma wiersza w Users (użytkownik legacy sprzed migracji) — dostęp
-      implikuje wiersz w Formularz (BLOCKED_ jest już odfiltrowany przez
-      wirtualne_scalanie, więc zablokowani legacy dostępu nie mają).
-    """
-    u = (users_map or {}).get(users_store.norm_chat_id(chat_id))
-    if u:
-        return users_store.effective_access_allowed(u, now=now)
-    return any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in (clean_users or ()))
+def _chat_has_access(users_map, chat_id, now=None) -> bool:
+    """P7 access from Users only; no implicit access outside the registry."""
+    return users_store.has_access_in_map(users_map, chat_id, now=now)
 
 
 # ==============================================================
 # PR2 — RAPORTY JEDNORAZOWE I ŚWIADOMY ZAPIS PROFILU
 # ==============================================================
-def _is_legacy_only_user(users_map, clean_users, chat_id) -> bool:
-    """True tylko dla starego użytkownika z Formularz, bez rekordu w Users.
-
-    To rozróżnienie jest ważne: PR2 nie migruje legacy ani nie zmienia jego
-    istniejącego przepływu. Nowy przepływ one-off/PENDING_SAVE dotyczy rekordów
-    zarządzanych przez Users.
-    """
-    cid = users_store.norm_chat_id(chat_id)
-    has_users_record = cid in (users_map or {})
-    has_legacy_record = any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in clean_users)
-    return has_legacy_record and not has_users_record
 
 
 def _split_command(text, commands):
@@ -1229,7 +1164,6 @@ def _used_location_message(lang, short_label, display_location=None):
     return t_ui(lang, "used_location", display_location=safe_display)
 
 
-
 def _day_window_blocked_for_tz(chat_id, lang, tz_name) -> bool:
     """Stare ograniczenie czasowe karty dziennej: 05:00-15:59 czasu lokalnego.
 
@@ -1273,7 +1207,7 @@ def _run_oneoff_report(
     """One-off report: forecast coordinates and short card name stay separate
     from the full, safe label shown in the photo caption.
 
-    Nothing is persisted to Users or Formularz. The original coordinates are
+    Nothing is persisted to Users. The original coordinates are
     kept in RAM only for the existing hidden technical alias.
     """
     pending = _put_pending_save(chat_id, lat, lon, short_label, lang, source)
@@ -1357,35 +1291,10 @@ def _run_city_oneoff(chat_id, city_query, lang, card_type):
     )
 
 
-def _current_location_label(chat_id, lang, users_map, clean_users):
-    """Obecna lokalizacja do wyświetlenia w /miasto (albo None, gdy brak).
-
-    Kolejność: profil Users -> legacy Formularz (etykieta, a dopiero potem
-    reverse geokodowanie współrzędnych). Bez lokalizacji = None, dzięki czemu
-    /miasto pokazuje "brak" zamiast technicznego "Nieznana miejscowość".
-    """
+def _current_location_label(chat_id, lang, users_map):
+    """Saved Users location for /miasto, or None when no active profile exists."""
     profile = _saved_users_profile(users_map, chat_id)
-    if profile and str(profile.get("city", "")).strip():
-        return str(profile["city"]).strip()
-
-    for x in clean_users or []:
-        if str(x.get("Chat ID", "")).strip() != str(chat_id):
-            continue
-        label = str(x.get("Miasto", "")).strip()
-        if label:
-            return label
-        lat = str(x.get("Lat", "")).strip().replace(",", ".")
-        lon = str(x.get("Lon", "")).strip().replace(",", ".")
-        if lat and lon:
-            try:
-                city = get_city_from_coords(lat, lon, lang)
-            except Exception as e:
-                print(f"  ⚠️ [city] Reverse geokodowanie nieudane: {e}")
-                return None
-            if city and not any(ch.isdigit() for ch in str(city)) and not str(city).startswith("Lokalizacja"):
-                return str(city)
-        return None
-    return None
+    return profile["city"] if profile else None
 
 
 def _save_profile_from_location(
@@ -1448,15 +1357,11 @@ def _save_profile_from_location(
 # KOMENDY PRYWATNOŚCI (RODO) — PR1
 # Dostępne dla KAŻDEGO (także bez access i bez wiersza w bazie).
 # ==============================================================
-def _resolve_privacy_lang(message, chat_id, users_map, clean_users):
-    """Język dla komend prywatności: Users -> Formularz (legacy) -> Telegram."""
-    return _effective_lang(
-        message, chat_id, users_map,
-        legacy_row=_legacy_user_row(clean_users, chat_id),
-    )
+def _resolve_privacy_lang(message, chat_id, users_map):
+    return _effective_lang(message, chat_id, users_map)
 
 
-def _handle_privacy(chat_id, cmd, lang, users_ws, main_sheet, users_map, clean_users):
+def _handle_privacy(chat_id, cmd, lang, users_ws, users_map):
     """Router komend prywatności.
 
     /privacy (/priv), /my_data (/dane), /forget_location (/bezGPS) oraz
@@ -1473,36 +1378,25 @@ def _handle_privacy(chat_id, cmd, lang, users_ws, main_sheet, users_map, clean_u
         ))
 
     elif cmd == "/my_data":
-        _handle_my_data(chat_id, lang, users_map, clean_users)
+        _handle_my_data(chat_id, lang, users_map)
 
     elif cmd == "/forget_location":
-        _handle_forget_location(chat_id, lang, users_ws, main_sheet, users_map, clean_users)
+        _handle_forget_location(chat_id, lang, users_ws, users_map)
 
     elif cmd in ("/delete_me", "/delete_confirm"):
         _ask_delete_confirmation(chat_id, lang)
 
 
-def _has_saved_location(chat_id, users_map, clean_users) -> bool:
-    """True, gdy użytkownik ma JAKĄKOLWIEK zapisaną lokalizację (Users lub legacy)."""
+def _has_saved_location(chat_id, users_map) -> bool:
+    """Check the existing Users profile fields for the /bezGPS response."""
     u = (users_map or {}).get(users_store.norm_chat_id(chat_id)) or {}
-    if str(u.get("profile_status", "")).strip().lower() == "active":
-        return True
-    if str(u.get("lat_round", "")).strip() or str(u.get("location_label", "")).strip():
-        return True
-    for x in clean_users or []:
-        if str(x.get("Chat ID", "")).strip() != str(chat_id):
-            continue
-        if (str(x.get("Lat", "")).strip() or str(x.get("Lon", "")).strip()
-                or str(x.get("Miasto", "")).strip()):
-            return True
-    return False
+    return (str(u.get("profile_status", "")).strip().lower() == "active"
+            or any(str(u.get(field, "")).strip()
+                   for field in ("lat_round", "location_label")))
 
 
-def _has_any_record(chat_id, users_map, clean_users) -> bool:
-    """True, gdy czat ma JAKIKOLWIEK rekord (wiersz Users albo legacy Formularz)."""
-    if users_store.norm_chat_id(chat_id) in (users_map or {}):
-        return True
-    return any(str(x.get("Chat ID", "")).strip() == str(chat_id) for x in clean_users or [])
+def _has_any_record(chat_id, users_map) -> bool:
+    return users_store.norm_chat_id(chat_id) in (users_map or {})
 
 
 def _my_data_timestamp(lat, lon):
@@ -1529,7 +1423,7 @@ def _my_data_timestamp(lat, lon):
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _handle_my_data(chat_id, lang, users_map, clean_users):
+def _handle_my_data(chat_id, lang, users_map):
     """/dane (/my_data) — uproszczony panel danych.
 
     Bez nicka i bez technicznych szczegółów źródła: ID Telegrama, dostęp,
@@ -1537,9 +1431,8 @@ def _handle_my_data(chat_id, lang, users_map, clean_users):
     liniach, żeby były klikalne na telefonie.
     """
     u = (users_map or {}).get(users_store.norm_chat_id(chat_id))
-    legacy = next((x for x in clean_users if str(x.get("Chat ID", "")).strip() == str(chat_id)), None)
 
-    if not u and not legacy:
+    if not u:
         send_reply(chat_id, t_ui(lang, "no_data"))
         return
 
@@ -1550,19 +1443,13 @@ def _handle_my_data(chat_id, lang, users_map, clean_users):
             access_txt = t_ui(lang, "my_access_granted")
         else:
             access_txt = t_ui(lang, "my_access_denied", status=status or "—")
-    else:
-        access_txt = t_ui(lang, "my_access_legacy")
 
-    # --- Zapisana lokalizacja (Users, a do czasu migracji także legacy Formularz) ---
+    # --- Zapisana lokalizacja (Users) ---
     label = lat = lon = ""
     if u:
         label = str(u.get("location_label", "")).strip()
         lat = str(u.get("lat_round", "")).strip().replace(",", ".")
         lon = str(u.get("lon_round", "")).strip().replace(",", ".")
-    if not (lat and lon) and legacy:
-        label = label or str(legacy.get("Miasto", "")).strip()
-        lat = str(legacy.get("Lat", "")).strip().replace(",", ".")
-        lon = str(legacy.get("Lon", "")).strip().replace(",", ".")
 
     has_location = bool(lat and lon)
     if has_location:
@@ -1582,7 +1469,7 @@ def _handle_my_data(chat_id, lang, users_map, clean_users):
     ))
 
 
-def _handle_forget_location(chat_id, lang, users_ws, main_sheet, users_map=None, clean_users=None):
+def _handle_forget_location(chat_id, lang, users_ws, users_map=None):
     """/bezGPS (/forget_location) — czyści TYLKO lokalizację. Access zostaje.
 
     Komunikat zależy od stanu SPRZED czyszczenia: nie wolno napisać "usunąłem",
@@ -1590,8 +1477,8 @@ def _handle_forget_location(chat_id, lang, users_ws, main_sheet, users_map=None,
     idempotentne i wykonuje się zawsze — także po to, żeby nie zostawić
     półpustych pól profilu.
     """
-    had_location = _has_saved_location(chat_id, users_map, clean_users)
-    has_record = _has_any_record(chat_id, users_map, clean_users)
+    had_location = _has_saved_location(chat_id, users_map)
+    has_record = _has_any_record(chat_id, users_map)
 
     # Nie pozwalamy, aby lokalizacja właśnie zapomniana wciąż czekała w RAM.
     PENDING_SAVE.pop(str(chat_id), None)
@@ -1611,9 +1498,7 @@ def _handle_forget_location(chat_id, lang, users_ws, main_sheet, users_map=None,
             user_entry["profile_updated_at"] = cleared_at
         _cache_users_map(users_map or {})
 
-    cleared_legacy = _clear_legacy_location(main_sheet, chat_id)
-    _invalidate_form_snapshot()
-    if not had_location and (cleared_users or cleared_legacy):
+    if not had_location and cleared_users:
         print(f"  🧹 [forget_location] {chat_id}: czyszczenie prewencyjne (brak widocznej lokalizacji)")
 
     if had_location:
@@ -1634,7 +1519,7 @@ def _ask_delete_confirmation(chat_id, lang):
     send_reply(chat_id, t_ui(lang, "delete_confirm"), reply_markup=_delete_confirm_markup(lang))
 
 
-def _handle_delete_answer(chat_id, cmd, text, lang, users_ws, main_sheet) -> bool:
+def _handle_delete_answer(chat_id, cmd, text, lang, users_ws) -> bool:
     """Krok 2: odpowiedź na pytanie o usunięcie danych.
 
     Zwraca True, gdy wiadomość została skonsumowana (przycisk "Tak, chcę" /
@@ -1662,14 +1547,14 @@ def _handle_delete_answer(chat_id, cmd, text, lang, users_ws, main_sheet) -> boo
 
     PENDING_DELETE.pop(str(chat_id), None)
     if confirmed:
-        _handle_delete_me(chat_id, lang, users_ws, main_sheet)
+        _handle_delete_me(chat_id, lang, users_ws)
     else:
         send_reply(chat_id, t_ui(lang, "delete_cancelled"), reply_markup={"remove_keyboard": True})
     return True
 
 
-def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
-    """HARD DELETE: wiersz w Users + wszystkie wiersze legacy + stany RAM.
+def _handle_delete_me(chat_id, lang, users_ws):
+    """HARD DELETE: wiersz Users i stany RAM.
 
     Wywoływane WYŁĄCZNIE po potwierdzeniu ("Tak, chcę" / /potwierdzusun).
     POPRAWKA #7: po skutecznej kasacji idą DOKŁADNIE dwa komunikaty — zaraz po
@@ -1683,7 +1568,6 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
         users_store.delete_user_row,
         users_ws, chat_id,
     )
-    legacy_deleted = _delete_legacy_rows(main_sheet, chat_id)
     if users_deleted:
         _invalidate_users_snapshot()
 
@@ -1693,7 +1577,7 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
     PENDING_DELETE.pop(str(chat_id), None)
 
     remove_keyboard = {"remove_keyboard": True}
-    if users_deleted or legacy_deleted:
+    if users_deleted:
         send_reply(chat_id, t_ui(lang, "delete_me_done"), reply_markup=remove_keyboard)
         # POPRAWKA #7: drugi, osobny komunikat po krótkiej pauzie — pokazuje, że
         # razem z danymi zniknął dostęp i że powrót wymaga ponownego zaproszenia.
@@ -1704,79 +1588,6 @@ def _handle_delete_me(chat_id, lang, users_ws, main_sheet):
         send_reply(chat_id, no_access_text, reply_markup=no_access_markup)
     else:
         send_reply(chat_id, t_ui(lang, "no_data"), reply_markup=remove_keyboard)
-
-
-def _clear_legacy_location(main_sheet, chat_id):
-    """
-    Czyści kolumny Lat/Lon/Miasto we wszystkich wierszach legacy (Formularz)
-    dla danego chat_id — jeden batch update_cells. Zwraca True, gdy coś wyczyszczono.
-    """
-    try:
-        headers = [
-            str(h).strip()
-            for h in _sheets_call(
-                "sheets.formularz.read_headers", main_sheet.row_values, 1
-            )
-        ]
-        col_lat = headers.index("Lat") + 1 if "Lat" in headers else None
-        col_lon = headers.index("Lon") + 1 if "Lon" in headers else None
-        col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
-
-        col_values = _sheets_call(
-            "sheets.formularz.read_chat_ids", main_sheet.col_values, 2
-        )
-        cells = []
-        for i, val in enumerate(col_values):
-            if str(val).strip() == str(chat_id):
-                row = i + 1
-                if col_lat:
-                    cells.append(gspread.Cell(row=row, col=col_lat, value=""))
-                if col_lon:
-                    cells.append(gspread.Cell(row=row, col=col_lon, value=""))
-                if col_miasto:
-                    cells.append(gspread.Cell(row=row, col=col_miasto, value=""))
-
-        if cells:
-            _sheets_call("sheets.formularz.write_cells", main_sheet.update_cells, cells)
-            _invalidate_form_snapshot()
-            rows = len({c.row for c in cells})
-            print(f"  🧹 [forget_location] Wyczyszczono lokalizację w {rows} wierszach legacy (Formularz) dla {chat_id}.")
-            return True
-        return False
-    except Exception as e:
-        _raise_if_sheets_429(e)
-        print(f"  ❌ [forget_location] Błąd czyszczenia legacy: {e}")
-        alert_admin(f"❌ /forget_location ({chat_id}): błąd czyszczenia Formularz: {e}")
-        return False
-
-
-def _delete_legacy_rows(main_sheet, chat_id):
-    """
-    Usuwa WSZYSTKIE wiersze użytkownika w Formularz (również z prefixem BLOCKED_)
-    przez delete_rows — numery wierszy zbieramy i kasujemy OD KOŃCA, żeby
-    indeksy nie rozjechały się w trakcie usuwania. Zwraca liczbę usuniętych wierszy.
-    """
-    try:
-        col_values = _sheets_call(
-            "sheets.formularz.read_chat_ids", main_sheet.col_values, 2
-        )
-        cid = str(chat_id)
-        targets = [
-            i + 1 for i, val in enumerate(col_values)
-            if str(val).strip() in (cid, f"BLOCKED_{cid}")
-        ]
-        for row in sorted(targets, reverse=True):
-            _sheets_call("sheets.formularz.delete_row", main_sheet.delete_rows, row)
-            _invalidate_form_snapshot()
-        if targets:
-            print(f"  🗑 [delete_me] Usunięto {len(targets)} wierszy legacy (Formularz) dla {chat_id}.")
-        return len(targets)
-    except Exception as e:
-        _raise_if_sheets_429(e)
-        print(f"  ❌ [delete_me] Błąd usuwania wierszy legacy: {e}")
-        alert_admin(f"❌ /delete_me ({chat_id}): błąd usuwania wierszy Formularz: {e}")
-        return 0
-
 
 
 # ============================================================================
@@ -3555,10 +3366,6 @@ _SHEETS_SUCCESSFUL_CALLS = 0
 _SHEETS_BACKOFF_ATTEMPTS = 0
 _GOOGLE_CLIENT = None
 _POLL_RUNTIME = {"client": None, "offset": None}
-_FORM_SNAPSHOT = {
-    "client": None, "loaded_at": 0.0, "worksheet": None,
-    "users_records": [], "headers": [], "clean_users": [],
-}
 _USERS_SNAPSHOT = {
     "client": None, "loaded_at": 0.0, "worksheet": None, "users_map": {},
 }
@@ -3701,14 +3508,10 @@ def get_google_client():
 
 
 def _reset_runtime_for_client(gc):
-    global _POLL_RUNTIME, _FORM_SNAPSHOT, _USERS_SNAPSHOT
+    global _POLL_RUNTIME, _USERS_SNAPSHOT
     if _POLL_RUNTIME["client"] is gc:
         return
     _POLL_RUNTIME = {"client": gc, "offset": None}
-    _FORM_SNAPSHOT = {
-        "client": gc, "loaded_at": 0.0, "worksheet": None,
-        "users_records": [], "headers": [], "clean_users": [],
-    }
     _USERS_SNAPSHOT = {
         "client": gc, "loaded_at": 0.0, "worksheet": None, "users_map": {},
     }
@@ -3716,13 +3519,9 @@ def _reset_runtime_for_client(gc):
 
 def _reset_polling_state(clear_client=False):
     """Internal reset hook for isolated tests and controlled process reinitialization."""
-    global _POLL_RUNTIME, _FORM_SNAPSHOT, _USERS_SNAPSHOT
+    global _POLL_RUNTIME, _USERS_SNAPSHOT
     global _SHEETS_BACKOFF_ATTEMPTS, _SHEETS_SUCCESSFUL_CALLS, _GOOGLE_CLIENT
     _POLL_RUNTIME = {"client": None, "offset": None}
-    _FORM_SNAPSHOT = {
-        "client": None, "loaded_at": 0.0, "worksheet": None,
-        "users_records": [], "headers": [], "clean_users": [],
-    }
     _USERS_SNAPSHOT = {
         "client": None, "loaded_at": 0.0, "worksheet": None, "users_map": {},
     }
@@ -3780,49 +3579,6 @@ def _snapshot_fresh(snapshot, gc):
     )
 
 
-def _load_form_snapshot(gc):
-    global _FORM_SNAPSHOT
-    _reset_runtime_for_client(gc)
-    if _snapshot_fresh(_FORM_SNAPSHOT, gc):
-        return _FORM_SNAPSHOT
-
-    worksheet = _FORM_SNAPSHOT.get("worksheet")
-    if worksheet is None:
-        worksheet = _sheets_call(
-            "sheets.formularz.open",
-            lambda: gc.open("Pogoda_Users").worksheet("Formularz"),
-        )
-    _FORM_SNAPSHOT["client"] = gc
-    _FORM_SNAPSHOT["worksheet"] = worksheet
-    values = _sheets_call(
-        "sheets.formularz.read",
-        worksheet.get_all_values,
-        value_render_option="UNFORMATTED_VALUE",
-    )
-    if not values:
-        raw_headers = []
-        users_records = []
-    else:
-        raw_headers = list(values[0])
-        if len(raw_headers) != len(set(raw_headers)):
-            # Keep the former get_all_records duplicate-header safeguard.
-            raise ValueError("Duplicate headers in Formularz")
-        users_records = [
-            dict(zip(raw_headers, numericise_all(row))) for row in values[1:]
-        ]
-    headers = [str(header).strip() for header in raw_headers]
-    clean_users = wirtualne_scalanie(users_records)
-    _FORM_SNAPSHOT = {
-        "client": gc,
-        "loaded_at": time.monotonic(),
-        "worksheet": worksheet,
-        "users_records": users_records,
-        "headers": headers,
-        "clean_users": clean_users,
-    }
-    return _FORM_SNAPSHOT
-
-
 def _load_users_snapshot(gc):
     global _USERS_SNAPSHOT
     _reset_runtime_for_client(gc)
@@ -3846,77 +3602,15 @@ def _load_users_snapshot(gc):
     return _USERS_SNAPSHOT
 
 
-def _load_future_users_from_sheet(gc):
-    """Strict, timed version of main_card's legacy loader for /future.
-
-    Preserve its configured spreadsheet/tab fallback order, but let 429 escape
-    immediately instead of silently trying another Sheets read in this poll.
-    """
-    sheet = None
-    sheet_id = getattr(main_card, "SHEET_ID", "")
-    sheet_name = getattr(main_card, "SHEET_NAME", "Pogoda_Users")
-    tab_from_env = getattr(main_card, "SHEET_TAB_ENV", "")
-
-    if sheet_id:
-        try:
-            sheet = _sheets_call(
-                "sheets.legacy_future.open_by_key", gc.open_by_key, sheet_id
-            )
-        except Exception as exc:
-            _raise_if_sheets_429(exc)
-            print(f"[Google Sheets] Fallback: Nie udało się otworzyć po ID ({exc})")
-
-    if not sheet:
-        sheet = _sheets_call("sheets.legacy_future.open", gc.open, sheet_name)
-
-    tab_candidates = ([tab_from_env] if tab_from_env else []) + [
-        "Formularz", "Form_Responses4", "Arkusz1", "Sheet1"
-    ]
-    worksheet = None
-    errors = []
-    for tab in tab_candidates:
-        try:
-            worksheet = _sheets_call(
-                "sheets.legacy_future.open_tab", sheet.worksheet, tab
-            )
-            break
-        except gspread.exceptions.WorksheetNotFound:
-            errors.append(tab)
-
-    if worksheet is None:
-        raise RuntimeError(f"Krytyczny błąd: Brak zakładek. Odrzucone: {', '.join(errors)}")
-
-    values = _sheets_call(
-        "sheets.legacy_future.read", worksheet.get_values, "A1:Z"
-    )
-    if not values:
-        return []
-
-    headers = values[0]
-    return [
-        dict(zip(headers, list(row) + [""] * max(0, len(headers) - len(row))))
-        for row in values[1:]
-    ]
-
-
 def _cache_users_map(users_map):
     if _USERS_SNAPSHOT.get("client") is _POLL_RUNTIME.get("client"):
         _USERS_SNAPSHOT["users_map"] = users_map
         _USERS_SNAPSHOT["loaded_at"] = time.monotonic()
 
 
-def _invalidate_form_snapshot():
-    _FORM_SNAPSHOT["loaded_at"] = 0.0
-
-
 def _invalidate_users_snapshot():
     _USERS_SNAPSHOT["loaded_at"] = 0.0
 
-
-def _form_update_cell(main_sheet, row, col, value):
-    result = _sheets_call("sheets.formularz.write_cell", main_sheet.update_cell, row, col, value)
-    _invalidate_form_snapshot()
-    return result
 
 def send_reply(chat_id, text, reply_markup=None):
     payload = {
@@ -3956,7 +3650,6 @@ def send_reply(chat_id, text, reply_markup=None):
                 )
             finally:
                 _invalidate_users_snapshot()
-                _invalidate_form_snapshot()
             
     except requests.exceptions.RequestException as e:
         print(f"⚠️ Błąd sieci podczas wysyłania wiadomości (Timeout/DNS): {e}")
@@ -4003,14 +3696,8 @@ def _main_bot_iteration(gc, offset):
     updates = data["result"]
     print(f"  📬 Pobrano {len(updates)} nowych operacji do przetworzenia.")
     
-    # Read each tab as one snapshot per TTL window. If either read gets a 429,
-    # the exception aborts this iteration before further Sheets calls.
-    form_snapshot = _load_form_snapshot(gc)
+    # Users is the sole profile/access source. A 429 aborts this iteration.
     users_snapshot = _load_users_snapshot(gc)
-    main_sheet = form_snapshot["worksheet"]
-    users_records = form_snapshot["users_records"]
-    headers = form_snapshot["headers"]
-    clean_users = form_snapshot["clean_users"]
     users_ws = users_snapshot["worksheet"]
     users_map = users_snapshot["users_map"]
 
@@ -4044,7 +3731,7 @@ def _main_bot_iteration(gc, offset):
             # --------------------------------------------------------
 
             is_start, start_payload = _extract_start_payload(update)
-            chat_has_access = _chat_has_access(users_map, clean_users, chat_id)
+            chat_has_access = _chat_has_access(users_map, chat_id)
 
             # ==============================================================
             # GLOBALNY GUARD (P7 GATEKEEPER)
@@ -4063,9 +3750,8 @@ def _main_bot_iteration(gc, offset):
                 if chat_has_access:
                     # A. Użytkownik ma aktywny dostęp:
                     # Nie nadpisuj danych, zachowaj język i wyślij standardowe powitanie.
-                    user_row = _legacy_user_row(clean_users, chat_id)
                     user_lang = _effective_lang(
-                        message, chat_id, users_map, legacy_row=user_row,
+                        message, chat_id, users_map,
                     )
                     print(f"  👋 Wysłano powitanie powrotne do {chat_id}")
                     send_reply(chat_id, t_ui(user_lang, "welcome_back"))
@@ -4078,7 +3764,7 @@ def _main_bot_iteration(gc, offset):
                     # B. Czysty /start bez payloadu:
                     # Przy zamkniętej rejestracji nie pokazujemy kodu, którym
                     # i tak nie da się wejść — tylko limit_reached.
-                    block_reason = _registration_closed_reason("", users_map, clean_users)
+                    block_reason = _registration_closed_reason("", users_map)
                     if block_reason:
                         send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
                     else:
@@ -4103,13 +3789,13 @@ def _main_bot_iteration(gc, offset):
                 # i przed upsert_access(). Zamknięta rejestracja albo pełny limit
                 # (liczony z Users) = limit_reached, bez tworzenia i zmiany rekordu.
                 # MASTER_TOKEN omija bramkę (P7 God mode).
-                block_reason = _registration_closed_reason(token, users_map, clean_users)
+                block_reason = _registration_closed_reason(token, users_map)
                 if block_reason:
                     print(f"  [access] Rejestracja zablokowana ({block_reason}) dla {chat_id}.")
                     send_reply(chat_id, _invite_message(wykryty_jezyk, _registration_block_key(block_reason)))
                     continue
 
-                is_valid, access_source = _validate_access_token(token, clean_users, users_map)
+                is_valid, access_source = _validate_access_token(token, users_map)
 
                 if not is_valid:
                     send_reply(chat_id, _invite_message(wykryty_jezyk, "invalid_link"))
@@ -4166,7 +3852,6 @@ def _main_bot_iteration(gc, offset):
             # Przekazywany PRZED handle_guest_now jako override.
             guest_lang = _effective_lang(
                 message, chat_id, users_map,
-                legacy_row=_legacy_user_row(clean_users, chat_id),
             )
 
             # SKRÓT BEZ ARGUMENTU (?d / ?12 / ?14) W CZACIE PRYWATNYM:
@@ -4258,10 +3943,9 @@ def _main_bot_iteration(gc, offset):
             if wad and wad.get("data"):
                 
                 # --- SZYBKIE POBRANIE JĘZYKA Z BAZY DLA WEBAPP ---
-                # Wspólny effective_lang: Users.lang > legacy Formularz > Telegram > en.
+                # Wspólny effective_lang: Users.lang > Telegram > en.
                 user_lang = _effective_lang(
                     message, chat_id, users_map,
-                    legacy_row=_legacy_user_row(clean_users, chat_id),
                 )
                 # -------------------------------------------------
                 
@@ -4278,7 +3962,7 @@ def _main_bot_iteration(gc, offset):
                         # POPRAWKA #7: brak dostępu = cisza. Ten warunek jest
                         # już nieosiągalny (bramka na wejściu pętli wycisza
                         # WebApp bez dostępu) — zostaje jako pas bezpieczeństwa.
-                        if not _chat_has_access(users_map, clean_users, chat_id):
+                        if not _chat_has_access(users_map, chat_id):
                             continue
 
                         # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
@@ -4289,60 +3973,19 @@ def _main_bot_iteration(gc, offset):
                             send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
                             continue
 
-                        # PR2 UX cleanup: konta Users dostają raport jednorazowy,
-                        # ALE GPS wysłany w trakcie flow /miasto (ctx=save_profile)
-                        # jest świadomym zapisem profilu — bez karty. Nie dotykamy
-                        # Formularz. Stary użytkownik bez wiersza Users zostaje na
-                        # poprzednim, legacy przepływie — bez migracji i bez zmiany
-                        # schedulera.
-                        if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                            if _take_pending_city_ctx(chat_id, consume=False) == CTX_SAVE_PROFILE:
-                                PENDING_CITY.pop(str(chat_id), None)
-                                _save_profile_from_location(
-                                    chat_id, users_ws, users_map, lat, lon, short_label,
-                                    user_lang, "webapp", display_location=display_location,
-                                )
-                            else:
-                                _run_oneoff_report(
-                                    chat_id, lat, lon, short_label, user_lang, "webapp", "day",
-                                    display_location=display_location,
-                                )
-                            continue
-
-                        # --- niezmieniony legacy zapis do Formularz ---
-                        rows_to_update = []
-                        for idx, r in enumerate(users_records):
-                            if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                                rows_to_update.append(idx + 2)
-                        if not rows_to_update:
-                            try:
-                                cell = _sheets_call(
-                                    "sheets.formularz.find",
-                                    main_sheet.find,
-                                    str(chat_id),
-                                    in_column=2,
-                                )
-                                rows_to_update.append(cell.row)
-                            except Exception as e:
-                                _raise_if_sheets_429(e)
-                                print("  [DEBUG-WEBAPP] Nie znalazłem usera legacy w bazie!")
-
-                        if rows_to_update:
-                            col_lat = headers.index("Lat") + 1
-                            col_lon = headers.index("Lon") + 1
-                            col_miasto = headers.index("Miasto") + 1 if "Miasto" in headers else None
-                            for r_idx in rows_to_update:
-                                _form_update_cell(main_sheet, r_idx, col_lat, lat)
-                                _form_update_cell(main_sheet, r_idx, col_lon, lon)
-                                if col_miasto:
-                                    _form_update_cell(main_sheet, r_idx, col_miasto, short_label)
-                            _invalidate_form_snapshot()
-
-                        ukryj_klawiature = {"remove_keyboard": True}
-                        send_reply(
-                            chat_id, t_ui(user_lang, "loc_updated", city=short_label),
-                            reply_markup=ukryj_klawiature,
-                        )
+                        # GPS in /miasto saves the profile; otherwise generate one-off.
+                        if _take_pending_city_ctx(chat_id, consume=False) == CTX_SAVE_PROFILE:
+                            PENDING_CITY.pop(str(chat_id), None)
+                            _save_profile_from_location(
+                                chat_id, users_ws, users_map, lat, lon, short_label,
+                                user_lang, "webapp", display_location=display_location,
+                            )
+                        else:
+                            _run_oneoff_report(
+                                chat_id, lat, lon, short_label, user_lang, "webapp", "day",
+                                display_location=display_location,
+                            )
+                        continue
 
                     elif data.get("type") == "set_settings":
                         # PR3 GRUPY: bot NIE oferuje już WebApp do zmiany godzin
@@ -4356,7 +3999,7 @@ def _main_bot_iteration(gc, offset):
                         print(f"  ⚙️ Odebrano nowe godziny od {chat_id}: Rano={rano}, Popołudnie={wieczor}")
 
                         # Puste pola WebApp oznaczają "bez zmian"; jawne godziny lub
-                        # "brak" zapisujemy wyłącznie w Users. Formularz pozostaje legacy.
+                        # "brak" zapisujemy wyłącznie w Users.
                         settings_saved = _sheets_call(
                             "sheets.users.set_report_settings",
                             users_store.set_report_settings,
@@ -4364,7 +4007,7 @@ def _main_bot_iteration(gc, offset):
                         )
                         if not settings_saved:
                             print(f"  ⚠️ [report settings] Nie zapisano ustawień w Users dla {chat_id}.")
-                            if _chat_has_access(users_map, clean_users, chat_id):
+                            if _chat_has_access(users_map, chat_id):
                                 send_reply(chat_id, t_ui(user_lang, "no_profile_yet"))
                             continue
 
@@ -4412,9 +4055,9 @@ def _main_bot_iteration(gc, offset):
             text_priv = (message.get("text") or "").strip()
             priv_cmd = _match_command(text_priv, PRIVACY_COMMANDS)
             if chat_has_access and priv_cmd:
-                priv_lang = _resolve_privacy_lang(message, chat_id, users_map, clean_users)
+                priv_lang = _resolve_privacy_lang(message, chat_id, users_map)
                 print(f"  🛡 Komenda prywatności {priv_cmd} od {chat_id}")
-                _handle_privacy(chat_id, priv_cmd, priv_lang, users_ws, main_sheet, users_map, clean_users)
+                _handle_privacy(chat_id, priv_cmd, priv_lang, users_ws, users_map)
                 # Mutacje aktualizują lub unieważniają snapshot lokalnie; samo
                 # /delete_me jedynie pyta o potwierdzenie i nie wymaga odczytu.
                 continue
@@ -4429,28 +4072,22 @@ def _main_bot_iteration(gc, offset):
             # ==============================================================
             delete_cmd = _match_command(text_priv, DELETE_ANSWER_COMMANDS)
             if chat_has_access and (delete_cmd or _pending_delete_active(chat_id)):
-                priv_lang = _resolve_privacy_lang(message, chat_id, users_map, clean_users)
+                priv_lang = _resolve_privacy_lang(message, chat_id, users_map)
                 delete_confirmed = _delete_answer_is_confirmation(
                     chat_id, delete_cmd or "", text_priv, priv_lang
                 )
                 consumed = _handle_delete_answer(
-                    chat_id, delete_cmd or "", text_priv, priv_lang, users_ws, main_sheet
+                    chat_id, delete_cmd or "", text_priv, priv_lang, users_ws
                 )
                 if consumed:
                     print(f"  🗑 Odpowiedź na potwierdzenie usunięcia danych od {chat_id}")
                     # POPRAWKA #7 (Z7 — wyłącznie RAM): po hard delete usuwamy
-                    # czat także z bieżącej mapy Users i z listy legacy w pamięci,
+                    # czat także z bieżącej mapy Users w pamięci,
                     # żeby kolejne update'y z TEJ SAMEJ paczki nie widziały
                     # starego dostępu. Nie dotykamy arkusza ani migracji.
                     if delete_confirmed:
                         users_map.pop(users_store.norm_chat_id(chat_id), None)
-                        clean_users = [
-                            u for u in clean_users
-                            if str(u.get("Chat ID", "")).strip() != str(chat_id)
-                        ]
                         _cache_users_map(users_map)
-                        _FORM_SNAPSHOT["clean_users"] = clean_users
-                        _invalidate_form_snapshot()
                     continue
 
             # ==============================================================
@@ -4458,40 +4095,7 @@ def _main_bot_iteration(gc, offset):
             # ==============================================================
             print(f"  [DEBUG] 🔎 Telegram zgłasza wiadomość (tekst/komenda) od Chat ID: {chat_id}")
             
-            user_row_index = None
-            user_data = None
-            for i, u in enumerate(clean_users):
-                u_id_z_bazy = str(u.get("Chat ID", "")).strip()
-                if u_id_z_bazy == str(chat_id):
-                    user_row_index = i + 2
-                    user_data = u
-                    break 
-            # --- JĘZYK (effective_lang): Users.lang > legacy Formularz > Telegram > en ---
-            user_lang = _effective_lang(
-                message, chat_id, users_map, legacy_row=user_data,
-            )
-
-
-            has_legacy_row = user_row_index is not None
-
-            # ==============================================================
-            # AKCJE DLA ZAREJESTROWANYCH UŻYTKOWNIKÓW
-            # ==============================================================
-
-            # PR1: użytkownik z access-em, ale bez wiersza w Formularz (rejestracja
-            # od PR1 zapisuje tylko access). Syntetyzujemy minimalny user_data,
-            # żeby dalsze handlery mogły bezpiecznie działać. Zapis lokalizacji
-            # dla takich użytkowników odblokuje dopiero PR2 (/save_location).
-            if not has_legacy_row:
-                user_data = {
-                    "Sygnatura czasowa": "",
-                    "Chat ID": str(chat_id),
-                    "Imię": (message.get("chat", {}).get("title")
-                             or message.get("from", {}).get("first_name") or ""),
-                    "Miasto": "", "Lat": "", "Lon": "",
-                    "Raport poranny": "", "Aktualizacja": "",
-                    "Lang": user_lang,
-                }
+            user_lang = _effective_lang(message, chat_id, users_map)
 
             # ==============================================================
             # 0.7 KONWERSACYJNA ZMIANA GODZIN RAPORTÓW (/raport, /report)
@@ -4554,77 +4158,31 @@ def _main_bot_iteration(gc, offset):
                     continue
                 lat = message["location"]["latitude"]
                 lon = message["location"]["longitude"]
-                print(f"  📍 Odebrano współrzędne od [{user_data.get('Imię', chat_id)}]: {lat}, {lon}")
+                print(f"  📍 Odebrano współrzędne od [{chat_id}]: {lat}, {lon}")
 
                 # PR2 UX cleanup: konto Users nie zapisuje pinezki automatycznie —
                 # dostaje raport jednorazowy, CHYBA że pinezka przyszła jako
                 # odpowiedź na komunikat bota albo w flow /miasto w czacie
                 # prywatnym (wtedy jest świadomym zapisem profilu, bez karty).
-                # Legacy-only zachowuje historyczne działanie Formularz bez migracji.
-                if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    # POPRAWKA #4: pełny adres (albo teren/awaria łącz).
-                    short_label, display_location, geo_status = _resolve_location_labels(
-                        lat, lon, user_lang
-                    )
-                    if geo_status == GEO_ERROR:
-                        send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
-                        continue
-                    if should_save_pin_profile:
-                        PENDING_CITY.pop(str(chat_id), None)
-                        _save_profile_from_location(
-                            chat_id, users_ws, users_map, lat, lon, short_label, user_lang, "gps",
-                            display_location=display_location,
-                        )
-                    else:
-                        _run_oneoff_report(
-                            chat_id, lat, lon, short_label, user_lang, "gps", "day",
-                            display_location=display_location,
-                        )
+                short_label, display_location, geo_status = _resolve_location_labels(
+                    lat, lon, user_lang
+                )
+                if geo_status == GEO_ERROR:
+                    send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
                     continue
+                if should_save_pin_profile:
+                    PENDING_CITY.pop(str(chat_id), None)
+                    _save_profile_from_location(
+                        chat_id, users_ws, users_map, lat, lon, short_label, user_lang, "gps",
+                        display_location=display_location,
+                    )
+                else:
+                    _run_oneoff_report(
+                        chat_id, lat, lon, short_label, user_lang, "gps", "day",
+                        display_location=display_location,
+                    )
+                continue
 
-                try:
-                    user_row_index = None
-                    for idx, r in enumerate(users_records):
-                        if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                            if str(r.get("Imię", "")).strip() != "":
-                                user_row_index = idx + 2  
-                                break
-                    
-                    if not user_row_index:
-                        komorka = _sheets_call(
-                            "sheets.formularz.find",
-                            main_sheet.find,
-                            str(chat_id),
-                            in_column=2,
-                        )
-                        user_row_index = komorka.row
-                    
-                    col_lat = headers.index("Lat") + 1
-                    col_lon = headers.index("Lon") + 1
-                    
-                    _form_update_cell(main_sheet, user_row_index, col_lat, lat)
-                    _form_update_cell(main_sheet, user_row_index, col_lon, lon)
-                    
-                    city = get_city_from_coords(lat, lon, user_lang)
-                    if city == "Lokalizacja w terenie" or not city:
-                        city = "Twoja okolica"
-                        
-                    if "Miasto" in headers:
-                        try:
-                            col_miasto = headers.index("Miasto") + 1
-                            _form_update_cell(main_sheet, user_row_index, col_miasto, city)
-                        except Exception as e:
-                            _raise_if_sheets_429(e)
-                            print(f"  [DEBUG] Nie udało się zapisać miasta do arkusza: {e}")
-                            
-                    _invalidate_form_snapshot()
-                    #send_reply(chat_id, f"✅ *Lokalizacja zaktualizowana!*\n\n📍 Rozpoznano: {city}\n🌤️ Od następnego raportu pogoda będzie liczona dla tego miejsca. ")
-                    send_reply(chat_id, t_ui(user_lang, "loc_updated", city=city))
-                except SheetsRateLimitError:
-                    raise
-                except Exception as e:
-                    send_reply(chat_id, "⚠️ Błąd zapisu na serwerze Google. Spróbuj za chwilę.")
-                    alert_admin(f"❌ Błąd aktualizacji lokalizacji dla {chat_id}: {e}")
 
             
 
@@ -4669,96 +4227,43 @@ def _main_bot_iteration(gc, offset):
 
             # 4. /now
             elif message.get("text", "").startswith("/now") or message.get("text", "").startswith("/teraz"):
-                print(f"  ⚡ Odebrano żądanie radaru taktycznego od [{user_data.get('Imię', chat_id)}]")
+                print(f"  ⚡ Odebrano żądanie radaru taktycznego od [{chat_id}]")
 
-                # PR2: rekord Users bez legacy może podać miasto do jednorazowej
-                # karty albo użyć wcześniej świadomie zapisanego profilu. Żaden z
-                # tych wariantów nie zapisuje Formularz.
-                if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    city_query = _split_command(message.get("text", ""), {"/now", "/teraz"})
-                    if city_query:
-                        _run_city_oneoff(chat_id, city_query, user_lang, "now")
+                # Saved Users profile or a one-off city argument.
+                city_query = _split_command(message.get("text", ""), {"/now", "/teraz"})
+                if city_query:
+                    _run_city_oneoff(chat_id, city_query, user_lang, "now")
+                else:
+                    profile = _saved_users_profile(users_map, chat_id)
+                    if profile:
+                        _run_saved_profile_report(chat_id, profile, user_lang, "now")
                     else:
-                        profile = _saved_users_profile(users_map, chat_id)
-                        if profile:
-                            _run_saved_profile_report(chat_id, profile, user_lang, "now")
-                        else:
-                            # PR2 UX cleanup: zamiast "profil nieaktywny" pytamy o
-                            # miejscowość; wpisane miasto da kartę jednorazową.
-                            _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_NOW)
-                    continue
+                        # PR2 UX cleanup: zamiast "profil nieaktywny" pytamy o
+                        # miejscowość; wpisane miasto da kartę jednorazową.
+                        _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_NOW)
+                continue
 
-                try:
-                    parsed_list = _parse_users([user_data])
-                    if not parsed_list:
-                        send_reply(chat_id, t_ui(user_lang, "missing_loc"))
-                        continue
-                except SheetsRateLimitError:
-                    raise
-                except Exception as e:
-                    send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
-                    continue
-                    
-                send_reply(chat_id, t_ui(user_lang, "scanning"))
-                user_parsed = parsed_list[0]
-                
-                try:
-                    _send_card_to_user(user_parsed, is_quiet=False, is_now=True)
-                except Exception as e:
-                    send_reply(chat_id, t_ui(user_lang, "err_gen"))
             
             # 4.5. /day (karta dzienna)
             elif message.get("text", "").startswith(("/day", "/dzis", "/dzien")):
-                print(f"  ☀️ Odebrano żądanie karty dziennej od [{user_data.get('Imię', chat_id)}]")
+                print(f"  ☀️ Odebrano żądanie karty dziennej od [{chat_id}]")
 
-                if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    city_query = _split_command(message.get("text", ""), {"/day", "/dzis", "/dzien"})
-                    if city_query:
-                        # /dzien Warszawa — okno 05:00-15:59 sprawdza _run_city_oneoff
-                        _run_city_oneoff(chat_id, city_query, user_lang, "day")
+                city_query = _split_command(message.get("text", ""), {"/day", "/dzis", "/dzien"})
+                if city_query:
+                    # /dzien Warszawa — okno 05:00-15:59 sprawdza _run_city_oneoff
+                    _run_city_oneoff(chat_id, city_query, user_lang, "day")
+                else:
+                    profile = _saved_users_profile(users_map, chat_id)
+                    if profile:
+                        # Stare ograniczenie czasowe karty dziennej obowiązuje
+                        # również zapisany profil (pkt 5 zakresu PR2 UX cleanup).
+                        if _day_card_window_blocked(chat_id, user_lang, profile["lat"], profile["lon"]):
+                            continue
+                        _run_saved_profile_report(chat_id, profile, user_lang, "day")
                     else:
-                        profile = _saved_users_profile(users_map, chat_id)
-                        if profile:
-                            # Stare ograniczenie czasowe karty dziennej obowiązuje
-                            # również zapisany profil (pkt 5 zakresu PR2 UX cleanup).
-                            if _day_card_window_blocked(chat_id, user_lang, profile["lat"], profile["lon"]):
-                                continue
-                            _run_saved_profile_report(chat_id, profile, user_lang, "day")
-                        else:
-                            _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_DAY)
-                    continue
+                        _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_DAY)
+                continue
 
-                try:
-                    parsed_list = _parse_users([user_data])
-                    if not parsed_list:
-                        send_reply(chat_id, t_ui(user_lang, "missing_loc"))
-                        continue
-                except SheetsRateLimitError:
-                    raise
-                except Exception as e:
-                    send_reply(chat_id, "⚠️ Brakuje współrzędnych lub są uszkodzone! Wyślij pinezkę z mapy jeszcze raz.")
-                    continue
-                    
-                user_parsed = parsed_list[0]
-                
-                # --- OGRANICZENIE CZASOWE DLA KARTY DZIENNEJ (05:00 - 15:59 lokalnego czasu) ---
-                # Zachowanie bez zmian (ścieżka legacy), tylko współdzielone z
-                # nowymi ścieżkami kont Users przez _day_window_blocked_for_tz.
-                user_tz = user_parsed.get("tz", "UTC")
-                if _day_window_blocked_for_tz(chat_id, user_lang, user_tz):
-                    continue
-                # --------------------------------------------------------------------------------
-                    
-                send_reply(chat_id, t_ui(user_lang, "prep_main"))
-                user_parsed = parsed_list[0]
-                
-                try:
-                    # Brak flag is_now=True i is_future=True sprawia, że system wygeneruje standardową kartę dzienną
-                    _send_card_to_user(user_parsed, is_quiet=False)
-                except Exception as e:
-                    send_reply(chat_id, t_ui(user_lang, "err_gen"))
-                    import traceback
-                    traceback.print_exc()
             
             
             
@@ -4766,40 +4271,17 @@ def _main_bot_iteration(gc, offset):
             elif message.get("text", "").startswith(("/future", "/trend", "/14dni")):
                 print(f"  🔮 [DEBUG] Otrzymano komendę /future od {chat_id}")
 
-                if not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    city_query = _split_command(message.get("text", ""), {"/future", "/trend", "/14dni"})
-                    if city_query:
-                        _run_city_oneoff(chat_id, city_query, user_lang, "future")
+                city_query = _split_command(message.get("text", ""), {"/future", "/trend", "/14dni"})
+                if city_query:
+                    _run_city_oneoff(chat_id, city_query, user_lang, "future")
+                else:
+                    profile = _saved_users_profile(users_map, chat_id)
+                    if profile:
+                        _run_saved_profile_report(chat_id, profile, user_lang, "future")
                     else:
-                        profile = _saved_users_profile(users_map, chat_id)
-                        if profile:
-                            _run_saved_profile_report(chat_id, profile, user_lang, "future")
-                        else:
-                            _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_FUTURE)
-                    continue
+                        _ask_oneoff_city(chat_id, user_lang, CTX_ONEOFF_FUTURE)
+                continue
 
-                # Ścieżka legacy: najpierw sprawdzamy, czy jest skąd liczyć kartę.
-                # prep_future leci dopiero po potwierdzeniu lokalizacji — bez niej
-                # użytkownik dostaje wyłącznie missing_loc (ten sam klucz co /day i /now).
-                try:
-                    raw = _load_future_users_from_sheet(gc)
-                    sklejone = wirtualne_scalanie(raw)
-                    users = _parse_users(sklejone)
-                    user = next((u for u in users if str(u["chat_id"]) == str(chat_id)), None)
-                    
-                    if user and user.get("lat") and user.get("lon"):
-                        send_reply(chat_id, t_ui(user_lang, "prep_future"))
-                        sukces = main_card._send_card_to_user(user, is_quiet=False, is_now=False, is_future=True)
-                        if not sukces:
-                            send_reply(chat_id, "❌ Wystąpił problem wewnętrzny. Karta nie została wysłana.")
-                    else:
-                        send_reply(chat_id, t_ui(user_lang, "missing_loc"))
-                except SheetsRateLimitError:
-                    raise
-                except Exception as e:
-                    _raise_if_sheets_429(e)
-                    import traceback
-                    traceback.print_exc() 
 
             # 6. /info
             elif message.get("text", "").startswith("/info"):
@@ -4834,8 +4316,8 @@ def _main_bot_iteration(gc, offset):
                     _set_pending_city(chat_id_str, CTX_SAVE_PROFILE)
                     print(f"  [STATE MACHINE] Aktywowano oczekiwanie na miasto (save_profile) dla: {chat_id_str}")
 
-                    # Obecna lokalizacja: profil Users -> legacy Formularz -> "brak"
-                    current_city = _current_location_label(chat_id, user_lang, users_map, clean_users)
+                    # Obecna lokalizacja: profil Users -> "brak"
+                    current_city = _current_location_label(chat_id, user_lang, users_map)
                     prompt_key = "city_prompt_active" if current_city else "city_prompt"
                     instrukcja = t_ui(user_lang, prompt_key, city=current_city or "")
                     nazwa_przycisku = t_ui(user_lang, "btn_update_gps")
@@ -4876,7 +4358,7 @@ def _main_bot_iteration(gc, offset):
             # 8C. Ignorowanie pozostałych wiadomości
             # =====================================================================
             else:
-                print(f"  [DEBUG] Wiadomość od {user_data.get('Imię')} ignorowana.")
+                print(f"  [DEBUG] Wiadomość od {chat_id} ignorowana.")
                 continue
 
             # =====================================================================
@@ -4911,85 +4393,32 @@ def _main_bot_iteration(gc, offset):
                 # PR2 UX cleanup: KONTEKST decyduje, co robimy z wpisaną miejscowością.
                 #   oneoff_*      -> karta jednorazowa z opisem lokalizacji w caption
                 #   save_profile  -> świadomy zapis profilu w Users, BEZ karty
-                # Legacy-only (brak wiersza w Users) zachowuje dotychczasowy zapis
-                # do Formularz — bez migracji i bez zmiany schedulera.
-                # Karta jednorazowa (oneoff_*) NIE zapisuje niczego, więc obowiązuje
-                # także dla legacy-only: inaczej odpowiedź z miastem po skrócie bez
-                # argumentu zmieniłaby lokalizację w Formularz.
                 oneoff_card_type = ONEOFF_CARD_TYPES.get(pending_ctx or "")
-                if oneoff_card_type or not _is_legacy_only_user(users_map, clean_users, chat_id):
-                    # POPRAWKA #4: etykieta + opis lokalizacji z jednego miejsca.
-                    # Ratujemy się danymi z forward-geocode, więc chwilowa awaria
-                    # reverse nie gubi wpisanej przez użytkownika nazwy.
-                    short_label, display_location, geo_status = _resolve_location_labels(
-                        lat, lon, user_lang,
-                        fallback_short_label=fallback_short_label,
-                        fallback_display_location=fallback_display_location,
-                        query=city_query,
-                    )
-                    if geo_status == GEO_ERROR:
-                        send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
-                        continue
+                short_label, display_location, geo_status = _resolve_location_labels(
+                    lat, lon, user_lang,
+                    fallback_short_label=fallback_short_label,
+                    fallback_display_location=fallback_display_location,
+                    query=city_query,
+                )
+                if geo_status == GEO_ERROR:
+                    send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
+                    continue
 
-                    if oneoff_card_type:
-                        if oneoff_card_type == "day" and _day_card_window_blocked(chat_id, user_lang, lat, lon):
-                            continue
-                        _run_oneoff_report(
-                            chat_id, lat, lon, short_label, user_lang, "city",
-                            oneoff_card_type, display_location=display_location,
-                        )
+                if oneoff_card_type:
+                    if oneoff_card_type == "day" and _day_card_window_blocked(chat_id, user_lang, lat, lon):
                         continue
-
-                    _save_profile_from_location(
-                        chat_id, users_ws, users_map, lat, lon, short_label,
-                        user_lang, "city", display_location=display_location,
+                    _run_oneoff_report(
+                        chat_id, lat, lon, short_label, user_lang, "city",
+                        oneoff_card_type, display_location=display_location,
                     )
                     continue
 
-                try:
-                    # Znalezienie właściwego wiersza w Arkuszu
-                    real_row_index = None
-                    for idx, r in enumerate(users_records):
-                        if str(r.get("Chat ID", "")).strip() == str(chat_id):
-                            if str(r.get("Imię", "")).strip() != "":
-                                real_row_index = idx + 2  
-                                break
-                    if not real_row_index:
-                        komorka = _sheets_call(
-                            "sheets.formularz.find",
-                            main_sheet.find,
-                            str(chat_id),
-                            in_column=2,
-                        )
-                        real_row_index = komorka.row
+                _save_profile_from_location(
+                    chat_id, users_ws, users_map, lat, lon, short_label,
+                    user_lang, "city", display_location=display_location,
+                )
+                continue
 
-                    # Czysta aktualizacja współrzędnych i nazwy w Arkuszu (bez żadnych stanów techniczych!)
-                    col_lat = headers.index("Lat") + 1
-                    col_lon = headers.index("Lon") + 1
-                    _form_update_cell(main_sheet, real_row_index, col_lat, lat)
-                    _form_update_cell(main_sheet, real_row_index, col_lon, lon)
-                    
-                    krotka_nazwa = get_city_from_coords(lat, lon, user_lang)
-                    if krotka_nazwa in (FIELD_LOCATION_LEGACY, "", None, "Nieznana miejscowość"):
-                        krotka_nazwa = fallback_short_label
-                    krotka_nazwa = krotka_nazwa or FIELD_LOCATION_LABEL
-
-                    if "Miasto" in headers:
-                        col_miasto = headers.index("Miasto") + 1
-                        _form_update_cell(main_sheet, real_row_index, col_miasto, krotka_nazwa)
-                        
-                    _invalidate_form_snapshot()
-                    safe_display = _md_safe(fallback_display_location) or _md_safe(krotka_nazwa)
-                    sukces_msg = t_ui(
-                        user_lang, "search_success", display_location=safe_display
-                    )
-                    send_reply(chat_id, sukces_msg)
-                    
-                except SheetsRateLimitError:
-                    raise
-                except Exception as e:
-                    send_reply(chat_id, t_ui(user_lang, "search_err"))
-                    alert_admin(f"❌ Błąd aktualizacji miasta: {e}")
             else:
                 # Jeśli geokodowanie się nie udało, nie przywracamy stanu. User może kliknąć /miasto z menu jeszcze raz.
                 send_reply(chat_id, t_ui(user_lang, "search_fail"))

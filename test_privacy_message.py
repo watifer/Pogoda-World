@@ -45,7 +45,7 @@ LEGACY_WORDS = ("Formularz", "legacy", "starsz", "older", "ältere", "antigu", "
 
 @pytest.fixture
 def bot(monkeypatch):
-    return BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
+    return BotHarness(monkeypatch, seed_profiles=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
 
 
 def _privacy_reply(bot, chat_id, lang="pl"):

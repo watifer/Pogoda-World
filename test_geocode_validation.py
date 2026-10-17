@@ -2412,12 +2412,9 @@ def test_effective_lang_without_any_source_is_english():
     assert lb._effective_lang(_msg("ja"), 555, {}) == "en"   # nieobsługiwany -> en
 
 
-def test_effective_lang_legacy_formularz_row_only_when_no_users_record():
-    legacy = {"Chat ID": "555", "Lang": "es"}
-    assert lb._effective_lang(_msg("pl"), 555, {}, legacy_row=legacy) == "es"
-    # Rekord Users ma pierwszeństwo nad legacy wierszem.
-    users_map = {"555": {"lang": "en"}}
-    assert lb._effective_lang(_msg("pl"), 555, users_map, legacy_row=legacy) == "en"
+def test_effective_lang_users_or_telegram_only():
+    assert lb._effective_lang(_msg("pl"), 555, {}) == "pl"
+    assert lb._effective_lang(_msg("pl"), 555, {"555": {"lang": "en"}}) == "en"
 
 
 def test_effective_lang_group_uses_its_own_record_not_the_private_user():
