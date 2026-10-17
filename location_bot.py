@@ -488,34 +488,33 @@ def _is_guest_trigger(text, bot_username):
     return prefix is not None
 
 
-# Skrót bez argumentu w czacie prywatnym obsługują ISTNIEJĄCE komendy:
-#   ?d  -> /day     (karta dzienna)
-#   ?12 -> /now     (karta 12 h)
-#   ?14 -> /future  (trend 14 dni)
-# Dzięki temu zapisany profil Users korzysta z prep_* i nie jest geokodowany,
-# a brak profilu ustawia PENDING_CITY przed wysłaniem oneoff_prompt_*.
+# Skrót BEZ argumentu w czacie prywatnym otwiera dialog jednorazowego zapytania
+# o miejscowość (PENDING_CITY + oneoff_prompt_*), NIGDY nie wysyła karty ze
+# stałej lokalizacji i nie wywołuje ścieżki /day, /now, /future.
+#   ?d  / .d  / ?t / ?j   -> CTX_ONEOFF_DAY    -> oneoff_prompt_day
+#   ?12 / .12 / ?n / ?p   -> CTX_ONEOFF_NOW    -> oneoff_prompt_now
+#   ?14 / .14 / ?f        -> CTX_ONEOFF_FUTURE -> oneoff_prompt_future
 # Mapowanie obejmuje wyłącznie TYPY KART już rozpoznawane przez parser
 # (day/now/future) — żadnych nowych aliasów ani formatów skrótów.
-SHORTCUT_NO_ARG_COMMANDS = {
-    "day": "/day",
-    "now": "/now",
-    "future": "/future",
+SHORTCUT_NO_ARG_CONTEXTS = {
+    "day": CTX_ONEOFF_DAY,
+    "now": CTX_ONEOFF_NOW,
+    "future": CTX_ONEOFF_FUTURE,
 }
 
 
-def _redirect_shortcut_without_argument(message):
-    """Kopia wiadomości z tekstem komendy dla skrótu BEZ argumentu.
+def _shortcut_without_argument_ctx(message):
+    """Kontekst jednorazowej karty dla skrótu BEZ argumentu, albo ``None``.
 
-    Zwraca ``None``, gdy przekierowanie nie ma zastosowania. Reguły:
+    ``None`` oznacza, że wiadomość nie wymaga dialogu o miejscowość:
 
-    - tylko czat prywatny (polityka grup: skrót bez argumentu pozostaje ciszą),
-    - tylko skrót rozpoznany przez ``resolve_shortcut`` i BEZ argumentu
-      (``?d Warszawa`` to nadal jednorazowa karta trybu gościa),
-    - skrót będący odpowiedzią na pinezkę (``reply_to_message.location``)
-      zostaje w ``guest_bot_handler`` — tam działa dotychczasowa ścieżka,
-    - zwracana jest KOPIA wiadomości: oryginalny ``message`` (a więc i update)
-      nie jest mutowany, więc logowanie, ``reply_to_message.location`` i inne
-      ścieżki dispatchera widzą dokładnie to, co przyszło z Telegrama.
+    - czat inny niż prywatny (grupa: skrót bez argumentu pozostaje ciszą),
+    - skrót z argumentem (``?d Warszawa``) — dotychczasowa ścieżka gościa,
+    - skrót będący odpowiedzią na pinezkę (``reply_to_message.location``) —
+      zostaje w ``guest_bot_handler``, bo to obsługa pinezki,
+    - tekst niebędący skrótem.
+
+    Funkcja NIE mutuje ``message`` ani update'u Telegrama.
 
     Wywołanie żyje PO globalnym guardzie P7 — czat bez dostępu nigdy tu nie
     dociera (silent drop zostaje bez zmian).
@@ -533,13 +532,7 @@ def _redirect_shortcut_without_argument(message):
     if reply.get("location"):
         return None
 
-    command = SHORTCUT_NO_ARG_COMMANDS.get(card_type)
-    if not command:
-        return None
-
-    redirected = dict(message)
-    redirected["text"] = command
-    return redirected
+    return SHORTCUT_NO_ARG_CONTEXTS.get(card_type)
 
 
 def _chat_has_access(users_map, clean_users, chat_id, now=None) -> bool:
@@ -4147,19 +4140,6 @@ def _main_bot_iteration(gc, offset):
             # ETAP 1: guest_bot_handler nadal sam nic nie wie o geokoderze —
             # dostaje tylko statusowy adapter z tego pliku.
             #
-            # SKRÓT BEZ ARGUMENTU (?d / ?12 / ?14) W CZACIE PRYWATNYM:
-            # guest handler nie zna profilu Users ani PENDING_CITY, więc sam
-            # odpowiadał promptem guest_need_city i gubił odpowiedź z miastem.
-            # Zamiast drugiego mechanizmu przekierowujemy taki skrót na
-            # istniejącą komendę (/day, /now, /future) — dalej decyduje
-            # sprawdzona ścieżka: zapisany profil -> prep_* -> karta,
-            # brak profilu -> PENDING_CITY + oneoff_prompt_* -> 8B.
-            # Podmieniamy LOCALNĄ zmienną na kopię wiadomości; oryginalny
-            # update pozostaje nietknięty (reply_to_message.location działa).
-            # W grupie funkcja zwraca None — cisza grupowa bez zmian.
-            redirected_message = _redirect_shortcut_without_argument(message)
-            if redirected_message is not None:
-                message = redirected_message
             # HOTFIX (effective language): jeden język dla guesta — Users.lang
             # tego chat_id (grupa = własny rekord grupy), potem Telegram, en.
             # Przekazywany PRZED handle_guest_now jako override.
@@ -4167,6 +4147,23 @@ def _main_bot_iteration(gc, offset):
                 message, chat_id, users_map,
                 legacy_row=_legacy_user_row(clean_users, chat_id),
             )
+
+            # SKRÓT BEZ ARGUMENTU (?d / ?12 / ?14) W CZACIE PRYWATNYM:
+            # zawsze otwiera dialog jednorazowego zapytania o miejscowość,
+            # niezależnie od zapisanej lokalizacji. Stała lokalizacja NIE jest
+            # używana jako lokalizacja karty i NIE jest zmieniana. Kolejną
+            # wiadomość (miasto) obsłuży gałąź 8B przez PENDING_CITY.
+            # guest_bot_handler nie jest wołany, a obsługa update kończy się tutaj.
+            # W grupie funkcja zwraca None — cisza grupowa bez zmian.
+            oneoff_ctx = _shortcut_without_argument_ctx(message)
+            if oneoff_ctx:
+                # Dialog /raport kończy się jak przy każdej innej komendzie —
+                # inaczej kolejne miasto trafiłoby do dialogu godzin (blok 0.7),
+                # który jest dalej w kolejności niż ta gałąź.
+                _clear_pending_report(chat_id, (message.get("from") or {}).get("id"))
+                _ask_oneoff_city(chat_id, guest_lang, oneoff_ctx)
+                continue
+
             is_guest = handle_guest_now(
                 message=message,
                 bot_username=BOT_USERNAME,
@@ -4890,7 +4887,11 @@ def _main_bot_iteration(gc, offset):
                 #   save_profile  -> świadomy zapis profilu w Users, BEZ karty
                 # Legacy-only (brak wiersza w Users) zachowuje dotychczasowy zapis
                 # do Formularz — bez migracji i bez zmiany schedulera.
-                if not _is_legacy_only_user(users_map, clean_users, chat_id):
+                # Karta jednorazowa (oneoff_*) NIE zapisuje niczego, więc obowiązuje
+                # także dla legacy-only: inaczej odpowiedź z miastem po skrócie bez
+                # argumentu zmieniłaby lokalizację w Formularz.
+                oneoff_card_type = ONEOFF_CARD_TYPES.get(pending_ctx or "")
+                if oneoff_card_type or not _is_legacy_only_user(users_map, clean_users, chat_id):
                     # POPRAWKA #4: etykieta + opis lokalizacji z jednego miejsca.
                     # Ratujemy się danymi z forward-geocode, więc chwilowa awaria
                     # reverse nie gubi wpisanej przez użytkownika nazwy.
@@ -4904,7 +4905,6 @@ def _main_bot_iteration(gc, offset):
                         send_reply(chat_id, t_ui(user_lang, "geo_conn_err"))
                         continue
 
-                    oneoff_card_type = ONEOFF_CARD_TYPES.get(pending_ctx or "")
                     if oneoff_card_type:
                         if oneoff_card_type == "day" and _day_card_window_blocked(chat_id, user_lang, lat, lon):
                             continue
