@@ -89,7 +89,7 @@ GUEST_PROMPT = lb.t_ui("pl", "guest_need_city")
 def bot(monkeypatch):
     """Harness z PRAWDZIWYM guest_bot_handler pod cienkim spy."""
     harness = BotHarness(monkeypatch,
-                         formularz_rows=[LEGACY_ROW, LEGACY_NO_LOC_ROW])
+                         seed_profiles=[LEGACY_ROW, LEGACY_NO_LOC_ROW])
     real_calls = []
 
     def real_guest_handler(**kwargs):
@@ -99,14 +99,9 @@ def bot(monkeypatch):
     monkeypatch.setattr(lb, "handle_guest_now", real_guest_handler)
     harness.real_guest_calls = real_calls
 
-    # Zapis do arkusza Formularz w ścieżce legacy — rejestrujemy, żeby sprawdzić,
+    # Rejestr wszystkich zabronionych prób API Formularza — sprawdzamy,
     # że skrót ani odpowiedź z miastem jej nie dotykają.
-    form_writes = []
-    monkeypatch.setattr(
-        lb, "_form_update_cell",
-        lambda main_sheet, row, col, value: form_writes.append((row, col, value)),
-    )
-    harness.form_writes = form_writes
+    harness.form_writes = harness.gc.formularz.operations
     return harness
 
 
@@ -929,22 +924,18 @@ class TestGroups:
 
 
 # ============================================================================
-# 9. LEGACY-ONLY — SKRÓT BEZ ARGUMENTU TEŻ OTWIERA PROMPT, BEZ ZAPISU
+# 9. ZMIGROWANE PROFILE USERS — SKRÓT OTWIERA PROMPT, BEZ ZAPISU
 # ============================================================================
 
-class TestLegacyOnly:
-    """Użytkownik tylko w Formularz (bez Users) też dostaje prompt o miasto.
-
-    Karta jednorazowa z odpowiedzi nic nie zapisuje — zwłaszcza nie zmienia
-    lokalizacji w Formularz, nawet gdy użytkownik ma już zapisane współrzędne.
-    """
+class TestMigratedUsers:
+    """Zmigrowany profil Users też dostaje prompt; one-off nie zapisuje lokalizacji."""
 
     @pytest.mark.parametrize("shortcut,ctx,prompt_key", [
         ("?d", lb.CTX_ONEOFF_DAY, "oneoff_prompt_day"),
         ("?12", lb.CTX_ONEOFF_NOW, "oneoff_prompt_now"),
         ("?14", lb.CTX_ONEOFF_FUTURE, "oneoff_prompt_future"),
     ])
-    def test_legacy_shortcut_opens_prompt_without_card(
+    def test_migrated_profile_shortcut_opens_prompt_without_card(
         self, bot, monkeypatch, shortcut, ctx, prompt_key
     ):
         freeze_local_hour(monkeypatch, 10, 0)
@@ -956,9 +947,9 @@ class TestLegacyOnly:
         assert bot.cards == []
         assert bot.oneoffs == []
         assert lb.PENDING_CITY[str(LEGACY_WITH_LOC)]["ctx"] == ctx
-        assert bot.users.record(LEGACY_WITH_LOC) is None
+        assert bot.users.record(LEGACY_WITH_LOC)["profile_status"] == "active"
 
-    def test_legacy_without_location_gets_prompt_not_missing_loc(self, bot, monkeypatch):
+    def test_migrated_profile_without_location_gets_prompt_not_missing_loc(self, bot, monkeypatch):
         freeze_local_hour(monkeypatch, 10, 0)
         before = len(bot.sent)
 
@@ -966,9 +957,9 @@ class TestLegacyOnly:
 
         assert bot.replies_since(LEGACY_NO_LOC, before) == [lb.t_ui("pl", "oneoff_prompt_now")]
         assert bot.oneoffs == []
-        assert bot.users.record(LEGACY_NO_LOC) is None
+        assert bot.users.record(LEGACY_NO_LOC)["profile_status"] == "none"
 
-    def test_legacy_city_reply_after_shortcut_is_oneoff_and_does_not_write_formularz(
+    def test_migrated_profile_city_reply_after_shortcut_is_oneoff_and_does_not_write_formularz(
         self, bot, monkeypatch, query_geocoder
     ):
         freeze_local_hour(monkeypatch, 10, 0)
@@ -981,10 +972,10 @@ class TestLegacyOnly:
         assert bot.oneoffs[0][0] == LEGACY_WITH_LOC
         assert bot.oneoffs[0][1:3] == (QUERY_LAT, QUERY_LON)
         assert bot.form_writes == form_before, "Formularz nie może zmienić lokalizacji"
-        assert bot.users.record(LEGACY_WITH_LOC) is None
+        assert bot.users.record(LEGACY_WITH_LOC)["profile_status"] == "active"
         assert str(LEGACY_WITH_LOC) not in lb.PENDING_CITY
 
-    def test_legacy_shortcut_with_argument_keeps_guest_path(
+    def test_migrated_profile_shortcut_with_argument_keeps_guest_path(
         self, bot, monkeypatch, guest_card
     ):
         freeze_local_hour(monkeypatch, 10, 0)
@@ -993,7 +984,7 @@ class TestLegacyOnly:
         bot.run(bot.msg(LEGACY_WITH_LOC, "?d Warszawa"))
 
         assert guest_card.layouts == ["day"]
-        # Legacy z argumentem: ten sam pojedynczy search_loc, nadal bez zapisu.
+        # Profil po migracji z argumentem: ten sam pojedynczy search_loc, nadal bez zapisu.
         assert bot.replies_since(LEGACY_WITH_LOC, before) == [SEARCH_LOC]
         assert bot.oneoffs == []
         assert str(LEGACY_WITH_LOC) not in lb.PENDING_CITY

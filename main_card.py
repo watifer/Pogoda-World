@@ -69,65 +69,6 @@ except Exception as e:
     print(f"[SYSTEM] Błąd inicjalizacji mapy wybrzeża: {e}")
 
 
-
-def wirtualne_scalanie(raw_records: list) -> list:
-    """Kompresuje rozbite wiersze z Google Sheets w jeden perfekcyjny rekord na użytkownika, sortując je po dacie."""
-    
-    # --- OSTATECZNA TARCZA: MYJNIA NAGŁÓWKÓW ---
-    # Automatycznie czyścimy WSZYSTKIE kolumny ze spacji (z przodu i z tyłu)
-    cleaned_records = []
-    for row in raw_records:
-        clean_row = {str(k).strip(): v for k, v in row.items()}
-        cleaned_records.append(clean_row)
-
-    # 1. Funkcja pomocnicza do sortowania dat. Puste komórki traktujemy jako najstarsze (rok 1970).
-    def get_timestamp(row):
-        ts = str(row.get("Sygnatura czasowa", "")).strip()
-        return ts if ts else "1970-01-01 00:00:00"
-        
-    # 2. Sortujemy rekordy (używamy już tych wyczyszczonych!)
-    sorted_records = sorted(cleaned_records, key=get_timestamp)
-    
-    merged = {}
-    for row in sorted_records:
-        # Dzięki "myjni" mamy pewność, że klucz "Chat ID" zawsze zadziała
-        cid = str(row.get("Chat ID", "")).strip()
-        
-        # Zabezpieczenie przed ułamkami .0 od Google Sheets
-        if cid.endswith(".0"): 
-            cid = cid[:-2]
-            
-        if not cid: continue
-        
-        # --- SMART AUTO-SPRZĄTACZKA: Ignoruj zablokowanych użytkowników! ---
-        if cid.startswith("BLOCKED"): 
-            continue
-        # -------------------------------------------------------------------
-        
-        if cid not in merged:
-            merged[cid] = {
-                "Chat ID": cid, "Imię": "", "Lat": "", "Lon": "", 
-                "Raport poranny": "", "Aktualizacja": "", "Sygnatura czasowa": "",
-                "Lang": ""  # <--- NOWE
-            }
-        
-        # 3. Nadpisywanie (teraz klucze zawsze będą idealnie pasować do nagłówków)
-        if str(row.get("Imię", "")).strip(): merged[cid]["Imię"] = str(row.get("Imię")).strip()
-        if str(row.get("Miasto", "")).strip(): merged[cid]["Miasto"] = str(row.get("Miasto")).strip()
-        if str(row.get("Lat", "")).strip(): merged[cid]["Lat"] = str(row.get("Lat")).strip()
-        if str(row.get("Lon", "")).strip(): merged[cid]["Lon"] = str(row.get("Lon")).strip()
-        if str(row.get("Raport poranny", "")).strip(): merged[cid]["Raport poranny"] = str(row.get("Raport poranny")).strip()
-        if str(row.get("Aktualizacja", "")).strip(): merged[cid]["Aktualizacja"] = str(row.get("Aktualizacja")).strip()
-        if str(row.get("Sygnatura czasowa", "")).strip(): merged[cid]["Sygnatura czasowa"] = str(row.get("Sygnatura czasowa")).strip()
-        
-        # --- NOWE: Pobieranie języka (akceptuje kolumnę "Lang" lub "Język") ---
-        lang_val = str(row.get("Lang", row.get("Język", ""))).strip()
-        if lang_val: merged[cid]["Lang"] = lang_val
-        
-    return list(merged.values())
-
-
-
 # ═══════════════════════════════════════
 # KONFIGURACJA
 # ═══════════════════════════════════════
@@ -201,77 +142,6 @@ def send_telegram_photo(chat_id: str, image_path: str,
 # UŻYTKOWNICY — Google Sheets
 # ═══════════════════════════════════════
 
-def _load_users_from_sheet() -> list[dict]:
-    """
-    Wczytuje użytkowników z Google Sheets przez API.
-    Wymagane kolumny: Chat ID, Lat, Lon
-    Opcjonalne: TZ/Timezone, Miasto/City/Display Name, Aktywny, Imię, Format
-    """
-    import gspread
-    from google.oauth2.service_account import Credentials
-
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive.readonly",
-    ]
-    creds_env = os.environ.get("GOOGLE_CREDS_JSON")
-    if creds_env and creds_env.startswith("{"):
-        creds_dict = json.loads(creds_env)
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-    else:
-        creds_path = creds_env or "credentials.json"
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
-    client = gspread.authorize(creds)
-    
-    sheet = None
-    if SHEET_ID:
-        try:
-            sheet = client.open_by_key(SHEET_ID)
-        except Exception as e:
-            print(f"[Google Sheets] Fallback: Nie udało się otworzyć po ID ({e})")
-
-    if not sheet:
-        sheet = client.open(SHEET_NAME)
-
-    tab_candidates = []
-    if SHEET_TAB_ENV:
-        tab_candidates.append(SHEET_TAB_ENV)
-    
-    # Kaskada "spadochronów" dla nazw zakładek (najbardziej prawdopodobne na górze)
-    tab_candidates.extend([
-        "Formularz",
-        "Form_Responses4", 
-        "Arkusz1",
-        "Sheet1"
-    ])
-
-    worksheet = None
-    errors = []
-    for tab in tab_candidates:
-        try:
-            worksheet = sheet.worksheet(tab)
-            break
-        except gspread.exceptions.WorksheetNotFound:
-            errors.append(tab)
-
-    if not worksheet:
-        raise RuntimeError(f"Krytyczny błąd: Brak zakładek. Odrzucone: {', '.join(errors)}")
-        
-    # --- P0: Odporne ładowanie Sheets na stałym zakresie (Eliminacja błędu duplicate headers) ---
-    values = worksheet.get_values("A1:Z")
-    if not values:
-        return []
-        
-    headers = values[0]
-    out = []
-    
-    for row in values[1:]:
-        # Wyrównujemy krótsze wiersze pustymi stringami do długości nagłówków
-        if len(row) < len(headers):
-            row = row + [""] * (len(headers) - len(row))
-        out.append(dict(zip(headers, row[:len(headers)])))
-        
-    return out
 
 
 def _load_scheduler_users_from_sheet(client=None) -> list[dict]:
@@ -402,14 +272,7 @@ def _parse_scheduler_users(raw_rows: list[dict]) -> list[dict]:
 
 
 def _soft_delete_user(chat_id: str, reason: str = "unknown"):
-    """
-    Inteligentny Grabarz: deleguje do db_cleanup.mark_user_as_blocked, które
-    1) oznacza access_status=blocked w zakładce Users (nowy rejestr dostępu)
-       wraz z wyczyszczeniem profilu, a następnie
-    2) dodaje prefix BLOCKED_ w Formularz dla pozostałych ścieżek legacy.
-    Scheduler raportów czyta wyłącznie Users; ten legacy marker nie jest źródłem
-    ani fallbackiem dla listy wysyłkowej.
-    """
+    """Delegate Telegram block cleanup exclusively to the Users registry."""
     import gspread
     from google.oauth2.service_account import Credentials
 
@@ -439,73 +302,6 @@ def _resolve_tz(lat: float, lon: float, raw_tz: str = "") -> str:
         if found:
             return found
     return "UTC"
-
-
-def _parse_users(raw_rows: list[dict]) -> list[dict]:
-    """
-    Normalizuje rekordy z arkusza. 
-    Inteligentne scalanie: zbiera dane użytkownika z wielu wierszy,
-    nadpisując stare wartości tylko wtedy, gdy nowe nie są puste.
-    """
-    users_dict = {}
-    
-    for row in raw_rows:
-        chat_id = str(row.get("Chat ID", "")).strip()
-        if not chat_id:
-            continue
-
-        try:
-            lat_raw = str(row.get("Lat", "")).replace(",", ".").strip()
-            lon_raw = str(row.get("Lon", "")).replace(",", ".").strip()
-            current_lat = float(lat_raw) if lat_raw else None
-            current_lon = float(lon_raw) if lon_raw else None
-        except (ValueError, TypeError):
-            current_lat, current_lon = None, None
-
-        current_rano = str(row.get("Raport poranny", "")).strip()
-        current_wieczor = str(row.get("Aktualizacja", "")).strip()
-        current_imie = str(row.get("Imię", "")).strip()
-        current_miasto = str(row.get("Miasto", "")).strip()  
-        
-        # --- BEZPIECZNE POBIERANIE JĘZYKA Z FALLBACKAMI ---
-        current_lang = str(row.get("Lang", row.get("Język", row.get("Language", "")))).strip().lower()
-
-        if chat_id not in users_dict:
-            users_dict[chat_id] = {
-                "chat_id": chat_id,
-                "lat": None,
-                "lon": None,
-                "imie": "",
-                "miasto": "",  
-                "godzina_rano": DEFAULT_RANO,      
-                "godzina_wieczor": DEFAULT_WIECZOR, 
-                "lang": "en",  # Domyślny globalny fallback
-            }
-
-        if current_lat is not None: users_dict[chat_id]["lat"] = current_lat
-        if current_lon is not None: users_dict[chat_id]["lon"] = current_lon
-        if current_imie: users_dict[chat_id]["imie"] = current_imie
-        if current_miasto: users_dict[chat_id]["miasto"] = current_miasto  
-        if current_rano: users_dict[chat_id]["godzina_rano"] = current_rano
-        if current_wieczor: users_dict[chat_id]["godzina_wieczor"] = current_wieczor
-        
-        # --- WHITELISTA (Ochrona przed błędnymi wpisami) ---
-        if current_lang in ("pl", "en", "de", "fr", "es", "no", "nb"): 
-            users_dict[chat_id]["lang"] = "no" if current_lang in ("no", "nb") else current_lang
-
-    final_users = []
-    for u in users_dict.values():
-        if u["lat"] is not None and u["lon"] is not None:
-            u["tz"] = _resolve_tz(u["lat"], u["lon"])
-            
-            # --- TARCZA DOMENOWA (Hotfix) ---
-            # Jeśli nie ma wpisanego miasta w Arkuszu, wstawiamy Twoja okolica.
-            # Absolutnie NIE używamy u["imie"]!
-            u["name"] = u["miasto"] if u["miasto"] else "Twoja okolica"
-            
-            final_users.append(u)
-
-    return final_users
 
 
 # ═══════════════════════════════════════

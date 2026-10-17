@@ -39,7 +39,7 @@ PRIVATE = 100
 # ============================================================================
 @pytest.fixture
 def bot(monkeypatch):
-    harness = BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
+    harness = BotHarness(monkeypatch, seed_profiles=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
     lb.PENDING_REPORT.clear()
     return harness
 
@@ -576,7 +576,7 @@ class TestDataAndScheduler:
         assert len(headers) == len(set(headers)), "bez podwójnych kolumn"
         changed = {k for k in before if before[k] != after[k]}
         assert changed == {"report_morning_time", "report_afternoon_time"}
-        assert len(bot.gc.users.grid) == 2, "jeden wiersz grupy, bez duplikatów"
+        assert sum(r[0] == str(GROUP) for r in bot.gc.users.grid[1:]) == 1
 
     def test_scheduler_still_sees_the_saved_hours(self, bot, as_admin):
         seed_chat(bot, GROUP, user_id=ADMIN)
@@ -617,7 +617,7 @@ class TestDataAndScheduler:
         assert main_card._parse_scheduler_users([record]) == [], \
             "bez profilu scheduler nadal nie wysyła raportów"
 
-    def test_group_without_users_record_gets_a_localized_message(self, bot, as_admin):
+    def test_group_without_users_record_is_silent_even_with_formularz(self, bot, as_admin):
         # Grupa ma dostęp przez legacy Formularz, ale nie ma rekordu w Users:
         # dialog nie startuje i NICZEGO nie tworzy.
         bot.gc.formularz.rows.append(
@@ -626,7 +626,7 @@ class TestDataAndScheduler:
         )
         bot.run(bot.msg(GROUP, "/raport", user_id=ADMIN))
 
-        assert "GODZINY RAPORTÓW" in last(bot, GROUP)
+        assert bot.replies(GROUP) == []
         assert lb.PENDING_REPORT == {}
         assert bot.gc.users.record(GROUP) is None
 
@@ -683,12 +683,10 @@ class TestPrivateChat:
         assert record["lat_round"] == "54.5"
         assert record["location_source"] == "webapp"
 
-    def test_legacy_only_chat_still_gets_migration_message(self, bot):
-        # Użytkownik wyłącznie z legacy Formularz (bez rekordu Users).
+    def test_migrated_chat_gets_users_report_dialog(self, bot):
         bot.run(bot.msg(700, "/raport"))
-
-        assert "w trakcie przenoszenia" in last(bot, 700)
-        assert lb.PENDING_REPORT == {}
+        assert "Rano: 08:00" in last(bot, 700)
+        assert lb._get_pending_report(700, 700) is not None
 
 
 @pytest.mark.parametrize("chat_id", [PRIVATE, GROUP])

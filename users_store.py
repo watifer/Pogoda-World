@@ -1,17 +1,10 @@
 """
 users_store.py — Rejestr dostępu i profilu użytkownika (zakładka `Users` w Pogoda_Users).
 
- Architektura migracji RODO/access (PR1):
-- NOWA zakładka `Users` = jedno miejsce na access_* (granted/revoked/blocked)
-  oraz profile_* (lokalizacja; w PR1 tylko czyszczona — zapis profilu pojawił się
-  w PR2 razem z PENDING_SAVE, a od PR2-UX-cleanup świadomym flow jest `/miasto`;
-  `/save_location` działa dalej, ale wyłącznie jako ukryty alias techniczny).
-- Scheduler raportów korzysta z `Users`; ustawienia raportowe są przechowywane
-  jako `report_morning_time` i `report_afternoon_time`.
-- `Formularz` pozostaje legacy dla pozostałych ścieżek bota; PR3 nie wykonuje
-  backfillu ani zmian danych w tej zakładce.
-- Użytkownicy legacy (wiersz w Formularz, brak wiersza w Users) mają domniemany
-  dostęp w ścieżkach legacy — o fallback dba location_bot (`_chat_has_access`).
+Users jest jedynym źródłem dostępu, profilu, języka, blokad i ustawień
+raportowych użytkowników prywatnych oraz grup (własny ujemny chat_id).
+Scheduler i dispatcher korzystają z tej samej zakładki; brak rekordu nie
+przyznaje dostępu. Nie ma fallbacku do historycznych zakładek.
 
 Konwencje techniczne:
 - Wszystkie aktualizacje są wykonywane BATCHOWO (jeden `update_cells` na operację),
@@ -132,7 +125,7 @@ def norm_chat_id(val) -> str:
 def get_ws(gc, title: str = SHEET_TITLE, tab: str = USERS_TAB):
     """
     Zwraca worksheet zakładki Users. W razie problemu (brak zakładki/uprawnień)
-    zwraca None — bot wtedy działa w trybie legacy (access = wiersz w Formularz).
+    zwraca None — brak rejestru nie przyznaje dostępu.
     """
     try:
         return gc.open(title).worksheet(tab)
@@ -201,7 +194,7 @@ def load_users_map(ws) -> dict:
     """
     Mapa {chat_id(znormalizowany): rekord} — do taniej bramki access w RAM
     (jedno zapytanie na cykl nasłuchiwania, zamiast per wiadomość).
-    W razie błędu zwraca {} — bot degraduje się do trybu legacy.
+    W razie błędu zwraca {} — brak danych nie przyznaje dostępu.
     """
     if ws is None:
         return {}
@@ -530,7 +523,7 @@ def set_blocked(ws, chat_id, reason, now_iso_str, clear_profile=True) -> bool:
     """
     Oznacza użytkownika jako blocked: access_status=blocked + blocked_at/blocked_reason,
     opcjonalnie czyści pola profilu (lokalizację). Zwraca False, gdy wiersza brak
-    (użytkownik legacy) — wtedy wywołujący używa fallbacku BLOCKED_ w Formularz.
+    — nie tworzy nowego rekordu ani alternatywnego źródła dostępu.
     """
     if ws is None:
         return False

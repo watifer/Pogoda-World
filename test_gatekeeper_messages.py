@@ -42,7 +42,7 @@ KEYS = (
 
 @pytest.fixture
 def bot(monkeypatch):
-    return BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
+    return BotHarness(monkeypatch, seed_profiles=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
 
 
 def _button(markup):
@@ -288,7 +288,7 @@ def test_closed_registration_sends_no_markup(empty_bot_holder, monkeypatch):
 
 @pytest.fixture
 def empty_bot_holder(monkeypatch):
-    return BotHarness(monkeypatch, formularz_rows=[])
+    return BotHarness(monkeypatch, seed_profiles=[])
 
 
 @pytest.fixture
@@ -301,7 +301,7 @@ def fake_sleep(monkeypatch):
 
 def test_hard_delete_path_also_sends_copy_button(monkeypatch, fake_sleep):
     """Ścieżka po hard delete wysyła ten sam no_access z przyciskiem."""
-    local = BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
+    local = BotHarness(monkeypatch, seed_profiles=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
     cid = 3300
     local.run(local.msg(cid, "/start BETAX1"))
     assert local.users.record(cid) is not None, "rejestracja musi się udać"

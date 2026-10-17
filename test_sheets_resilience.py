@@ -119,6 +119,8 @@ class FakeSpreadsheet:
 
     def worksheet(self, name):
         self.worksheet_calls.append(name)
+        if name not in ("Users", "Bot_State"):
+            raise AssertionError(f"Forbidden worksheet access: {name}")
         return self.tabs[name]
 
 
@@ -219,28 +221,20 @@ def test_missing_offset_429_backs_off_without_telegram_offset_zero(monkeypatch, 
     assert not offset_path.exists()
 
 
-def test_formularz_429_stops_before_users_and_does_not_advance_offset(monkeypatch, tmp_path):
+def test_formularz_failure_cannot_block_users_poll(monkeypatch, tmp_path):
     offset_path = _set_offset_file(monkeypatch, tmp_path, offset=40)
     client, form, users, _state = _client(form=FakeForm(error=FakeGoogle429()))
     sleeps = []
-    polls = _configure_poll(
-        monkeypatch,
-        client,
-        offset_path,
-        [{"ok": True, "result": [_empty_message_update(41)]}],
-        sleeps=sleeps,
-    )
-
-    assert lb.main_bot() is True
-
-    assert [params["offset"] for params in polls] == [40]
-    assert sleeps == [30]
-    assert form.reads == 1
-    assert users.reads == 0
-    assert json.loads(offset_path.read_text(encoding="utf-8"))["offset"] == 40
+    _configure_poll(monkeypatch, client, offset_path,
+                    [{"ok": True, "result": [_empty_message_update(41)]}], sleeps=sleeps)
+    assert lb.main_bot() is False
+    assert sleeps == []
+    assert form.reads == 0 and users.reads == 1
+    assert client.spreadsheet.worksheet_calls == ["Users"]
+    assert json.loads(offset_path.read_text())["offset"] == 42
 
 
-def test_users_429_stops_batch_and_reuses_successful_form_snapshot(monkeypatch, tmp_path):
+def test_users_429_stops_batch_without_any_form_read(monkeypatch, tmp_path):
     offset_path = _set_offset_file(monkeypatch, tmp_path, offset=70)
     client, form, users, _state = _client(users=FakeUsers(error=FakeGoogle429()))
     sleeps = []
@@ -258,12 +252,12 @@ def test_users_429_stops_batch_and_reuses_successful_form_snapshot(monkeypatch, 
 
     assert [params["offset"] for params in polls] == [70, 70]
     assert sleeps == [30, 60]
-    assert form.reads == 1  # successful tab snapshot stays warm over the retry
+    assert form.reads == 0
     assert users.reads == 2
     assert json.loads(offset_path.read_text(encoding="utf-8"))["offset"] == 70
 
 
-def test_formularz_and_users_ttl_refresh_only_after_expiry(monkeypatch, tmp_path):
+def test_users_ttl_refresh_only_after_expiry(monkeypatch, tmp_path):
     offset_path = _set_offset_file(monkeypatch, tmp_path, offset=100)
     client, form, users, _state = _client()
     polls = _configure_poll(
@@ -283,34 +277,12 @@ def test_formularz_and_users_ttl_refresh_only_after_expiry(monkeypatch, tmp_path
     assert lb.main_bot() is False
     clock[0] = 120.0
     assert lb.main_bot() is False
-    assert form.reads == users.reads == 1
+    assert form.reads == 0 and users.reads == 1
 
     clock[0] = 131.0
     assert lb.main_bot() is False
-    assert form.reads == users.reads == 2
+    assert form.reads == 0 and users.reads == 2
     assert [params["offset"] for params in polls] == [100, 102, 103]
-
-
-def test_form_snapshot_is_reloaded_after_legacy_location_write(monkeypatch):
-    headers = ["Sygnatura czasowa", "Chat ID", "Imię", "Miasto", "Lat", "Lon"]
-    form = FakeForm(
-        headers=headers,
-        rows=[["2026-01-01", "44", "Ala", "Gdańsk", "54.3", "18.6"]],
-    )
-    client, _form, _users, _state = _client(form=form)
-    lb._reset_polling_state(clear_client=True)
-
-    first = lb._load_form_snapshot(client)
-    assert first["users_records"][0]["Miasto"] == "Gdańsk"
-    assert form.reads == 1
-
-    assert lb._clear_legacy_location(form, "44") is True
-    second = lb._load_form_snapshot(client)
-
-    assert form.reads == 2
-    assert second["users_records"][0]["Miasto"] == ""
-    assert second["users_records"][0]["Lat"] == ""
-    assert second["users_records"][0]["Lon"] == ""
 
 
 def test_users_snapshot_stays_current_after_profile_write(monkeypatch):
@@ -335,20 +307,6 @@ def test_users_snapshot_stays_current_after_profile_write(monkeypatch):
     assert users.reads == 2  # one initial snapshot + one writer verification read
     assert profile["lat_round"] == "54.352"
     assert profile["lon_round"] == "18.646"
-
-
-def test_future_loader_propagates_open_429_without_fallback(monkeypatch):
-    client, _form, _users, _state = _client()
-    client.open_by_key_error = FakeGoogle429()
-    monkeypatch.setattr(lb.main_card, "SHEET_ID", "spreadsheet-id")
-    monkeypatch.setattr(lb.main_card, "SHEET_NAME", "Pogoda_Users")
-    monkeypatch.setattr(lb.main_card, "SHEET_TAB_ENV", "")
-
-    with pytest.raises(lb.SheetsRateLimitError):
-        lb._load_future_users_from_sheet(client)
-
-    assert client.open_by_key_calls == ["spreadsheet-id"]
-    assert client.open_calls == []  # no second Sheets request after the 429
 
 
 def test_blocked_user_cleanup_propagates_429_before_legacy_sheet_read():
