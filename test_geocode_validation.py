@@ -1249,12 +1249,14 @@ def test_known_cost_of_stage_one_street_first_query_is_rejected():
 
 
 def guest_handler_run(text, geocode_status_fn, chat_type="private", lang="pl",
-                      city_name="Hel", resolve_labels_fn=None, effective_lang=None):
+                      city_name="Hel", resolve_labels_fn=None, effective_lang=None,
+                      too_short_fn=lb._geocode_query_is_too_short):
     """Woła handle_guest_now z atrapami: (obsłużono, teksty, karty, payloady).
 
     HOTFIX: ``resolve_labels_fn`` jest opcjonalny (domyślnie ``None``, jak w
     kontrakcie ``handle_guest_now``) — istniejące wywołania bez niego zostają
-    bez zmian.
+    bez zmian. ``too_short_fn`` domyślnie odzwierciedla PRODUKCYJNE okablowanie
+    z location_bot (ta sama walidacja długości co komendy).
     """
     sent, photos, payloads = [], [], []
 
@@ -1281,6 +1283,7 @@ def guest_handler_run(text, geocode_status_fn, chat_type="private", lang="pl",
         geocode_status_fn=geocode_status_fn,
         resolve_labels_fn=resolve_labels_fn,
         effective_lang=effective_lang,
+        too_short_fn=too_short_fn,
     )
     return handled, sent, photos, payloads
 
@@ -1341,7 +1344,7 @@ def test_guest_status_messages_follow_the_user_language(lang):
     assert i18n.UI_TEXTS[lang]["search_fail"] in sent[-1]
 
 
-def test_guest_groups_stay_silent_but_still_make_no_card():
+def test_guest_groups_get_search_loc_but_stay_silent_on_error():
     FakeNominatim.responses.append([])
     handled, sent, photos, payloads = guest_handler_run(
         "?12 Hel", lambda city, lang: lb.geocode_city_details_status(city, lang),
@@ -1349,7 +1352,9 @@ def test_guest_groups_stay_silent_but_still_make_no_card():
     )
     assert handled is True
     assert photos == [] and payloads == []
-    assert sent == [], "w grupie błąd geokodera to cisza, ale karta i tak nie powstaje"
+    # Grupa z dostępem dostaje JEDEN komunikat przed wyszukaniem; komunikat
+    # błędu geokodera pozostaje wyciszony, a karta i tak nie powstaje.
+    assert sent == [i18n.t_ui("pl", "search_loc")]
 
 
 @pytest.mark.parametrize("status", [
@@ -1491,7 +1496,11 @@ def test_guest_shortcuts_and_mention_card_a_validated_city(text, card_type):
     assert handled is True
     assert payloads and payloads[0][2] == card_type, text
     assert photos and photos[0][1] == "Paris", text
-    assert sent == [], "udana karta nie ma komunikatu statusowego"
+    # Skrót z argumentem: dokładnie jeden search_loc, bez komunikatu statusu.
+    # Sama wzmianka @bot pozostaje bez zapowiedzi wyszukiwania.
+    expected_sent = ([i18n.t_ui("pl", "search_loc")]
+                     if gbh.resolve_shortcut(text)[0] else [])
+    assert sent == expected_sent, "udana karta nie ma komunikatu statusowego"
     assert FakeNominatim.forward_calls()[0]["query"] == "Paryż"
 
 
@@ -1505,7 +1514,7 @@ def test_guest_day_shortcut_cards_a_validated_city(morning_hour):
         )
         assert handled is True and photos, text
         assert payloads[0][2] == "day", text
-        assert sent == [], text
+        assert sent == [i18n.t_ui("pl", "search_loc")], text
 
 
 def test_guest_day_shortcut_respects_the_local_card_window(evening_hour):
@@ -1540,7 +1549,9 @@ def test_ok_without_coordinates_never_sends_an_empty_message():
     fn = status_fn_for(lb.GEOCODE_OK, lat=None, lon=None)
     _handled, sent, photos, payloads = guest_handler_run("?12 Hel", fn)
     assert photos == [] and payloads == []
-    assert sent == [], "GEOCODE_OK nie ma własnego komunikatu"
+    assert sent == [i18n.t_ui("pl", "search_loc")], (
+        "GEOCODE_OK nie ma własnego komunikatu — zostaje tylko search_loc"
+    )
     assert gbh._GEO_CACHE == {}, "wynik bez współrzędnych nie jest wynikiem OK"
 
 
@@ -1567,7 +1578,8 @@ def test_guest_without_status_adapter_keeps_the_legacy_path():
     )
     assert handled is True
     assert calls == ["Hel"], "bez adaptera statusowego zostaje pojedyncza próba"
-    assert photos == [] and sent == [i18n.t_ui("pl", "search_fail")]
+    assert photos == []
+    assert sent == [i18n.t_ui("pl", "search_loc"), i18n.t_ui("pl", "search_fail")]
 
 
 # ============================================================================
@@ -2451,8 +2463,12 @@ def test_guest_error_texts_follow_effective_lang(effective, tg):
         "?n Alpha", status_fn, lang=tg, city_name=None, effective_lang=effective,
     )
     assert photos == []
-    assert sent == [i18n.t_geocode(effective, lb.GEOCODE_NO_MATCH)]
-    assert sent[0] != i18n.t_geocode(tg, lb.GEOCODE_NO_MATCH)
+    assert sent == [
+        i18n.t_ui(effective, "search_loc"),
+        i18n.t_geocode(effective, lb.GEOCODE_NO_MATCH),
+    ]
+    assert i18n.t_ui(effective, "search_loc") != i18n.t_ui(tg, "search_loc")
+    assert sent[-1] != i18n.t_geocode(tg, lb.GEOCODE_NO_MATCH)
 
 
 def test_guest_without_override_keeps_telegram_fallback():
@@ -2462,7 +2478,10 @@ def test_guest_without_override_keeps_telegram_fallback():
     _h, sent, _p, _pl = guest_handler_run(
         "?n Alpha", status_fn, lang="pl", city_name=None,
     )
-    assert sent == [i18n.t_geocode("pl", lb.GEOCODE_NO_MATCH)]
+    assert sent == [
+        i18n.t_ui("pl", "search_loc"),
+        i18n.t_geocode("pl", lb.GEOCODE_NO_MATCH),
+    ]
 
 
 @pytest.mark.parametrize("text", [
@@ -2487,7 +2506,10 @@ def test_every_guest_path_uses_effective_lang(text, morning_hour):
         resolve_labels_fn=resolver, effective_lang="en",
     )
     assert photos, f"{text}: karta powinna powstać"
-    assert sent == []
+    # Komunikat wyszukiwania też mówi językiem effective_lang; wzmianka @bot
+    # bez skrótu nie dostaje go wcale.
+    assert sent == ([i18n.t_ui("en", "search_loc")]
+                    if gbh.resolve_shortcut(text)[0] else []), text
     assert seen and all(lang == "en" for _kind, lang in seen), seen
 
 
