@@ -570,7 +570,7 @@ class TestMessageOrder:
         order = []
         monkeypatch.setattr(
             lb, "_send_oneoff_report",
-            lambda chat_id, lat, lon, city, lang, card_type:
+            lambda chat_id, lat, lon, city, lang, card_type, display_location=None:
                 (order.append((card_type, [t for c, t in bot.sent if c == PRIVATE][with_profile:])), True)[1],
         )
 

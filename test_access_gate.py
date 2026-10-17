@@ -264,11 +264,14 @@ class BotHarness:
         monkeypatch.setattr(lb, "handle_guest_now", fake_guest_now)
         monkeypatch.setattr(lb, "_send_card_to_user",
                             lambda user, **kw: (self.cards.append(user["chat_id"]), True)[1])
-        monkeypatch.setattr(
-            lb, "_send_oneoff_report",
-            lambda chat_id, lat, lon, city, lang, card_type:
-                (self.oneoffs.append((chat_id, lat, lon, city, lang, card_type)), True)[1],
-        )
+        self.oneoff_descriptions = []
+
+        def record_oneoff(chat_id, lat, lon, city, lang, card_type, display_location=None):
+            self.oneoffs.append((chat_id, lat, lon, city, lang, card_type))
+            self.oneoff_descriptions.append(display_location)
+            return True
+
+        monkeypatch.setattr(lb, "_send_oneoff_report", record_oneoff)
         monkeypatch.setattr(
             lb, "get_coords_from_city",
             lambda city, lang="pl": (52.22972, 21.01223, f"{city}, Polska"),
@@ -581,8 +584,8 @@ class TestAccessWithoutProfile:
         assert "100" not in bot.gc.formularz.chat_ids(), "one-off nie może tworzyć legacy profilu"
         assert lb.PENDING_SAVE["100"]["source"] == "city"
         # PR2 UX cleanup: po karcie pokazujemy TYLKO użytą lokalizację
-        assert bot.has_reply(100, "Użyta lokalizacja")
-        assert bot.has_reply(100, "Warszawa, Polska")
+        assert not bot.has_reply(100, "Użyta lokalizacja")
+        assert "Warszawa, Polska" in bot.oneoff_descriptions
         assert not bot.has_reply(100, "/save_location")
         assert not bot.has_reply(100, "/oneoff")
 
@@ -683,7 +686,8 @@ class TestAccessWithoutProfile:
             assert rec["lat_round"] == "" and rec["location_consent_at"] == "", source
             assert lb.PENDING_SAVE[str(chat_id)]["source"] == source
             assert str(chat_id) not in bot.gc.formularz.chat_ids(), source
-            assert bot.has_reply(chat_id, "Użyta lokalizacja"), source
+            assert not bot.has_reply(chat_id, "Użyta lokalizacja"), source
+            assert bot.oneoff_descriptions[-1], source
 
     def test_city_command_saves_profile_and_generates_no_card(self, bot):
         # PR2 UX cleanup (pkt 7 + D): /miasto jest jedynym widocznym flow zapisu.
@@ -1015,13 +1019,10 @@ class TestPr2UxCleanup:
             assert "/save_location" not in text
             assert "/oneoff" not in text
         assert bot.keyboards_for(100) == []
-        # zamiast tego pokazujemy tylko użytą lokalizację z geokodera
-        # (POPRAWKA #4: krótka etykieta i bezpieczny opis lokalizacji)
-        assert bot.has_reply(100, "📍 *Użyta lokalizacja:*")
-        assert bot.has_reply(100, "Warszawa, Polska")
-        assert bot.has_reply(
-            100, "Nie to miejsce? Użyj ponownie /miasto i doprecyzuj nazwę"
-        )
+        # Pełny opis trafia do wysyłki karty, nigdy do osobnego sendMessage.
+        assert not bot.has_reply(100, "Użyta lokalizacja")
+        assert "Warszawa, Polska" in bot.oneoff_descriptions
+        assert not bot.has_reply(100, "Nie to miejsce?")
 
     # --- d) /miasto + miasto zapisuje profil i nie generuje karty -----------
     def test_d_city_flow_saves_profile_without_card(self, bot):
