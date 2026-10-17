@@ -488,6 +488,60 @@ def _is_guest_trigger(text, bot_username):
     return prefix is not None
 
 
+# Skrót bez argumentu w czacie prywatnym obsługują ISTNIEJĄCE komendy:
+#   ?d  -> /day     (karta dzienna)
+#   ?12 -> /now     (karta 12 h)
+#   ?14 -> /future  (trend 14 dni)
+# Dzięki temu zapisany profil Users korzysta z prep_* i nie jest geokodowany,
+# a brak profilu ustawia PENDING_CITY przed wysłaniem oneoff_prompt_*.
+# Mapowanie obejmuje wyłącznie TYPY KART już rozpoznawane przez parser
+# (day/now/future) — żadnych nowych aliasów ani formatów skrótów.
+SHORTCUT_NO_ARG_COMMANDS = {
+    "day": "/day",
+    "now": "/now",
+    "future": "/future",
+}
+
+
+def _redirect_shortcut_without_argument(message):
+    """Kopia wiadomości z tekstem komendy dla skrótu BEZ argumentu.
+
+    Zwraca ``None``, gdy przekierowanie nie ma zastosowania. Reguły:
+
+    - tylko czat prywatny (polityka grup: skrót bez argumentu pozostaje ciszą),
+    - tylko skrót rozpoznany przez ``resolve_shortcut`` i BEZ argumentu
+      (``?d Warszawa`` to nadal jednorazowa karta trybu gościa),
+    - skrót będący odpowiedzią na pinezkę (``reply_to_message.location``)
+      zostaje w ``guest_bot_handler`` — tam działa dotychczasowa ścieżka,
+    - zwracana jest KOPIA wiadomości: oryginalny ``message`` (a więc i update)
+      nie jest mutowany, więc logowanie, ``reply_to_message.location`` i inne
+      ścieżki dispatchera widzą dokładnie to, co przyszło z Telegrama.
+
+    Wywołanie żyje PO globalnym guardzie P7 — czat bez dostępu nigdy tu nie
+    dociera (silent drop zostaje bez zmian).
+    """
+    text = message.get("text") or ""
+    prefix, card_type, query = resolve_shortcut(text)
+    if not prefix or query:
+        return None
+
+    chat = message.get("chat") or {}
+    if chat.get("type") != "private":
+        return None
+
+    reply = message.get("reply_to_message") or {}
+    if reply.get("location"):
+        return None
+
+    command = SHORTCUT_NO_ARG_COMMANDS.get(card_type)
+    if not command:
+        return None
+
+    redirected = dict(message)
+    redirected["text"] = command
+    return redirected
+
+
 def _chat_has_access(users_map, clean_users, chat_id, now=None) -> bool:
     """
     Bramka dostępu (P7 Gatekeeper):
@@ -4092,6 +4146,20 @@ def _main_bot_iteration(gc, offset):
             # więc tutaj docierają wyłącznie czaty z dostępem.
             # ETAP 1: guest_bot_handler nadal sam nic nie wie o geokoderze —
             # dostaje tylko statusowy adapter z tego pliku.
+            #
+            # SKRÓT BEZ ARGUMENTU (?d / ?12 / ?14) W CZACIE PRYWATNYM:
+            # guest handler nie zna profilu Users ani PENDING_CITY, więc sam
+            # odpowiadał promptem guest_need_city i gubił odpowiedź z miastem.
+            # Zamiast drugiego mechanizmu przekierowujemy taki skrót na
+            # istniejącą komendę (/day, /now, /future) — dalej decyduje
+            # sprawdzona ścieżka: zapisany profil -> prep_* -> karta,
+            # brak profilu -> PENDING_CITY + oneoff_prompt_* -> 8B.
+            # Podmieniamy LOCALNĄ zmienną na kopię wiadomości; oryginalny
+            # update pozostaje nietknięty (reply_to_message.location działa).
+            # W grupie funkcja zwraca None — cisza grupowa bez zmian.
+            redirected_message = _redirect_shortcut_without_argument(message)
+            if redirected_message is not None:
+                message = redirected_message
             # HOTFIX (effective language): jeden język dla guesta — Users.lang
             # tego chat_id (grupa = własny rekord grupy), potem Telegram, en.
             # Przekazywany PRZED handle_guest_now jako override.
