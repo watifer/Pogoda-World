@@ -6,6 +6,8 @@ Airly jest opcjonalne i best-effort.
 
 from __future__ import annotations
 
+import perf_debug as perf
+
 import os
 ENABLE_OWM_NOWCAST = os.getenv("ENABLE_OWM_NOWCAST", "1") == "1"
 import time
@@ -145,8 +147,10 @@ def _get_owm_cached(lat: float, lon: float, ttl_sec: int = 180):
     now = time.time()
     
     if key in _OWM_CACHE and (now - _OWM_CACHE[key][0] < ttl_sec):
+        perf.mark(cache="hit", operation="weather.owm")
         return _OWM_CACHE[key][1]
         
+    perf.mark(cache="miss", operation="weather.owm")
     from owm_nowcast import get_current_weather
     data = get_current_weather(lat, lon, timeout_sec=8)
     _OWM_CACHE[key] = (now, data)
@@ -163,7 +167,7 @@ def _fetch_yrno(lat: float, lon: float, tz: ZoneInfo) -> tuple[list, str]:
     url = (f"https://api.met.no/weatherapi/locationforecast/2.0/complete"
            f"?lat={lat}&lon={lon}")
     session = _get_retry_session()
-    r = session.get(url, headers={"User-Agent": ua}, timeout=20)
+    r = perf.call("weather.yrno.http", session.get, url, headers={"User-Agent": ua}, timeout=20)
     r.raise_for_status()
     
     data = r.json()
@@ -232,10 +236,13 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
     if key in _OPENMETEO_CACHE:
         ts, cached_hours = _OPENMETEO_CACHE[key]
         if now_ts - ts < _OPENMETEO_TTL:
+            perf.mark(cache="hit", operation="weather.openmeteo")
             return cached_hours
             
+    perf.mark(cache="miss", operation="weather.openmeteo")
     # 2. CIRCUIT BREAKER (Odcięcie na określony czas przy awarii)
     if now_ts < _OPENMETEO_DOWN_UNTIL:
+        perf.mark(outcome="skipped", operation="weather.openmeteo")
         return []  # Zwracamy pustą listę -> bot przejdzie na Yr.no
         
     tz_str = str(tz).replace("/", "%2F")
@@ -254,20 +261,23 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
     
     session = _get_retry_session()
     try:
-        r = session.get(url, timeout=8)
+        r = perf.call("weather.openmeteo.http", session.get, url, timeout=8)
         r.raise_for_status()
         h = r.json()["hourly"]
     except requests.exceptions.RetryError:
+        perf.mark(outcome="error", operation="weather.openmeteo")
         print("[weather_payload] Circuit Breaker: Open-Meteo odrzuciło po 2 próbach (RetryError). Odcinam na 3 minuty.")
         _OPENMETEO_DOWN_UNTIL = now_ts + 180
         return []
     except requests.exceptions.HTTPError as e:
+        perf.mark(outcome="error", operation="weather.openmeteo")
         if getattr(e.response, "status_code", None) == 503:
             print("[weather_payload] Circuit Breaker: Błąd 503 z Open-Meteo. Odcinam na 3 minuty.")
             _OPENMETEO_DOWN_UNTIL = now_ts + 180
             return []
         raise
     except requests.exceptions.RequestException as e:
+        perf.mark(outcome="error", operation="weather.openmeteo")
         print(f"[weather_payload] Circuit Breaker: Inny błąd sieciowy ({type(e).__name__}). Odcinam na 2 minuty.")
         _OPENMETEO_DOWN_UNTIL = now_ts + 120
         return []
@@ -330,10 +340,11 @@ def _airly_get(url: str, api_key: str):
     """Błyskawiczne pobieranie Airly - bez pętli i mrożenia bota!"""
     headers = {"Accept": "application/json", "apikey": api_key}
     try:
-        r = requests.get(url, headers=headers, timeout=2.5)
+        r = perf.call("weather.airly.http", requests.get, url, headers=headers, timeout=2.5)
         r.raise_for_status()
         return r.json()
     except Exception as e:
+        perf.mark(outcome="error", operation="weather.airly")
         print(f"[weather_payload] Airly pominięte (Błąd limitu/Brak stacji): {e}")
         return None
 
@@ -341,6 +352,7 @@ def _airly_get(url: str, api_key: str):
 def _fetch_airly(lat: float, lon: float, max_km: float = 3.0) -> dict | None:
     api_key = os.environ.get("AIRLY_API_KEY")
     if not api_key:
+        perf.mark(outcome="skipped", operation="weather.airly")
         return None
     try:
         url_inst = (
@@ -382,6 +394,7 @@ def _fetch_airly(lat: float, lon: float, max_km: float = 3.0) -> dict | None:
             "source":          "airly",
         }
     except Exception:
+        perf.mark(outcome="error", operation="weather.airly")
         return None
         
 
@@ -498,7 +511,7 @@ def build_payload_for_location(
     # 1. Pobieramy Niemców (Open-Meteo)
     om_hours = []
     try:
-        om_hours = _fetch_openmeteo(lat, lon, tz)
+        om_hours = perf.call('weather.openmeteo', _fetch_openmeteo, lat, lon, tz)
         if om_hours:  # <--- To gwarantuje, że przy [] nie nadpisze źródła błędnie!
             forecast_source = "OpenMeteo"
     except Exception as e:
@@ -508,7 +521,7 @@ def build_payload_for_location(
     yr_hours = []
     yr_updated_at = None  # Dodana zmienna
     try:
-        yr_hours, yr_updated_at = _fetch_yrno(lat, lon, tz)  # Rozpakowujemy krotkę
+        yr_hours, yr_updated_at = perf.call('weather.yrno', _fetch_yrno, lat, lon, tz)  # Rozpakowujemy krotkę
         if forecast_source is None:
             forecast_source = "yr.no"
     except Exception as e:
@@ -568,7 +581,7 @@ def build_payload_for_location(
 
     forecast_hours = _select_hours(hours_all, tz, days_ahead)
 
-    airly = _fetch_airly(lat, lon)
+    airly = perf.call('weather.airly', _fetch_airly, lat, lon)
 
     model_temp = forecast_hours[0]["temp_c"] if forecast_hours else None
     airly_temp = airly["temp_c"] if airly else None
@@ -590,9 +603,12 @@ def build_payload_for_location(
     owm_live = None
     if ENABLE_OWM_NOWCAST:
         try:
-            owm_live = _get_owm_cached(lat, lon, ttl_sec=180)
+            owm_live = perf.call('weather.owm', _get_owm_cached, lat, lon, ttl_sec=180)
         except Exception as e:
             print(f"[weather_payload] Błąd pobierania OWM_NOWCAST: {e}")
+
+    else:
+        perf.skipped("weather.owm")
 
     return {
         "version": "1.0",

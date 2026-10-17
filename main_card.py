@@ -5,6 +5,8 @@ Wysyłka przez Telegram Bot API (requests, bez python-telegram-bot).
 
 from __future__ import annotations
 
+import perf_debug as perf
+
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -100,7 +102,7 @@ def send_telegram_photo(chat_id: str, image_path: str,
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     try:
         with open(image_path, "rb") as f:
-            r = requests.post(
+            r = perf.call("send_photo.http", requests.post,
                 url,
                 data={"chat_id": chat_id, "caption": caption, "disable_notification": disable_notification},
                 files={"photo": f},
@@ -500,6 +502,7 @@ def run_send_cycle():
             time.sleep(2.0 + random.random() * 1.0) # Odczekajmy nawet w przypadku błędu
 
 
+@perf.entry("card")
 def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False, is_future: bool = False) -> bool:
 
     chat_id = user["chat_id"]
@@ -509,7 +512,7 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
     t_fetch_start = time.perf_counter()
 
     # 1. Payload
-    payload = build_payload_for_location(
+    payload = perf.call('payload', build_payload_for_location,
         lat=user["lat"],
         lon=user["lon"],
         tz_name=user["tz"],
@@ -598,11 +601,11 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
 
     # 2. Layout (ROZWIDLENIE ARCHITEKTONICZNE)
     if is_now:
-        layout = prepare_now_layout_data(payload)
+        layout = perf.call('layout', prepare_now_layout_data, payload)
     elif is_future:
-        layout = prepare_future_layout_data(payload)
+        layout = perf.call('layout', prepare_future_layout_data, payload)
     else:
-        layout = prepare_layout_data(payload)
+        layout = perf.call('layout', prepare_layout_data, payload)
         
     # === KONTROLA ZDROWEGO ROZSĄDKU (Sanity Check) ===   
     anomalies = run_sanity_check(layout, payload)
@@ -615,7 +618,7 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
     
     # 3. Render
     t_render_start = time.perf_counter()
-    img_path = image_generator.generate_weather_card(layout)
+    img_path = perf.call('render', image_generator.generate_weather_card, layout)
     t_render_end = time.perf_counter()
     print(f"[PERF RENDER] 🎨 Czas generowania obrazka PNG: {t_render_end - t_render_start:.2f}s")
     if not img_path:
@@ -623,7 +626,7 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         return False
 
     # 4. Wyślij
-    ok = send_telegram_photo(chat_id, img_path, disable_notification=is_quiet)
+    ok = perf.call('send_photo', send_telegram_photo, chat_id, img_path, disable_notification=is_quiet)
     if ok:
         print(f"[main_card] ✅ Wysłano do {chat_id}")
         return True
@@ -631,19 +634,22 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         print(f"[main_card] ❌ Błąd wysyłki do {chat_id}")
         return False
 
+@perf.entry("smoke")
 def run_smoke_test(target_chat_id: str, is_now: bool = False, is_future: bool = False):
 
     """Admin-only path: wysyła kartę do podanego chat_id ignorując okna czasowe i cache."""
     print(f"[SMOKE TEST] Uruchamiam test dla chat_id: {target_chat_id}...")
     try:
-        raw = _load_scheduler_users_from_sheet()
+        raw = perf.uncached_snapshot(_load_scheduler_users_from_sheet)
         users = _parse_scheduler_users(raw)
     except Exception as e:
+        perf.mark(outcome="error", operation="smoke")
         print(f"[SMOKE TEST] Błąd ładowania bazy: {e}")
         return
 
     user = next((u for u in users if str(u["chat_id"]) == target_chat_id), None)
     if not user:
+        perf.mark(outcome="skipped", operation="smoke")
         print(f"[SMOKE TEST] Nie znaleziono użytkownika {target_chat_id} w arkuszu.")
         return
 
@@ -652,6 +658,7 @@ def run_smoke_test(target_chat_id: str, is_now: bool = False, is_future: bool = 
     if success:
         print("[SMOKE TEST] Zakończony pełnym sukcesem.")
     else:
+        perf.mark(outcome="error", operation="smoke")
         print("[SMOKE TEST] Zakończony błędem na etapie wysyłki/renderu.")
 
 # ═══════════════════════════════════════

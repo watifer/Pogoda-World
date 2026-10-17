@@ -1,5 +1,7 @@
 # owm_nowcast.py
 from __future__ import annotations
+
+import perf_debug as perf
 import os
 import time
 import json
@@ -207,6 +209,7 @@ def classify_owm_cloud_correction(h_model: dict, owm: dict, now_local: datetime,
 def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optional[dict]:
     api_key = os.environ.get("OWM_API_KEY")
     if not api_key:
+        perf.mark(outcome="skipped", operation="weather.owm")
         return None
 
     k = _key(lat, lon)
@@ -216,10 +219,12 @@ def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optiona
     if k in _CACHE:
         ts, data = _CACHE[k]
         if now - ts < TTL_SEC:
+            perf.mark(cache="hit", operation="weather.owm")
             return data
 
     # 2. Sprawdzamy limit zapytań
     if not _check_and_increment_limit():
+        perf.mark(outcome="skipped", operation="weather.owm")
         return None
 
     # ZAKTUALIZOWANY URL DLA OWM 4.0
@@ -232,8 +237,9 @@ def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optiona
     }
 
     try:
-        r = requests.get(url, params=params, timeout=timeout_sec)
+        r = perf.call("weather.owm.http", requests.get, url, params=params, timeout=timeout_sec)
         if r.status_code != 200:
+            perf.mark(outcome="error", operation="weather.owm")
             return None
         data = r.json()
         # --- DEBUG OWM 4.0 (tylko na żądanie) ---
@@ -249,6 +255,7 @@ def get_current_weather(lat: float, lon: float, timeout_sec: int = 8) -> Optiona
         _CACHE[k] = (now, data)
         return data
     except Exception:
+        perf.mark(outcome="error", operation="weather.owm")
         return None
 
 def nowcast_note(payload_hours: list, now_local: datetime, owm: dict, lang: str = "pl") -> Optional[str]:

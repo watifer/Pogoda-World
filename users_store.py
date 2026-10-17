@@ -13,6 +13,7 @@ Konwencje techniczne:
 - Nagłówki dopasowujemy case-insensitively z obróbką białych znaków.
 """
 
+import perf_debug as perf
 import gspread
 from datetime import datetime, timezone
 from typing import Optional
@@ -197,6 +198,7 @@ def load_users_map(ws) -> dict:
     W razie błędu zwraca {} — brak danych nie przyznaje dostępu.
     """
     if ws is None:
+        perf.mark(outcome="error", operation="snapshot_users")
         return {}
     try:
         out = {}
@@ -206,6 +208,7 @@ def load_users_map(ws) -> dict:
                 out[cid] = d
         return out
     except Exception as e:
+        perf.mark(outcome="error", operation="snapshot_users")
         _reraise_rate_limit(e)
         print(f"  ⚠️ [users_store] load_users_map: {e}")
         return {}
