@@ -194,13 +194,18 @@ class TestSingleDaySummaryLabel:
 class TestAirlyOptional:
     """Brak Airly nie może wywalić payload buildera."""
 
-    def test_no_airly_key_in_env(self):
+    def test_no_airly_key_in_env(self, monkeypatch):
         import os
         from datetime import date
         today = date.today().strftime("%Y-%m-%d")
+        # Isolate the shared forecast cache/circuit breaker as well as HTTP.
+        monkeypatch.setattr("weather_payload._OPENMETEO_CACHE", {})
+        monkeypatch.setattr("weather_payload._OPENMETEO_DOWN_UNTIL", 0)
         env_backup = os.environ.pop("AIRLY_API_KEY", None)
         try:
-            with patch("weather_payload.requests.get") as mock_get:
+            # Production fetch uses Session.get, not requests.get.
+            with patch("weather_payload.requests.Session.get") as mock_get, \
+                    patch("weather_payload._fetch_yrno", return_value=([], None)):
                 mock_resp = MagicMock()
                 mock_resp.raise_for_status = lambda: None
                 mock_resp.json.return_value = {
@@ -225,7 +230,8 @@ class TestAirlyOptional:
                 payload = build_payload_for_location(
                     52.0, 21.0, "Europe/Warsaw", "TestCity")
             assert payload["airly"] is None
-            assert payload["hours"] is not None
+            assert len(payload["hours"]) == 24
+            mock_get.assert_called_once()
         finally:
             if env_backup is not None:
                 os.environ["AIRLY_API_KEY"] = env_backup

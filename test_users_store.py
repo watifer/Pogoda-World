@@ -666,19 +666,13 @@ class TestLocationBotHelpers:
         assert f("Cześć, co tam?", "MyBot") is False
         assert f("", "MyBot") is False
 
-    def test_chat_has_access_users_wins(self):
+    def test_chat_has_access_users_only(self):
         f = lb._chat_has_access
-        # granted w Users -> dostęp
-        assert f({"111": {"access_status": "granted"}}, [], 111) is True
-        # blocked w Users -> brak dostępu NAWET przy wierszu legacy
-        assert f({"111": {"access_status": "blocked"}},
-                 [{"Chat ID": "111"}], 111) is False
-        # revoked w Users -> brak dostępu
-        assert f({"111": {"access_status": "revoked"}}, [], 111) is False
-        # brak w Users, jest w legacy -> dostęp (implikowany)
-        assert f({}, [{"Chat ID": "222", "Lat": "1"}], 222) is True
-        # nigdzie -> brak
-        assert f({}, [{"Chat ID": "222"}], 333) is False
+        assert f({"111": {"access_status": "granted"}}, 111) is True
+        assert f({"111": {"access_status": "blocked"}}, 111) is False
+        assert f({"111": {"access_status": "revoked"}}, 111) is False
+        assert f({}, 222) is False
+        assert f({}, 333) is False
 
     def test_norm_lang(self):
         f = lb._norm_lang
@@ -709,7 +703,9 @@ class TestLocationBotHelpers:
         lb._set_pending_city("123456", lb.CTX_ONEOFF_DAY)
         lb._set_pending_delete("123456")
         lb._put_pending_save(123456, 52.23, 21.01, "Warszawa", "pl", "city")
-        lb._handle_delete_me(123456, "pl", None, _LegacySheetStub())
+        ws = FakeWorksheet()
+        upsert_access(ws, 123456, "pl", "legacy", now_iso(), "test")
+        lb._handle_delete_me(123456, "pl", ws)
         assert "123456" not in lb.PENDING_CITY
         assert "123456" not in lb.PENDING_SAVE
         assert "123456" not in lb.PENDING_DELETE
@@ -720,32 +716,3 @@ class TestLocationBotHelpers:
         assert "http" not in sent[0][1]
         assert "bot prywatny" in sent[1][1].lower() and "/start BETA2026A" in sent[1][1]
         assert sleeps == [lb.DELETE_NOTICE_DELAY_SEC]
-
-
-class _LegacySheetStub:
-    """Minimalna atrapa Formularz dla _delete_legacy_rows (col_values/delete_rows)."""
-
-    def __init__(self):
-        self.grid = [
-            ["Sygnatura czasowa", "Chat ID", "Imię", "Miasto", "Lat", "Lon"],
-            ["2026-01-01", "123456", "Ala", "Warszawa", "52", "21"],
-            ["2026-01-02", "123456", "Ala", "Warszawa", "52", "21"],
-            ["2026-01-03", "BLOCKED_123456", "Ala", "", "", ""],
-            ["2026-01-04", "999", "Inny", "Hel", "54", "18"],
-        ]
-
-    def col_values(self, col):
-        return [row[col - 1] if col - 1 < len(row) else "" for row in self.grid]
-
-    def delete_rows(self, idx):
-        del self.grid[idx - 1]
-
-
-def test_delete_me_legacy_rows_deleted_from_the_end():
-    stub = _LegacySheetStub()
-    deleted = lb._delete_legacy_rows(stub, 123456)
-    assert deleted == 3  # 2 zwykłe + 1 z BLOCKED_
-    # Zostaje tylko obcy użytkownik
-    assert [r[1] for r in stub.grid[1:]] == ["999"]
-    # Kolumny pozostałych wierszy nietknięte
-    assert stub.grid[1][2] == "Inny"

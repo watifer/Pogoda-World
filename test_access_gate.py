@@ -1,38 +1,8 @@
-"""
-test_access_gate.py — Testy end-to-end bramki dostępu PR1 (RODO/access migration).
+"""Users-only P7 end-to-end tests with Telegram/Sheets fakes.
 
-Uruchomienie: pytest test_access_gate.py -v
-
-Testy symulują PEŁNĄ pętlę location_bot.main_bot() z atrapami Telegram API
-oraz Google Sheets (Formularz + Users + Bot_State). Zero sieci, zero kluczy,
-zero produkcyjnych danych.
-
-Pokrywane scenariusze:
-- obcy użytkownik (POPRAWKA #7): odpowiada WYŁĄCZNIE /start — bez kodu dostaje
-  pełny no_access, z poprawnym kodem rejestrację, a komendy/pinezki/skróty
-  .d/.n/.f/?d/?12 są ignorowane po cichu (zero wiadomości),
-- /start <token>: access TYLKO w Users (bez lat/lon, bez wiersza w Formularz),
-- użytkownik z access-em bez profilu: /day Warszawa, /now Hel, /future Berlin
-  generują one-off + PENDING_SAVE, bez automatycznego zapisu,
-- PR2 UX cleanup: /dzien, /teraz, /trend bez profilu pytają o SAMĄ miejscowość,
-  wpisane miasto generuje kartę jednorazową i NIC nie zapisuje, a po karcie nie
-  pokazujemy już /save_location ani /oneoff (tylko użytą lokalizację),
-- /miasto to jedyny widoczny flow zapisu lokalizacji (zapis bez karty),
-- aliasy PL są case-insensitive (/bezGPS, /BEZGPS, /usunDane, /USUNDANE),
-- /usunDane i /delete_me wymagają potwierdzenia przyciskiem (bez callbacków),
-- użytkownik legacy (Formularz): pełna funkcjonalność bez zmian,
-- Users blocked wygrywa z legacy; BLOCKED_ legacy traci dostęp,
-- kasacja danych (POPRAWKA #7): hard delete Users + delete_rows Formularz +
-  czyszczenie RAM, a po skutecznej kasacji DOKŁADNIE dwa komunikaty —
-  delete_me_done, a po ok. 1 s osobny, pełny no_access,
-- po hard delete czat nie ma danych ani dostępu: wszystkie komendy (w tym
-  /dane, /priv, /bezGPS, /usunDane, /delete_me, /privacy, /my_data), skróty,
-  pinezki i zwykły tekst są ciszą — działa wyłącznie /start,
-- /forget_location (/bezGPS): czyści profil, dostęp zostaje, rozróżnia brak
-  zapisanej lokalizacji,
-- komendy RODO (/privacy, /my_data, /delete_me) działają dla czatów z dostępem,
-  a dla czatów bez dostępu są ciszą (POPRAWKA #7),
-- komendy w tekstach UI nie są w backtickach (klikalność na telefonie).
+Historical fixture rows explicitly seed Users profiles in test setup only.
+Formularz is an inaccessible decoy: every open is recorded and rejected.
+No production data, credentials or network are used.
 """
 
 import os
@@ -58,6 +28,8 @@ USERS_HEADERS = users_store.CANONICAL_HEADERS
 # pełnego flow muszą mieć oryginał, żeby naprawdę przejść walidacją kandydatów
 # (na atrapie Nominatima, bez ani jednego żądania sieciowego).
 REAL_GEOCODE_CITY_ACCEPTED = lb.geocode_city_accepted
+REAL_SEND_ONEOFF_REPORT = lb._send_oneoff_report
+REAL_GET_OFFSET = lb.get_offset
 REAL_GET_COORDS_FROM_CITY = lb.get_coords_from_city
 REAL_GET_LOCATION_DETAILS_FROM_COORDS = lb.get_location_details_from_coords
 
@@ -88,54 +60,19 @@ def freeze_local_hour(monkeypatch, hour, minute=0):
 # ATRAPY TELEGRAM + SHEETS
 # ============================================================================
 class FakeFormularz:
-    """Imituje zakładkę Formularz (legacy) dla potrzeb main_bot i privacy handlers."""
+    """Archived decoy: every API attempt is recorded, then rejected."""
 
     def __init__(self, rows=None):
         self.rows = [list(r) for r in (rows or [])]
+        self.operations = []
 
-    def get_all_records(self, value_render_option=None):
-        return [dict(zip(FORM_HEADERS, r)) for r in self.rows]
+    def _forbidden(self, *args, **kwargs):
+        self.operations.append((args, kwargs))
+        raise AssertionError("Formularz must never be used at runtime")
 
-    def get_all_values(self, value_render_option=None):
-        return [FORM_HEADERS[:]] + [row[:] for row in self.rows]
+    get_all_records = get_all_values = row_values = col_values = _forbidden
+    find = update_cell = update_cells = delete_rows = insert_row = _forbidden
 
-    def row_values(self, idx):
-        if idx == 1:
-            return FORM_HEADERS[:]
-        return self.rows[idx - 2][:] if idx - 2 < len(self.rows) else [""] * len(FORM_HEADERS)
-
-    def col_values(self, col):
-        return [FORM_HEADERS[col - 1] if col - 1 < len(FORM_HEADERS) else ""] + \
-               [r[col - 1] if col - 1 < len(r) else "" for r in self.rows]
-
-    def find(self, value, in_column=None):
-        class _C:
-            pass
-        for i, r in enumerate(self.rows):
-            if in_column and str(r[in_column - 1]).strip() == str(value):
-                c = _C()
-                c.row = i + 2
-                return c
-        raise LookupError("CellNotFound")
-
-    def update_cell(self, row, col, value):
-        while len(self.rows) < row - 1:
-            self.rows.append([""] * len(FORM_HEADERS))
-        while len(self.rows[row - 2]) < col:
-            self.rows[row - 2].append("")
-        self.rows[row - 2][col - 1] = value
-
-    def update_cells(self, cells):
-        for c in cells:
-            self.update_cell(c.row, c.col, c.value)
-
-    def delete_rows(self, idx):
-        del self.rows[idx - 2]
-
-    def insert_row(self, values, index=2, value_input_option=None):
-        self.rows.insert(index - 2, list(values))
-
-    # pomocnicze dla asercji
     def chat_ids(self):
         return [str(r[1]).strip() for r in self.rows]
 
@@ -188,16 +125,36 @@ class FakeBotState:
 
 
 class FakeGC:
-    def __init__(self, formularz_rows=None):
-        self.formularz = FakeFormularz(formularz_rows)
+    def __init__(self, seed_profiles=None):
+        self.formularz = FakeFormularz()
         self.users = FakeUsersTab()
         self.state = FakeBotState()
+        self.requested_tabs = []
+        # Test-fixture conversion only: production never reads these historical rows.
+        for row in seed_profiles or []:
+            raw = dict(zip(FORM_HEADERS, row))
+            cid = str(raw.get("Chat ID", ""))
+            blocked = cid.startswith("BLOCKED_")
+            cid = cid.removeprefix("BLOCKED_")
+            profile = {
+                "chat_id": cid, "access_status": "blocked" if blocked else "granted",
+                "access_source": "legacy", "lang": raw.get("Lang", "") or "en",
+                "profile_status": "active" if raw.get("Lat") and raw.get("Lon") and not blocked else "none",
+                "lat_round": raw.get("Lat", ""), "lon_round": raw.get("Lon", ""),
+                "location_label": raw.get("Miasto", ""), "location_source": "city",
+                "report_morning_time": raw.get("Raport poranny", ""),
+                "report_afternoon_time": raw.get("Aktualizacja", ""),
+            }
+            self.users.append_row([profile.get(h, "") for h in USERS_HEADERS])
 
     def open(self, title):
         return self
 
     def worksheet(self, tab):
-        return {"Formularz": self.formularz, "Users": self.users, "Bot_State": self.state}[tab]
+        self.requested_tabs.append(tab)
+        if tab not in ("Users", "Bot_State"):
+            raise AssertionError(f"Forbidden worksheet access: {tab}")
+        return {"Users": self.users, "Bot_State": self.state}[tab]
 
 
 class _Resp:
@@ -212,9 +169,9 @@ class _Resp:
 class BotHarness:
     """Patched location_bot z atrapami; rejestruje wysłane wiadomości i karty."""
 
-    def __init__(self, monkeypatch, formularz_rows=None, public_beta_codes=None):
+    def __init__(self, monkeypatch, seed_profiles=None, public_beta_codes=None):
         lb._reset_polling_state()
-        self.gc = FakeGC(formularz_rows)
+        self.gc = FakeGC(seed_profiles)
         self.sent = []        # (chat_id, text)
         self.markups = []     # reply_markup każdej wysłanej wiadomości (index = sent)
         self.guest_calls = []  # teksty przekazane do handle_guest_now
@@ -262,8 +219,6 @@ class BotHarness:
         monkeypatch.setattr(lb, "get_offset", lambda gc: 0)
         monkeypatch.setattr(lb, "save_offset", lambda gc, off: None)
         monkeypatch.setattr(lb, "handle_guest_now", fake_guest_now)
-        monkeypatch.setattr(lb, "_send_card_to_user",
-                            lambda user, **kw: (self.cards.append(user["chat_id"]), True)[1])
         self.oneoff_descriptions = []
 
         def record_oneoff(chat_id, lat, lon, city, lang, card_type, display_location=None):
@@ -297,9 +252,6 @@ class BotHarness:
                 f"{'Hel' if float(lat) >= 54 else 'Warszawa'}, Polska",
                 lb.GEO_OK,
             ),
-        )
-        monkeypatch.setattr(
-            lb, "_load_future_users_from_sheet", lambda _gc: self.gc.formularz.get_all_records()
         )
         lb.PENDING_CITY.clear()
         lb.PENDING_SAVE.clear()
@@ -387,12 +339,16 @@ class BotHarness:
 
     def run(self, update):
         """Jedna paczka update'ów przez main_bot()."""
-        # Legacy integration tests mutate fake Sheets directly between polls;
+        # Integration tests mutate fake Users directly between polls;
         # opt out of TTL staleness here. Dedicated resilience tests cover TTL.
-        lb._invalidate_form_snapshot()
         lb._invalidate_users_snapshot()
         self._updates.append(update)
         lb.main_bot()
+        self.assert_users_only()
+
+    def assert_users_only(self):
+        assert set(self.gc.requested_tabs) <= {"Users", "Bot_State"}
+        assert self.gc.formularz.operations == []
 
     def replies(self, cid):
         return [t for (c, t) in self.sent if c == cid]
@@ -430,7 +386,7 @@ BLOCKED_LEGACY_ROW = ["2026-01-02 08:00:00", "BLOCKED_701", "BlockedLegacy", "He
 
 @pytest.fixture
 def bot(monkeypatch):
-    return BotHarness(monkeypatch, formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
+    return BotHarness(monkeypatch, seed_profiles=[LEGACY_ROW, BLOCKED_LEGACY_ROW])
 
 
 @pytest.fixture
@@ -756,43 +712,42 @@ class TestAccessWithoutProfile:
         assert bot.has_reply(100, "Dostęp aktywn")  # a wcześniej rejestracja się udała
 
 
-class TestLegacyUserUnchanged:
-    def test_legacy_day_generates_card(self, bot, monkeypatch):
+class TestMigratedUserProfiles:
+    def test_migrated_profile_day_generates_card(self, bot, monkeypatch):
         # Zamrożenie godziny na 10:00 (wewnątrz okna 05:00–15:59) — inaczej
         # test zależałby od pory odpalenia suite'u (zachowanie pre-existing).
         freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(700, "/day"))
         assert not bot.has_reply(700, "Brak dostępu")
-        assert bot.cards == ["700"]
+        assert [(o[0], o[5]) for o in bot.oneoffs] == [(700, "day")]
 
-    def test_legacy_day_time_limit_is_preexisting(self, bot, monkeypatch):
+    def test_migrated_profile_day_time_limit_is_preexisting(self, bot, monkeypatch):
         # Dokumentuje ISTNIEJĄCE (pre-PR1, obecne też na staging) okno /day:
-        # poza 05:00–15:59 legacy user z dostępem dostaje time_limit zamiast
-        # karty — to nie jest regresja PR1, ścieżka legacy jest nietknięta.
+        # poza 05:00–15:59 profil Users z dostępem dostaje time_limit zamiast karty.
         freeze_local_hour(monkeypatch, 22, 0)
         bot.run(bot.msg(700, "/day"))
         assert not bot.has_reply(700, "Brak dostępu")  # dostęp nadal jest
-        assert bot.cards == []                          # ale karta wstrzymana
+        assert bot.oneoffs == []                       # ale karta wstrzymana
         assert bot.has_reply(700, "05:00")              # komunikat okna czasowego
 
-    def test_legacy_city_keeps_existing_formularz_flow(self, bot):
-        # PR2-f: brak Users oznacza pełną kompatybilność legacy, bez PENDING_SAVE.
+    def test_migrated_profile_city_writes_users_only(self, bot):
         bot.run(bot.msg(700, "/miasto Warszawa"))
-        row = next(r for r in bot.gc.formularz.rows if str(r[1]).strip() == "700")
-        assert row[FORM_HEADERS.index("Lat")] == 52.22972
-        assert row[FORM_HEADERS.index("Lon")] == 21.01223
-        assert row[FORM_HEADERS.index("Miasto")] == "Warszawa"
+        row = bot.users.record(700)
+        assert row["lat_round"] == "52.23"
+        assert row["lon_round"] == "21.012"
+        assert row["location_label"] == "Warszawa"
         assert "700" not in lb.PENDING_SAVE
         assert bot.oneoffs == []
+        assert bot.gc.requested_tabs == ["Users"]
 
-    def test_legacy_webapp_uses_short_safe_label(self, bot):
+    def test_migrated_profile_webapp_oneoff_keeps_saved_location(self, bot):
+        before = bot.users.record(700).copy()
         bot.run(bot.webapp_location(700, lat=50.0614, lon=19.9366))
+        assert bot.oneoffs[0][3] == "Warszawa"
+        assert bot.users.record(700) == before
+        assert set(bot.gc.requested_tabs) == {"Users"}
 
-        row = next(r for r in bot.gc.formularz.rows if str(r[1]).strip() == "700")
-        assert row[FORM_HEADERS.index("Miasto")] == "Warszawa"
-        assert bot.has_reply(700, "Rozpoznano: Warszawa")
-
-    def test_blocked_legacy_silent(self, bot):
+    def test_migrated_blocked_user_silent(self, bot):
         # POPRAWKA #7: brak dostępu = cisza (obcy, blocked, revoked, BLOCKED_).
         bot.run(bot.msg(701, "/day"))
         assert bot.replies(701) == []
@@ -838,36 +793,31 @@ class TestPrivacyCommands:
         assert bot.has_reply(100, "TWOJE DANE")
         assert bot.has_reply(100, "aktywny")
 
-    def test_my_data_legacy_shows_location(self, bot):
+    def test_my_data_migrated_profile_shows_location(self, bot):
         bot.run(bot.msg(700, "/my_data"))
-        assert bot.has_reply(700, "legacy")
+        assert bot.has_reply(700, "aktywny")
         assert bot.has_reply(700, "Gdańsk")
 
     def test_my_data_stranger_silent(self, bot):
         bot.run(bot.msg(555, "/my_data"))
         assert bot.replies(555) == []
 
-    def test_forget_location_legacy_clears_profile_keeps_access(self, bot):
+    def test_forget_location_migrated_profile_keeps_access(self, bot):
         bot.run(bot.msg(700, "/forget_location"))
         assert bot.has_reply(700, "Usunąłem zapisaną lokalizację")
-        assert bot.has_reply(700, "dostęp pozostaje aktywny")
-
-        row = next(r for r in bot.gc.formularz.rows if str(r[1]).strip() == "700")
-        assert row[FORM_HEADERS.index("Lat")] == ""
-        assert row[FORM_HEADERS.index("Lon")] == ""
-        assert row[FORM_HEADERS.index("Miasto")] == ""
-        # dostęp (wiersz) zostaje
-        assert "700" in bot.gc.formularz.chat_ids()
+        row = bot.users.record(700)
+        assert row["lat_round"] == row["lon_round"] == row["location_label"] == ""
+        assert row["access_status"] == "granted"
         bot.run(bot.msg(700, "/day"))
-        assert not bot.has_reply(700, "Brak dostępu")
+        assert lb.PENDING_CITY["700"]["ctx"] == lb.CTX_ONEOFF_DAY
 
     def test_forget_location_users_row(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
         # ręcznie dopisujemy profil (jak zrobi to PR2)
-        bot.gc.users.grid[1][USERS_HEADERS.index("profile_status")] = "active"
-        bot.gc.users.grid[1][USERS_HEADERS.index("lat_round")] = "52.23"
-        bot.gc.users.grid[1][USERS_HEADERS.index("lon_round")] = "21.01"
-        bot.gc.users.grid[1][USERS_HEADERS.index("location_label")] = "Warszawa"
+        next(r for r in bot.gc.users.grid[1:] if r[0] == "100")[USERS_HEADERS.index("profile_status")] = "active"
+        next(r for r in bot.gc.users.grid[1:] if r[0] == "100")[USERS_HEADERS.index("lat_round")] = "52.23"
+        next(r for r in bot.gc.users.grid[1:] if r[0] == "100")[USERS_HEADERS.index("lon_round")] = "21.01"
+        next(r for r in bot.gc.users.grid[1:] if r[0] == "100")[USERS_HEADERS.index("location_label")] = "Warszawa"
 
         bot.run(bot.msg(100, "/forget_location"))
         rec = bot.users.record(100)
@@ -906,16 +856,15 @@ class TestPrivacyCommands:
         bot.run(bot.msg(100, "/dane"))
         assert len(bot.sent) == before, "po hard delete czat nie może dostawać odpowiedzi"
 
-    def test_delete_me_legacy_rows_removed_including_blocked(self, bot, fake_sleep):
-        # Konto z dostępem (czysty wiersz legacy) + własny wiersz BLOCKED_:
-        # oba wiersze znikają, a sąsiedzi zostają nietknięci.
-        bot.gc.formularz.rows.append(["2026-01-04 08:00:00", "702", "Legacy", "Hel", "54.6", "18.8", "08:00", "14:00", "pl"])
-        bot.gc.formularz.rows.append(["2026-01-04 08:05:00", "BLOCKED_702", "Legacy", "Hel", "", "", "08:00", "14:00", "pl"])
-        bot.run(bot.msg(702, "/delete_me"))
-        bot.run(bot.msg(702, "Tak, chcę"))
-        assert "702" not in bot.gc.formularz.chat_ids()
-        assert "BLOCKED_702" not in bot.gc.formularz.chat_ids()
-        assert "700" in bot.gc.formularz.chat_ids(), "usunięto wiersze obcego użytkownika!"
+    def test_delete_me_never_touches_archived_formularz(self, bot, fake_sleep):
+        bot.gc.formularz.rows.extend([LEGACY_ROW[:], BLOCKED_LEGACY_ROW[:]])
+        archived = [r[:] for r in bot.gc.formularz.rows]
+        bot.run(bot.msg(700, "/delete_me"))
+        bot.run(bot.msg(700, "Tak, chcę"))
+        assert bot.users.record(700) is None
+        assert bot.users.record(701)["access_status"] == "blocked"
+        assert bot.gc.formularz.rows == archived
+        assert set(bot.gc.requested_tabs) == {"Users"}
 
     def test_delete_me_stranger_silent(self, bot):
         # POPRAWKA #7: obcy nie ma nawet czym potwierdzać — cisza i brak pendingu.
@@ -926,10 +875,10 @@ class TestPrivacyCommands:
 
 
 class TestBlockedMarking:
-    def test_mark_user_as_blocked_users_first_then_legacy(self, bot):
+    def test_mark_user_as_blocked_users_only(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
-        bot.gc.users.grid[1][USERS_HEADERS.index("profile_status")] = "active"
-        bot.gc.users.grid[1][USERS_HEADERS.index("lat_round")] = "52.23"
+        next(r for r in bot.gc.users.grid[1:] if r[0] == "100")[USERS_HEADERS.index("profile_status")] = "active"
+        next(r for r in bot.gc.users.grid[1:] if r[0] == "100")[USERS_HEADERS.index("lat_round")] = "52.23"
 
         from db_cleanup import mark_user_as_blocked
         mark_user_as_blocked(bot.gc, 100, reason="telegram_blocked")
@@ -940,11 +889,11 @@ class TestBlockedMarking:
         assert rec["blocked_at"], "brak blocked_at"
         assert rec["lat_round"] == "", "profil nie został wyczyszczony"
 
-        # fallback legacy (u usera 100 nie ma wiersza w Formularz — nic do zrobienia)
-        # dla użytkownika legacy 700: prefix BLOCKED_
         mark_user_as_blocked(bot.gc, 700, reason="kicked_from_group")
-        assert "BLOCKED_700" in bot.gc.formularz.chat_ids()
-        # i w Users (jeśli był wiersz) — 700 nie miał wiersza w Users, więc tylko Formularz
+        assert bot.users.record(700)["access_status"] == "blocked"
+        assert bot.users.record(700)["lat_round"] == ""
+        assert set(bot.gc.requested_tabs) == {"Users"}
+
 
 
 # ============================================================================
@@ -1295,13 +1244,12 @@ class TestPr2UxCleanup:
         assert bot.keyboards_for(100) == []
         assert "Czy chcesz zmienić te godziny?" in panel
 
-    def test_legacy_only_report_settings_are_not_read_from_formularz(self, bot):
+    def test_migrated_report_settings_come_from_users(self, bot):
         bot.run(bot.msg(700, "/raport"))
         panel = bot.replies(700)[-1]
-        assert "GODZINY RAPORTÓW" in panel
-        assert "w trakcie przenoszenia" in panel
-        assert "08:00" not in panel
+        assert "Rano: 08:00" in panel and "Popołudnie: 14:00" in panel
         assert bot.keyboards_for(700) == []
+        assert set(bot.gc.requested_tabs) == {"Users"}
 
     # --- /info (pkt 16) --------------------------------------------------------
     def test_info_contains_tips_and_hidden_commands(self, bot):
@@ -1862,8 +1810,7 @@ class TestPostDeleteUx:
     def test_batch_after_delete_stays_silent_for_rest_of_batch(self, bot, fake_sleep):
         # Z7 (tylko RAM): kolejne update'y z TEJ SAMEJ paczki nie widzą już
         # starego dostępu — czat milczy do końca paczki, bez trzeciego komunikatu.
-        bot.gc.formularz.rows.append(
-            ["2026-01-07 08:00:00", "710", "Legacy", "Hel", "54.6", "18.8", "08:00", "14:00", "pl"])
+        users_store.upsert_access(bot.users, 710, "pl", "legacy", users_store.now_iso(), "test")
         bot._updates.append(bot.msg(710, "/usunDane"))
         bot._updates.append(bot.msg(710, "Tak, chcę"))
         bot._updates.append(bot.msg(710, "/day"))
@@ -2617,8 +2564,8 @@ def _users_row_count(bot):
 
 @pytest.fixture
 def empty_bot(monkeypatch):
-    """Harness bez wierszy Formularz — liczniki miejsc zależą tylko od Users."""
-    return BotHarness(monkeypatch, formularz_rows=[])
+    """Harness bez profili początkowych; liczniki miejsc zależą tylko od Users."""
+    return BotHarness(monkeypatch, seed_profiles=[])
 
 
 @pytest.fixture
@@ -2760,28 +2707,27 @@ class TestRegistrationGate:
         empty_bot.run(empty_bot.msg(624, "/start BETAX1"))
         assert empty_bot.users.record(624)["access_status"] == "granted"
 
-    def test_formularz_rows_do_not_inflate_the_count(self, monkeypatch):
-        # 5 wierszy w Formularz, ale każdy ma nieaktywny rekord w Users —
-        # licznik z Formularza (len(clean_users)) zablokowałby nowego usera.
+    def test_inactive_migrated_profiles_do_not_inflate_the_count(self, monkeypatch):
+        # 5 profili po migracji: Users revoked nie zajmują miejsc.
         rows = [
             ["2026-01-01 08:00:00", str(801 + i), f"U{i}", "Gdańsk", "54.35", "18.65", "08:00", "14:00", "pl"]
             for i in range(5)
         ]
-        bot = BotHarness(monkeypatch, formularz_rows=rows)
+        bot = BotHarness(monkeypatch, seed_profiles=rows)
         monkeypatch.setenv("MAX_USERS", "2")
         for i in range(5):
             _seed_users_row(bot, 801 + i, access_status="revoked")
         bot.run(bot.msg(810, "/start BETAX1"))
         assert bot.users.record(810)["access_status"] == "granted"
 
-    def test_legacy_only_active_rows_still_occupy_seats(self, monkeypatch):
-        # Użytkownik legacy (Formularz, bez wiersza Users) ma dostęp domniemany
-        # (fallback _chat_has_access) — zajmuje miejsce.
+    def test_active_migrated_users_occupy_seats(self, monkeypatch):
+        # Profile z dawnych fixture są przenoszone do Users w setupie.
+        # Każdy aktywny rekord Users zajmuje miejsce.
         rows = [
             ["2026-01-01 08:00:00", "901", "L1", "Gdańsk", "54.35", "18.65", "08:00", "14:00", "pl"],
             ["2026-01-01 08:00:00", "902", "L2", "Gdańsk", "54.35", "18.65", "08:00", "14:00", "pl"],
         ]
-        bot = BotHarness(monkeypatch, formularz_rows=rows)
+        bot = BotHarness(monkeypatch, seed_profiles=rows)
         monkeypatch.setenv("MAX_USERS", "2")
         bot.run(bot.msg(910, "/start BETAX1"))
         assert bot.users.record(910) is None
@@ -2955,8 +2901,8 @@ class TestMasterTokenHardening:
 
     def test_unset_master_token_disables_admin_path(self, bot, monkeypatch, upsert_spy):
         monkeypatch.setattr(lb, "MASTER_TOKEN", "")
-        assert lb._validate_access_token("DEV_TEST", [], {}) == (False, "")
-        assert lb._validate_access_token("", [], {}) == (False, "")
+        assert lb._validate_access_token("DEV_TEST", {}) == (False, "")
+        assert lb._validate_access_token("", {}) == (False, "")
         bot.run(bot.msg(740, "/start DEV_TEST"))
         assert bot.has_reply(740, INVALID_PL)
         assert bot.users.record(740) is None
@@ -2964,8 +2910,8 @@ class TestMasterTokenHardening:
 
     def test_whitespace_master_token_counts_as_unset(self, bot, monkeypatch):
         monkeypatch.setattr(lb, "MASTER_TOKEN", "   ")
-        assert lb._validate_access_token("   ", [], {}) == (False, "")
-        assert lb._validate_access_token("DEV_TEST", [], {}) == (False, "")
+        assert lb._validate_access_token("   ", {}) == (False, "")
+        assert lb._validate_access_token("DEV_TEST", {}) == (False, "")
 
     def test_unset_master_does_not_bypass_closed_registration(self, bot, monkeypatch, upsert_spy):
         monkeypatch.setattr(lb, "MASTER_TOKEN", "")
@@ -3053,11 +2999,11 @@ class TestClosedRegistrationDecisions:
         assert "/start BETAX1" in replies[0]
         assert LIMIT_PL not in replies[0]
 
-    def test_legacy_row_also_in_users_is_counted_once(self, monkeypatch):
+    def test_migrated_users_record_is_counted_once(self, monkeypatch):
         rows = [["2026-01-01 08:00:00", "901", "L1", "Gdańsk", "54.35", "18.65", "08:00", "14:00", "pl"]]
-        bot = BotHarness(monkeypatch, formularz_rows=rows)
+        bot = BotHarness(monkeypatch, seed_profiles=rows)
         monkeypatch.setenv("MAX_USERS", "2")
-        _seed_users_row(bot, 901)  # ten sam człowiek: Formularz + aktywny wiersz Users
+        _seed_users_row(bot, 901)  # aktualizacja istniejącego rekordu Users
         bot.run(bot.msg(902, "/start BETAX1"))
         assert bot.users.record(902) is not None, "wiersz obecny w Users nie może liczyć się podwójnie"
         assert bot.users.record(902)["access_status"] == "granted"

@@ -9,8 +9,8 @@ Zasada (ustalona z właścicielem produktu):
 - karta jednorazowa (/dzien X, /teraz X, /trend X albo miasto wpisane po
   prompcie): WYŁĄCZNIE search_loc -> geokoder -> karta, bez drugiego
   komunikatu prep_*,
-- legacy /trend bez lokalizacji: tylko missing_loc, bez prep_future;
-  z lokalizacją: prep_future -> karta (ścieżka legacy poza tym nietknięta).
+- profil Users po migracji bez lokalizacji: tylko prompt miasta, bez prep_future;
+  z lokalizacją: prep_future -> karta.
 
 Bez Telegram API i bez Google Sheets — atrapy z test_access_gate.
 
@@ -28,10 +28,10 @@ from test_access_gate import (
 
 PRIVATE = 4242
 LEGACY_WITH_LOC = 700       # LEGACY_ROW: Gdańsk 54.35/18.65
-LEGACY_NO_LOC = 702         # wiersz Formularz bez Lat/Lon (dostęp jest, karty nie ma)
+LEGACY_NO_LOC = 702         # profil Users bez Lat/Lon (dostęp jest, karty nie ma)
 LEGACY_NO_LOC_ROW = ["2026-01-01 08:00:00", str(LEGACY_NO_LOC), "NoLocLegacy", "",
                      "", "", "08:00", "14:00", "pl"]
-LEGACY_NO_LOC_EN = 703      # jak wyżej, ale wiersz Formularz z językiem „en”
+LEGACY_NO_LOC_EN = 703      # jak wyżej, ale profil Users z językiem „en”
 LEGACY_NO_LOC_EN_ROW = ["2026-01-01 08:00:00", str(LEGACY_NO_LOC_EN), "NoLocLegacyEn", "",
                         "", "", "08:00", "14:00", "en"]
 
@@ -43,7 +43,7 @@ ALL_WAIT_TEXTS = set(WAIT_TEXT.values())
 @pytest.fixture
 def bot(monkeypatch):
     return BotHarness(monkeypatch,
-                      formularz_rows=[LEGACY_ROW, BLOCKED_LEGACY_ROW,
+                      seed_profiles=[LEGACY_ROW, BLOCKED_LEGACY_ROW,
                                       LEGACY_NO_LOC_ROW, LEGACY_NO_LOC_EN_ROW])
 
 
@@ -227,44 +227,25 @@ class TestOneOffWithProfile:
 # D. LEGACY /trend: missing_loc bez prep_future; z lokalizacją prep_future -> karta
 # ============================================================================
 
-class TestLegacyFuture:
-
-    @pytest.fixture(autouse=True)
-    def _legacy_card(self, monkeypatch):
-        self.legacy_cards = []
-        monkeypatch.setattr(
-            main_card, "_send_card_to_user",
-            lambda user, **kw: (self.legacy_cards.append((user["chat_id"], kw)), True)[1],
-        )
-
-    def test_missing_location_gives_only_missing_loc(self, bot):
+class TestMigratedProfiles:
+    def test_missing_location_opens_prompt(self, bot):
         bot.run(bot.msg(LEGACY_NO_LOC, "/trend"))
+        assert bot.replies(LEGACY_NO_LOC) == [lb.t_ui("pl", "oneoff_prompt_future")]
+        assert bot.oneoffs == []
 
-        assert bot.replies(LEGACY_NO_LOC) == [lb.t_ui("pl", "missing_loc")]
-        assert WAIT_TEXT["future"] not in bot.replies(LEGACY_NO_LOC)
-        assert self.legacy_cards == []
-
-    def test_missing_location_message_is_translated(self, bot):
-        """Język legacy pochodzi z wiersza Formularz — tak jak w /day i /now."""
+    def test_missing_location_prompt_is_translated(self, bot):
         bot.run(bot.msg(LEGACY_NO_LOC_EN, "/trend"))
-
-        assert bot.replies(LEGACY_NO_LOC_EN) == [lb.t_ui("en", "missing_loc")]
-        assert "Najpierw musisz ustawić lokalizację" not in "".join(bot.replies(LEGACY_NO_LOC_EN))
-        assert self.legacy_cards == []
+        assert bot.replies(LEGACY_NO_LOC_EN) == [lb.t_ui("en", "oneoff_prompt_future")]
+        assert bot.oneoffs == []
 
     def test_location_present_gives_prep_future_then_card(self, bot):
         bot.run(bot.msg(LEGACY_WITH_LOC, "/trend"))
-
         assert bot.replies(LEGACY_WITH_LOC) == [WAIT_TEXT["future"]]
-        assert [c for c, _ in self.legacy_cards] == [str(LEGACY_WITH_LOC)]
-        assert self.legacy_cards[0][1] == {"is_quiet": False, "is_now": False, "is_future": True}
-        assert bot.oneoffs == [], "legacy nie wchodzi w ścieżkę Users"
+        assert [(o[0], o[5]) for o in bot.oneoffs] == [(LEGACY_WITH_LOC, "future")]
 
-    def test_legacy_day_and_now_wait_messages_unchanged(self, bot, monkeypatch):
-        """Ścieżki legacy /day i /now już wcześniej miały prep_main / scanning."""
+    def test_day_and_now_wait_messages_unchanged(self, bot, monkeypatch):
         freeze_local_hour(monkeypatch, 10, 0)
         bot.run(bot.msg(LEGACY_WITH_LOC, "/day"))
         bot.run(bot.msg(LEGACY_WITH_LOC, "/now"))
-
         assert bot.replies(LEGACY_WITH_LOC) == [WAIT_TEXT["day"], WAIT_TEXT["now"]]
-        assert bot.cards == [str(LEGACY_WITH_LOC)] * 2
+        assert [o[5] for o in bot.oneoffs] == ["day", "now"]

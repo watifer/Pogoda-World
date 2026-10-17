@@ -124,10 +124,11 @@ def test_no_unused_or_duplicate_help_keys():
             assert stale not in i18n.UI_TEXTS[lang], f"{lang}: nieużywany klucz {stale}"
     src = open(lb.__file__, encoding="utf-8").read()
     for key in REVISED_KEYS + WAIT_KEYS:
-        assert f'"{key}"' in src or key in ("search_fail", "geocode_no_match"), \
+        assert f'"{key}"' in src or key in ("search_fail", "geocode_no_match", "search_success"), \
             f"{key} nie jest używany w location_bot.py"
     # Punkt 1: wariant krótki jest realnie używany przez _save_profile_from_location.
     assert '"location_saved_short"' in src
+    # search_success remains an unchanged compatibility alias after legacy removal.
     # search_fail / geocode_no_match idą przez t_geocode (GEOCODE_UI_KEYS).
     assert i18n.GEOCODE_UI_KEYS[i18n.GEOCODE_NOT_FOUND] == "search_fail"
     assert i18n.GEOCODE_UI_KEYS[i18n.GEOCODE_NO_MATCH] == "geocode_no_match"
