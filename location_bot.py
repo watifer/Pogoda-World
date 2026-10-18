@@ -1,3 +1,4 @@
+import perf_debug as perf
 import os
 import unicodedata
 import json
@@ -1121,6 +1122,7 @@ def _oneoff_message(lang, key, **kwargs):
     return messages[key].format(**kwargs)
 
 
+@perf.entry("card")
 def _send_oneoff_report(
     chat_id, lat, lon, city, lang, card_type, display_location=None
 ) -> bool:
@@ -1130,7 +1132,7 @@ def _send_oneoff_report(
     No location data is read, geocoded or persisted here.
     """
     try:
-        payload = _timed_call(
+        payload = perf.call('payload', _timed_call,
             "weather.build_payload",
             build_payload_for_location,
             lat=float(lat),
@@ -1140,16 +1142,16 @@ def _send_oneoff_report(
             lang=lang,
         )
         layout = (
-            prepare_now_layout_data(payload) if card_type == "now"
-            else prepare_future_layout_data(payload) if card_type == "future"
-            else prepare_layout_data(payload)
+            perf.call('layout', prepare_now_layout_data, payload) if card_type == "now"
+            else perf.call('layout', prepare_future_layout_data, payload) if card_type == "future"
+            else perf.call('layout', prepare_layout_data, payload)
         )
-        image_path = _timed_call(
+        image_path = perf.call('render', _timed_call,
             "card.render", image_generator.generate_weather_card, layout
         )
         if not image_path:
             return False
-        send_photo(chat_id, image_path, caption=_location_caption(display_location))
+        perf.call('send_photo', send_photo, chat_id, image_path, caption=_location_caption(display_location))
         return True
     except Exception as e:
         print(f"  ❌ [oneoff] Błąd generowania dla {chat_id}: {e}")
@@ -1243,7 +1245,7 @@ def _run_saved_profile_report(chat_id, profile, lang, card_type):
     """
     wait_key = SAVED_PROFILE_WAIT_KEYS.get(card_type)
     if wait_key:
-        send_reply(chat_id, t_ui(lang, wait_key))
+        perf.call('waiting_message', send_reply, chat_id, t_ui(lang, wait_key))
     if not _send_oneoff_report(chat_id, profile["lat"], profile["lon"], profile["city"], lang, card_type):
         send_reply(chat_id, _oneoff_message(lang, "generation_error"))
         return False
@@ -1261,7 +1263,7 @@ def _run_city_oneoff(chat_id, city_query, lang, card_type):
         # 1-2 znaki bez kontekstu: nie pytamy mapy i nie udajemy, że szukamy.
         send_reply(chat_id, t_geocode(lang, GEOCODE_TOO_SHORT))
         return False
-    send_reply(chat_id, t_ui(lang, "search_loc"))
+    perf.call('waiting_message', send_reply, chat_id, t_ui(lang, "search_loc"))
     (
         geocode_status, lat, lon,
         fallback_short_label, fallback_display_location,
@@ -2067,6 +2069,7 @@ def _coarse_reverse_settlement(geolocator, lat, lon, lang):
     return short_label, display_location
 
 
+@perf.traced("geocode.reverse")
 def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None):
     """Reverse geocode to ``(short_label, display_location, status)``.
 
@@ -2087,7 +2090,9 @@ def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None)
 
     cached = _GEO_DETAILS_CACHE.get(key)
     if cached and time.time() < cached[0]:
+        perf.mark(cache="hit", operation="geocode.reverse")
         return cached[1]
+    perf.mark(cache="miss", operation="geocode.reverse")
 
     try:
         geolocator = Nominatim(user_agent="pogoda_world_bot")
@@ -2124,6 +2129,7 @@ def get_location_details_from_coords(lat, lon, lang="pl", query=None, mode=None)
         return result
 
     except Exception as e:
+        perf.mark(outcome="error", operation="geocode.reverse")
         print(f"Błąd geolokalizacji: {e}")
         return None, None, GEO_ERROR
 
@@ -2988,6 +2994,7 @@ def _geocode_forward_candidates(query, lang="pl", country_code=None):
         except Exception as e:
             # Timeout, reset, HTTP 429: NIE ponawiamy i NIE udajemy pustej mapy.
             print(f"Błąd wyszukiwania miasta po nazwie: {e}")
+            perf.mark(outcome="error", operation="geocode.forward")
             return GEOCODE_ERROR, []
     else:
         # Żaden wariant nie przeszedł walidacji kwargs geopy — to awaria
@@ -3004,6 +3011,7 @@ def _geocode_forward_candidates(query, lang="pl", country_code=None):
     return None, candidates
 
 
+@perf.traced("geocode.forward")
 def geocode_city_accepted(city_name, lang="pl"):
     """Walidowane geokodowanie forward: ``(status, lat, lon, short, display)``.
 
@@ -3535,10 +3543,12 @@ def get_offset(gc):
     """Load persisted offset locally; bootstrap from Bot_State only once if absent."""
     local_offset = _timed_call("offset.local_read", _read_local_offset)
     if local_offset is not None:
+        perf.mark(cache="hit", outcome="skipped", operation="snapshot_bot_state")
         return local_offset
 
     if gc is None:
         raise RuntimeError("Google client is required to bootstrap Bot_State offset")
+    perf.mark(cache="miss", outcome="ok", operation="snapshot_bot_state")
     offset = _sheets_call("sheets.offset.bootstrap_read", _read_offset_from_sheets, gc)
     try:
         _timed_call("offset.local_write", _write_local_offset, offset)
@@ -3558,11 +3568,14 @@ def save_offset(gc, offset):
         return False
 
 
+@perf.traced("snapshot_bot_state")
 def _runtime_offset(gc):
     _reset_runtime_for_client(gc)
     if _POLL_RUNTIME["offset"] is None:
         # A 429 propagates; caller must not poll Telegram with offset=0.
         _POLL_RUNTIME["offset"] = _timed_call("offset.load", get_offset, gc)
+    else:
+        perf.mark(cache="hit", outcome="skipped", operation="snapshot_bot_state")
     return _POLL_RUNTIME["offset"]
 
 
@@ -3579,11 +3592,15 @@ def _snapshot_fresh(snapshot, gc):
     )
 
 
+@perf.traced("snapshot_users")
 def _load_users_snapshot(gc):
     global _USERS_SNAPSHOT
     _reset_runtime_for_client(gc)
     if _snapshot_fresh(_USERS_SNAPSHOT, gc):
+        perf.mark(cache="hit")
         return _USERS_SNAPSHOT
+
+    perf.mark(cache="miss")
 
     users_ws = _USERS_SNAPSHOT.get("worksheet")
     if users_ws is None:
@@ -3624,11 +3641,12 @@ def send_reply(chat_id, text, reply_markup=None):
         
     try:
         # Timeout 10 sekund zabezpiecza bota przed zawieszeniem
-        resp = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=10)
+        resp = perf.waiting_http(requests.post, f"{BASE_URL}/sendMessage", json=payload, timeout=10)
         
         # --- WYKRYWACZ BŁĘDÓW TELEGRAMA (NOWE) ---
         response_data = resp.json()
         if not response_data.get("ok"):
+            perf.mark(outcome="error", operation="waiting_message")
             print(f"⚠️ TELEGRAM ODRZUCIŁ WIADOMOŚĆ: {response_data.get('description')}")
         # -----------------------------------------
         
@@ -3652,6 +3670,7 @@ def send_reply(chat_id, text, reply_markup=None):
                 _invalidate_users_snapshot()
             
     except requests.exceptions.RequestException as e:
+        perf.mark(outcome="error", operation="waiting_message")
         print(f"⚠️ Błąd sieci podczas wysyłania wiadomości (Timeout/DNS): {e}")
         
         
@@ -3664,8 +3683,9 @@ def send_photo(chat_id, photo_path, caption=None, parse_mode="Markdown", card_ca
                 payload["caption"] = caption
                 if parse_mode:
                     payload["parse_mode"] = parse_mode
-            requests.post(f"{BASE_URL}/sendPhoto", data=payload, files={"photo": photo}, timeout=15)
+            perf.call("send_photo.http", requests.post, f"{BASE_URL}/sendPhoto", data=payload, files={"photo": photo}, timeout=15)
     except Exception as e:
+        perf.mark(outcome="error", operation="send_photo")
         print(f"⚠️ Błąd wysyłania zdjęcia (sendPhoto) do {chat_id}: {e}")
         
         
@@ -3694,18 +3714,21 @@ def _main_bot_iteration(gc, offset):
         return
 
     updates = data["result"]
+    perf_contexts = perf.received(updates)
     print(f"  📬 Pobrano {len(updates)} nowych operacji do przetworzenia.")
     
     # Users is the sole profile/access source. A 429 aborts this iteration.
-    users_snapshot = _load_users_snapshot(gc)
+    with perf.bind(perf.shared(perf_contexts)):
+        users_snapshot = _load_users_snapshot(gc)
     users_ws = users_snapshot["worksheet"]
     users_map = users_snapshot["users_map"]
 
     highest_update_id = offset
 
-    for update in updates:
+    for perf_index, update in enumerate(updates):
         highest_update_id = update["update_id"] + 1
         
+        perf_dispatch = perf.start_dispatch(perf.selected(perf_contexts, perf_index))
         try:
             chat_id = _extract_update_chat_id(update)
             if not chat_id: 
@@ -3741,6 +3764,7 @@ def _main_bot_iteration(gc, offset):
             # zwykłe, skróty i wzmianki, pinezki, WebApp, callback_query i
             # zwykły tekst — jest ignorowane po cichu (silent drop).
             if not is_start and not chat_has_access:
+                perf.mark(outcome="skipped", operation="dispatcher")
                 continue
 
             # ==============================================================
@@ -4373,7 +4397,7 @@ def _main_bot_iteration(gc, offset):
                 send_reply(chat_id, t_geocode(user_lang, GEOCODE_TOO_SHORT))
                 continue
 
-            send_reply(chat_id, t_ui(user_lang, "search_loc"))
+            perf.call('waiting_message', send_reply, chat_id, t_ui(user_lang, "search_loc"))
 
             (
                 geocode_status, lat, lon,
@@ -4424,6 +4448,7 @@ def _main_bot_iteration(gc, offset):
                 send_reply(chat_id, t_ui(user_lang, "search_fail"))
 
         except SheetsRateLimitError:
+            perf.mark(outcome="error", operation="dispatcher")
             # Confirm already completed updates, but leave the failed update pending.
             # save_offset is local/atomic, so this does not issue another Sheets call.
             failed_update_offset = int(update["update_id"])
@@ -4432,7 +4457,10 @@ def _main_bot_iteration(gc, offset):
                 _set_runtime_offset(gc, failed_update_offset)
             raise
         except Exception as e:
+            perf.mark(outcome="error", operation="dispatcher")
             print(f"❌ Krytyczny błąd podczas przetwarzania wiadomości od {chat_id}: {e}")
+        finally:
+            perf.finish(perf_dispatch)
 
     if highest_update_id > offset:
         save_offset(gc, highest_update_id)
@@ -4452,6 +4480,7 @@ def _handle_sheets_429(exc):
     time.sleep(delay)
 
 
+@perf.entry("poll")
 def main_bot():
     """Run one poll; turn Sheets 429 into a controlled delay, never an offset=0 poll."""
     global _SHEETS_BACKOFF_ATTEMPTS
@@ -4461,6 +4490,7 @@ def main_bot():
         offset = _runtime_offset(gc)
         _main_bot_iteration(gc, offset)
     except SheetsRateLimitError as exc:
+        perf.mark(outcome="error", operation="poll")
         _handle_sheets_429(exc)
         return True
     else:

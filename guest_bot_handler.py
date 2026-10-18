@@ -1,3 +1,4 @@
+import perf_debug as perf
 import os
 import re
 import time
@@ -472,7 +473,7 @@ def handle_guest_now(
         elif get_city_fn:
             try:
                 ckey = (round(lat, 3), round(lon, 3), user_lang)
-                city_name = _ttl_get(_CITY_CACHE, ckey)
+                city_name = perf.call("geocode.city_cache", _ttl_get, _CITY_CACHE, ckey)
                 if not city_name:
                     city_name = get_city_fn(lat, lon, user_lang)
                     if city_name:
@@ -522,12 +523,14 @@ def handle_guest_now(
         # * Pinezka z odpowiedzi (gałąź ``loc`` powyżej) nie wysyła go wcale.
         if is_shortcut and not _query_is_too_short(query, too_short_fn):
             from i18n import t_ui
-            send_reply_fn(chat_id, t_ui(user_lang, "search_loc"))
+            perf.call('waiting_message', send_reply_fn, chat_id, t_ui(user_lang, "search_loc"))
 
+        perf_geocode = perf.start_span("geocode.guest")
         try:
             qkey = (user_lang, query.lower())
             cached_geo = _ttl_get(_GEO_CACHE, qkey)
 
+            perf.mark(cache="hit" if cached_geo else "miss", operation="geocode.guest")
             if cached_geo:
                 # W cache trafia wyłącznie GEOCODE_OK, więc trafienie to zawsze
                 # wynik zaakceptowany przez walidację nazwy (ETAP 1).
@@ -551,6 +554,7 @@ def handle_guest_now(
                     )
 
             if not lat or not lon:
+                perf.mark(outcome="error" if geo_status == "geocode_error" else "unavailable", operation="geocode.guest")
                 if is_private:
                     # Wspólny słownik statusów z komendami: ten sam komunikat dla
                     # "?12 Wa" i dla "/teraz Wa". W grupie zachowujemy ciszę.
@@ -594,7 +598,7 @@ def handle_guest_now(
                 if get_city_fn:
                     try:
                         ckey = (round(lat, 3), round(lon, 3), user_lang)
-                        city_name = _ttl_get(_CITY_CACHE, ckey)
+                        city_name = perf.call("geocode.city_cache", _ttl_get, _CITY_CACHE, ckey)
                         if not city_name:
                             city_name = get_city_fn(lat, lon, user_lang)
                             if city_name:
@@ -608,17 +612,20 @@ def handle_guest_now(
                 oficjalna_nazwa = city_name
 
         except Exception as e:
+            perf.mark(outcome="error", operation="geocode.guest")
             print(f"❌ [GuestMode] Błąd w bloku geokodowania: {e}")
             if is_private:
                 send_reply_fn(chat_id, err_msg)
             return True
+        finally:
+            perf.finish(perf_geocode)
 
     # ===============================
     # OSTATNI KROK: BUDOWA I WYSYŁKA
     # ===============================
     try:
         # 1. Pobieramy pakiet danych (tu znajduje się już odpowiednia strefa czasowa dla danego miasta)
-        payload = build_payload_fn(lat, lon, user_lang, card_type, oficjalna_nazwa)
+        payload = perf.call('payload', build_payload_fn, lat, lon, user_lang, card_type, oficjalna_nazwa)
         if not payload:
             return True
             
@@ -645,12 +652,12 @@ def handle_guest_now(
         # -------------------------------------------------------
             
         # 2. Renderujemy odpowiedni układ karty na bazie wybranego skrótu
-        lay = prepare_layout_fn(payload, card_type)
-        img_path = render_png_fn(lay)
+        lay = perf.call('layout', prepare_layout_fn, payload, card_type)
+        img_path = perf.call('render', render_png_fn, lay)
         
         if img_path:
             # 3. Wysłanie gotowej karty z wstrzyknięciem pełnego adresu z geokodera!
-            send_photo_fn(chat_id, img_path, oficjalna_nazwa, full_address)
+            perf.call('send_photo', send_photo_fn, chat_id, img_path, oficjalna_nazwa, full_address)
             
     except Exception as e:
         print(f"❌ [GuestMode] KRYTYCZNY BŁĄD generowania karty: {e}")
