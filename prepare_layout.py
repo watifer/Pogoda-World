@@ -353,6 +353,93 @@ def _parse_local_dt(t_loc: str, tz) -> Optional[datetime]:
     return dt.astimezone(tz)
 
 
+def _day_beach_number(value, lower=None, upper=None):
+    """Validate optional beach inputs without turning missing values into zero."""
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(number):
+        return None
+    if lower is not None and number < lower:
+        return None
+    if upper is not None and number > upper:
+        return None
+    return number
+
+
+def _day_beach_clouds_available(hour, suffix=""):
+    """Validate the inputs of the existing low+mid / total fallback, not its policy."""
+    low, mid = hour.get("clouds_low_pct" + suffix), hour.get("clouds_mid_pct" + suffix)
+    values = (low, mid) if low is not None and mid is not None else (hour.get("clouds_pct" + suffix),)
+    return all(_day_beach_number(value, 0, 100) is not None for value in values)
+
+
+def _day_beach_precip_available(hour, all_hours):
+    # Match exactly the fields/model pairing used by precip_mm_for_ui.
+    base = _day_beach_number(hour.get("precip_eff_mm", hour.get("precip_mm")), 0)
+    if base is None:
+        return False
+    alt_source = "yrno" if hour.get("source") == "openmeteo" else "openmeteo"
+    alternate = next((h for h in all_hours
+                      if h.get("time_local") == hour.get("time_local")
+                      and h.get("source") == alt_source), None)
+    if alternate is None:
+        return True  # Preserve the existing single-model fallback.
+    alt = _day_beach_number(alternate.get("precip_eff_mm", alternate.get("precip_mm")), 0)
+    if alt is None:
+        return False
+    # Missing POP must not silently suppress a one-sided forecast as "ghost rain".
+    wet = hour if base > 0 and alt == 0 else alternate if alt > 0 and base == 0 else None
+    return wet is None or _day_beach_number(wet.get("precip_prob_pct"), 0, 100) is not None
+
+
+def _day_beach_weather_eligible(base_hours, all_hours, now, tz):
+    """Read-only, fail-closed gate for optional day beach; never gates marine_storm.
+
+    Use the current local hour for warmth/clouds, and require every hourly UI
+    precipitation value through 18:00 inclusive. Do not change shared UI helpers,
+    fill forecast gaps, fetch data, or publish weather decisions into coast cache.
+    """
+    try:
+        local_now = now.astimezone(tz) if now.tzinfo else now.replace(tzinfo=tz)
+        if local_now.hour > 18:
+            return False
+        hourly = {}
+        for hour in base_hours:
+            dt = _parse_local_dt(hour.get("time_local"), tz)
+            if (dt is None or dt.date() != local_now.date()
+                    or not local_now.hour <= dt.hour <= 18
+                    or dt.minute or dt.second or dt.microsecond):
+                continue
+            if dt.hour in hourly and hourly[dt.hour] != hour:
+                return False  # Ambiguous duplicates are not evidence of good weather.
+            hourly[dt.hour] = hour
+        if any(hh not in hourly for hh in range(local_now.hour, 19)):
+            return False
+        current = hourly[local_now.hour]
+        temperature = _day_beach_number(current.get("temp_c"))
+        if temperature is None or temperature < 24.0 or not _day_beach_clouds_available(current):
+            return False
+        alt_keys = ("clouds_low_pct_yr", "clouds_mid_pct_yr", "clouds_pct_yr")
+        if any(key in current for key in alt_keys) and not _day_beach_clouds_available(current, "_yr"):
+            return False
+        cloud = _day_beach_number(_eff_cld_consensus(current), 0, 100)
+        if cloud is None or cloud > 35:
+            return False
+        for hour in hourly.values():
+            if not _day_beach_precip_available(hour, all_hours):
+                return False
+            if _day_beach_number(precip_mm_for_ui(hour, all_hours), 0) != 0:
+                return False
+        return True
+    except (TypeError, ValueError, OverflowError, AttributeError, KeyError):
+        # This optional gate must not add a failure path for the whole card.
+        return False
+
+
 def _format_single_hours(text: str) -> str:
     if not text: return text
     
@@ -1395,7 +1482,7 @@ def prepare_layout_data(payload, now=None):
     alerts = list(dict.fromkeys(alerts))
 
     # ==================================================================
-    # Wiatr od morza: marine_storm (globalnie) vs beach (tylko PL + sezon)
+    # Wiatr od morza: marine_storm (bez zmian) vs beach (globalna bramka day)
     # ------------------------------------------------------------------
     # Skanujemy WYŁĄCZNIE godziny od bieżącej pełnej godziny w przód —
     # popołudniowy raport nie może odgrzewać porannego epizodu.
@@ -1428,6 +1515,7 @@ def prepare_layout_data(payload, now=None):
                 )
 
                 now_floored = now.replace(minute=0, second=0, microsecond=0)
+                day_beach_eligible = _day_beach_weather_eligible(hp, hours, now, tz)
 
                 beach_hours = []
                 storm_first_hh = None
@@ -1446,7 +1534,10 @@ def prepare_layout_data(payload, now=None):
                         wgst = float(h.get("gust_kmh") or 0)
                         eff_wind = _eff_wind_kmh(h)
 
-                        mode = get_coastal_alert_mode(sig, wspd, wgst, wdir, tz_str, dt_local)
+                        mode = get_coastal_alert_mode(
+                            sig, wspd, wgst, wdir, tz_str, dt_local,
+                            day_beach_eligible=day_beach_eligible,
+                        )
 
                         if mode == MODE_MARINE_STORM:
                             if storm_first_hh is None:

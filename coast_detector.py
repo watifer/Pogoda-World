@@ -7,8 +7,9 @@ Dwa niezależne tryby (get_coastal_alert_mode):
     (distance guard), tylko przy wietrze onshore i tylko przy naprawdę wysokich
     progach. To ostrzeżenie sztormowe, a NIE lifestyle'owe "Wybrzeże".
 
-  * "beach" — lifestyle. Tylko Polska (strefa czasowa) i tylko sezon
-    01.06–15.09, z niskimi progami "na plaży wieje mocniej".
+  * "beach" — lifestyle, z niskimi progami "na plaży wieje mocniej".
+    Domyślnie Polska + sezon 01.06–15.09; layout day jawnie zastępuje ten
+    warunek globalną, całoroczną bramką pogodową. /now zachowuje legacy.
 
 Konfiguracja przez ENV (czytana przy każdym wywołaniu):
 
@@ -502,6 +503,8 @@ def get_coastal_alert_mode(
     wind_dir_deg: float,
     tz_str: str,
     current_dt: datetime,
+    *,
+    day_beach_eligible: Optional[bool] = None,
 ) -> Optional[str]:
     """
     Zwraca: "marine_storm" | "beach" | None
@@ -510,8 +513,10 @@ def get_coastal_alert_mode(
       tylko przy wietrze onshore i tylko przy naprawdę wysokich progach
       (domyślnie gust >= 90 km/h albo wind >= 75 i gust >= 80 km/h).
       To NIE jest "Wybrzeże" — to ostrzeżenie sztormowe.
-    - "beach": lifestyle, TYLKO Polska i TYLKO sezon 01.06–15.09,
-      z dotychczasowymi, niskimi progami.
+    - "beach": domyślnie Polska i sezon 01.06–15.09 (bez zmian dla /now).
+      Tylko layout day przekazuje day_beach_eligible: True dopuszcza globalny,
+      całoroczny beach; False wyłącza wyłącznie beach. None zachowuje legacy.
+      Geometria, progi wiatru i priorytet marine_storm pozostają wspólne.
     """
     if sig is None:
         return None
@@ -546,8 +551,12 @@ def get_coastal_alert_mode(
         if gust >= gust_thr or (wind_spd >= wind_thr and gust >= gust_with_wind_thr):
             return MODE_MARINE_STORM
 
-    # 4) BEACH (tylko PL + tylko sezon + lifestyle progi)
-    if is_poland_tz(tz_str) and in_beach_season(current_dt):
+    # 4) BEACH — now/pozostali konsumenci zachowują legacy; day ma własną bramkę.
+    beach_allowed = (
+        is_poland_tz(tz_str) and in_beach_season(current_dt)
+        if day_beach_eligible is None else day_beach_eligible is True
+    )
+    if beach_allowed:
         dist = getattr(sig, "distance_to_ocean_km", None)
         dist = 999.0 if dist is None else float(dist)
         add = BEACH_FAR_PENALTY_KMH if dist > BEACH_FAR_DIST_KM else 0.0
