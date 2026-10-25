@@ -779,13 +779,14 @@ class TestPrivacyCommands:
         bot.run(bot.msg(100, "/privacy"))
         assert bot.has_reply(100, "PRYWATNOŚĆ I TWOJE DANE")
         privacy = [t for t in bot.replies(100) if "PRYWATNOŚĆ" in t][0]
-        assert lb._md_safe(lb.PRIVACY_URL) in privacy
-        assert privacy.rstrip().endswith(lb._md_safe(lb.PRIVACY_URL)), \
-            "link do pełnej polityki zamyka wiadomość"
-        # Numer wersji polityki nie jest już częścią treści — zostaje tylko
-        # w kontrakcie wywołania t_ui (version=PRIVACY_VERSION).
-        assert lb.PRIVACY_VERSION not in privacy
+        assert "📦 *Co przechowujemy?*" in privacy
+        assert "🌐 *Komu przekazujemy dane?*" in privacy
+        assert "🛠 *Zarządzanie:*" in privacy
+        for command in ("/miasto", "/dane", "/bezGPS", "/usunDane"):
+            assert command in privacy
+        assert "https://" not in privacy
         assert "{url}" not in privacy and "{version}" not in privacy
+        assert lb.PRIVACY_VERSION not in privacy
 
     def test_my_data_shows_access(self, bot):
         bot.run(bot.msg(100, "/start BETAX1"))
