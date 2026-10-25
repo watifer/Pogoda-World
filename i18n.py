@@ -2171,7 +2171,7 @@ UI_TEXTS = {
         "no_access": "🔒 *Pogoda World — bot prywatny*\n\nDołączenie do bota wymaga aktualnego kodu zaproszenia.\n\nSkopiuj i wyślij poniższą komendę na czacie:\n\n/start {public_code}",
         "copy_access_command": "📋 Kopiuj komendę",
         "no_access_no_code": "🔒 *Pogoda World — rejestracja wstrzymana*\n\nDołączanie nowych osób jest chwilowo wstrzymane.\n\nJeśli otrzymasz kod lub link z zaproszeniem od znajomego, użyj go, aby odblokować dostęp.",
-        "access_granted": "✅ Dostęp aktywny! Witaj w Pogoda World 🌍\n\n🌤 Sprawdź pogodę:\n/dzien — prognoza na dziś (05:00–15:59)\n/teraz — najbliższe 12h\n/trend — kolejne 14 dni\n\n🔔 Dla wygody lub codziennych raportów:\nZapisz stałą lokalizację komendą /miasto\n\n🔒 Prywatność i Twoje dane: /dane",
+        "access_granted": "✅ Dostęp aktywny! Witaj w Pogoda World 🌍\n\n🌤 Sprawdź pogodę:\n/dzien — prognoza na dziś\n/teraz — najbliższe 12h\n/trend — kolejne 14 dni\n\n🔔 Dla wygody lub codziennych raportów:\nZapisz stałą lokalizację komendą /miasto\n\n🔒 Prywatność i Twoje dane: /dane",
         "limit_reached": "🔒 *Pogoda World — limit miejsc wyczerpany*\n\nPula wolnych miejsc została chwilowo wyczerpana. Nowe miejsca zwalniamy regularnie!\n\nJeśli posiadasz zaproszenie od znajomego, zachowaj je i spróbuj ponownie za jakiś czas.",
         "registration_closed": "🔒 *Pogoda World — rejestracja wstrzymana*\n\nRejestracja nowych osób jest obecnie wstrzymana.\n\nJeśli posiadasz zaproszenie od znajomego, zachowaj je i spróbuj ponownie za jakiś czas.",
         "invalid_link": "⚠️ *Nieprawidłowy lub nieaktywny kod*\n\nTen link z zaproszeniem wygasł lub kod jest błędny.\n\nPoproś znajomego o przesłanie nowego zaproszenia lub spróbuj ponownie później.",
@@ -2198,7 +2198,8 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ Warszawa",
         "default_city": "Twoja okolica",
         "guest_caption": "⚡ *Pogoda World*\nPełna prognoza, alerty i radary.\n👉 Otwórz bota w czacie prywatnym!",
-        "welcome_access": "✅ Dostęp aktywny! Witaj w Pogoda World 🌍\n\n🌤 Sprawdź pogodę:\n/dzien — prognoza na dziś (05:00–15:59)\n/teraz — najbliższe 12h\n/trend — kolejne 14 dni\n\n🔔 Dla wygody lub codziennych raportów:\nZapisz stałą lokalizację komendą /miasto\n\n🔒 Prywatność i Twoje dane: /dane",
+
+
         "privacy_msg": (
             "📜 *PRYWATNOŚĆ I TWOJE DANE*\n"
             "\n"
@@ -2218,6 +2219,10 @@ UI_TEXTS = {
             "/bezGPS — usunięcie lokalizacji\n"
             "/usunDane — usunięcie danych i dostępu"
         ),
+
+        "welcome_access": "✅ Dostęp aktywny! Witaj w Pogoda World 🌍\n\n🌤 Sprawdź pogodę:\n/dzien — prognoza na dziś\n/teraz — najbliższe 12h\n/trend — kolejne 14 dni\n\n🔔 Dla wygody lub codziennych raportów:\nZapisz stałą lokalizację komendą /miasto\n\n🔒 Prywatność i Twoje dane: /dane",
+
+
         "my_data_msg": "📦 TWOJE DANE\n\nStan na: {now}\nID Telegrama: {chat_id}\n\nDostęp: {access}\nZapisana lokalizacja: {location}\nWspółrzędne: {coords}\n\nPrywatność:\n/priv\n\nZarządzanie:\n/bezGPS — usuwa zapisaną lokalizację, dostęp zostaje\n/usunDane — usuwa wszystkie dane i dostęp do bota",
         "my_lbl_granted_at": "├ Przyznano: {ts}",
         "my_lbl_source": "└ Źródło: {source}",
@@ -2285,7 +2290,7 @@ UI_TEXTS = {
         "no_access": "🔒 *Pogoda World — private bot*\n\nJoining the bot requires a current invite code.\n\nCopy and send the command below in the chat:\n\n/start {public_code}",
         "copy_access_command": "📋 Copy command",
         "no_access_no_code": "🔒 *Pogoda World — registration on hold*\n\nJoining new people is temporarily on hold.\n\nIf you receive a code or invite link from a friend, use it to unlock access.",
-        "access_granted": "✅ Access active! Welcome to Pogoda World 🌍\n\n🌤 Check the weather:\n/day — today's forecast (05:00–15:59)\n/now — the next 12 hours\n/trend — the next 14 days\n\n🔔 For convenience or daily reports:\nSave your default location with /city\n\n🔒 Privacy and your data: /data",
+        "access_granted": "✅ Access active! Welcome to Pogoda World 🌍\n\n🌤 Check the weather:\n/day — today's forecast\n/now — the next 12 hours\n/trend — the next 14 days\n\n🔔 For convenience or daily reports:\nSave your default location with /city\n\n🔒 Privacy and your data: /data",
         "limit_reached": "🔒 *Pogoda World — seat limit reached*\n\nThe pool of free seats is temporarily exhausted. We release new seats regularly!\n\nIf you have an invitation from a friend, keep it and try again later.",
         "registration_closed": "🔒 *Pogoda World — registration on hold*\n\nRegistration of new people is currently on hold.\n\nIf you have an invitation from a friend, keep it and try again later.",
 
@@ -2313,7 +2318,6 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _In a group, simply type the city name now, e.g.:_ London",
         "default_city": "Your area",
         "guest_caption": "⚡ *Weather World*\nFull forecast, alerts, and radars.\n👉 Open the bot in a private chat!",
-        "welcome_access": "✅ Access active! Welcome to Pogoda World 🌍\n\n🌤 Check the weather:\n/day — today's forecast (05:00–15:59)\n/now — the next 12 hours\n/trend — the next 14 days\n\n🔔 For convenience or daily reports:\nSave your default location with /city\n\n🔒 Privacy and your data: /data",
         "privacy_msg": (
             "📜 *PRIVACY & YOUR DATA*\n"
             "\n"
@@ -2333,6 +2337,8 @@ UI_TEXTS = {
             "/forget\\_location — delete location\n"
             "/delete\\_me — delete data and access"
         ),
+
+        "welcome_access": "✅ Access active! Welcome to Pogoda World 🌍\n\n🌤 Check the weather:\n/day — today's forecast\n/now — the next 12 hours\n/trend — the next 14 days\n\n🔔 For convenience or daily reports:\nSave your default location with /city\n\n🔒 Privacy and your data: /data",
         "my_data_msg": "📦 YOUR DATA\n\nAs of: {now}\nTelegram ID: {chat_id}\n\nAccess: {access}\nSaved location: {location}\nCoordinates: {coords}\n\nPrivacy:\n/privacy\n\nManagement:\n/forget\\_location — deletes the saved location, your access stays\n/delete\\_me — deletes all data and access to the bot",
         "my_lbl_granted_at": "├ Granted: {ts}",
         "my_lbl_source": "└ Source: {source}",
@@ -2397,7 +2403,7 @@ UI_TEXTS = {
     "no_access": "🔒 *Pogoda World — privater Bot*\n\nDie Teilnahme am Bot erfordert einen aktuellen Einladungscode.\n\nKopiere den folgenden Befehl und sende ihn im Chat:\n\n/start {public_code}",
     "copy_access_command": "📋 Befehl kopieren",
     "no_access_no_code": "🔒 *Pogoda World — Registrierung pausiert*\n\nNeue Mitglieder können sich vorübergehend nicht anmelden.\n\nWenn du einen Code oder Einladungslink von einem Freund bekommst, nutze ihn, um den Zugang freizuschalten.",
-    "access_granted": "✅ Zugang aktiv! Willkommen bei Pogoda World 🌍\n\n🌤 Wetter prüfen:\n/day — Prognose für heute (05:00–15:59)\n/now — nächste 12 Stunden\n/trend — nächste 14 Tage\n\n🔔 Für Komfort oder tägliche Berichte:\nSpeichere deinen Standardort mit /city\n\n🔒 Privatsphäre und deine Daten: /data",
+    "access_granted": "✅ Zugang aktiv! Willkommen bei Pogoda World 🌍\n\n🌤 Wetter prüfen:\n/day — Prognose für heute\n/now — nächste 12 Stunden\n/trend — nächste 14 Tage\n\n🔔 Für Komfort oder tägliche Berichte:\nSpeichere deinen Standardort mit /city\n\n🔒 Privatsphäre und deine Daten: /data",
     "limit_reached": "🔒 *Pogoda World — Platzlimit erschöpft*\n\nDer Pool freier Plätze ist vorübergehend erschöpft. Wir geben regelmäßig neue Plätze frei!\n\nWenn du eine Einladung von einem Freund hast, behalte sie und versuche es später erneut.",
     "registration_closed": "🔒 *Pogoda World — Registrierung pausiert*\n\nDie Registrierung neuer Personen ist derzeit pausiert.\n\nWenn du eine Einladung von einem Freund hast, behalte sie und versuche es später erneut.",
     "invalid_link": "⚠️ *Ungültiger oder inaktiver Code*\n\nDieser Einladungslink ist abgelaufen oder der Code ist falsch.\n\nBitte einen Freund, dir eine neue Einladung zu schicken, oder versuche es später erneut.",
@@ -2423,7 +2429,6 @@ UI_TEXTS = {
     "group_city_tip": "\n\n🔴 _In einer Gruppe gib jetzt einfach den Städtenamen ein, z. B.:_ Berlin",
     "default_city": "Deine Umgebung",
     "guest_caption": "⚡ *Wetter World*\nKomplette Vorhersage, Warnungen und Radare.\n👉 Öffne den Bot in einem privaten Chat!",
-    "welcome_access": "✅ Zugang aktiv! Willkommen bei Pogoda World 🌍\n\n🌤 Wetter prüfen:\n/day — Prognose für heute (05:00–15:59)\n/now — nächste 12 Stunden\n/trend — nächste 14 Tage\n\n🔔 Für Komfort oder tägliche Berichte:\nSpeichere deinen Standardort mit /city\n\n🔒 Privatsphäre und deine Daten: /data",
     "privacy_msg": (
         "📜 *DATENSCHUTZ & DEINE DATEN*\n"
         "\n"
@@ -2443,6 +2448,7 @@ UI_TEXTS = {
         "/forget\\_location — Standort löschen\n"
         "/delete\\_me — Daten und Zugang löschen"
     ),
+    "welcome_access": "✅ Zugang aktiv! Willkommen bei Pogoda World 🌍\n\n🌤 Wetter prüfen:\n/day — Prognose für heute\n/now — nächste 12 Stunden\n/trend — nächste 14 Tage\n\n🔔 Für Komfort oder tägliche Berichte:\nSpeichere deinen Standardort mit /city\n\n🔒 Privatsphäre und deine Daten: /data",
     "my_data_msg": "📦 DEINE DATEN\n\nStand: {now}\nTelegram-ID: {chat_id}\n\nZugang: {access}\nGespeicherter Standort: {location}\nKoordinaten: {coords}\n\nDatenschutz:\n/privacy\n\nVerwaltung:\n/forget\\_location — löscht den gespeicherten Standort, der Zugang bleibt\n/delete\\_me — löscht alle Daten und den Zugang zum Bot",
     "my_lbl_granted_at": "├ Erteilt: {ts}",
     "my_lbl_source": "└ Quelle: {source}",
@@ -2508,7 +2514,7 @@ UI_TEXTS = {
         "no_access": "🔒 *Pogoda World — bot privado*\n\nUnirse al bot requiere un código de invitación vigente.\n\nCopia y envía el siguiente comando en el chat:\n\n/start {public_code}",
         "copy_access_command": "📋 Copiar comando",
         "no_access_no_code": "🔒 *Pogoda World — registro en pausa*\n\nLa incorporación de nuevas personas está temporalmente en pausa.\n\nSi recibes de un amigo un código o enlace de invitación, úsalo para desbloquear el acceso.",
-        "access_granted": "✅ ¡Acceso activo! Bienvenido a Pogoda World 🌍\n\n🌤 Consulta el tiempo:\n/day — pronóstico de hoy (05:00–15:59)\n/now — próximas 12 horas\n/trend — próximos 14 días\n\n🔔 Para tu comodidad o los informes diarios:\nGuarda tu ubicación principal con /city\n\n🔒 Privacidad y tus datos: /data",
+        "access_granted": "✅ ¡Acceso activo! Bienvenido a Pogoda World 🌍\n\n🌤 Consulta el tiempo:\n/day — pronóstico de hoy\n/now — próximas 12 horas\n/trend — próximos 14 días\n\n🔔 Para tu comodidad o los informes diarios:\nGuarda tu ubicación principal con /city\n\n🔒 Privacidad y tus datos: /data",
         "limit_reached": "🔒 *Pogoda World — límite de plazas alcanzado*\n\nEl grupo de plazas libres se ha agotado temporalmente. ¡Liberamos nuevas plazas regularmente!\n\nSi tienes una invitación de un amigo, consérvala e inténtalo de nuevo más tarde.",
         "registration_closed": "🔒 *Pogoda World — registro en pausa*\n\nEl registro de nuevas personas está actualmente en pausa.\n\nSi tienes una invitación de un amigo, consérvala e inténtalo de nuevo más tarde.",
 
@@ -2536,7 +2542,6 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _En un grupo, simplemente escribe el nombre de la ciudad ahora, ej.:_ Madrid",
         "default_city": "Tu área",
         "guest_caption": "⚡ *Tiempo World*\nPronóstico completo, alertas y radares.\n👉 ¡Abre el bot en un chat privado!",
-        "welcome_access": "✅ ¡Acceso activo! Bienvenido a Pogoda World 🌍\n\n🌤 Consulta el tiempo:\n/day — pronóstico de hoy (05:00–15:59)\n/now — próximas 12 horas\n/trend — próximos 14 días\n\n🔔 Para tu comodidad o los informes diarios:\nGuarda tu ubicación principal con /city\n\n🔒 Privacidad y tus datos: /data",
         "privacy_msg": (
             "📜 *PRIVACIDAD Y TUS DATOS*\n"
             "\n"
@@ -2556,6 +2561,7 @@ UI_TEXTS = {
             "/forget\\_location — borrar ubicación\n"
             "/delete\\_me — borrar datos y acceso"
         ),
+        "welcome_access": "✅ ¡Acceso activo! Bienvenido a Pogoda World 🌍\n\n🌤 Consulta el tiempo:\n/day — pronóstico de hoy\n/now — próximas 12 horas\n/trend — próximos 14 días\n\n🔔 Para tu comodidad o los informes diarios:\nGuarda tu ubicación principal con /city\n\n🔒 Privacidad y tus datos: /data",
         "my_data_msg": "📦 TUS DATOS\n\nA fecha de: {now}\nID de Telegram: {chat_id}\n\nAcceso: {access}\nUbicación guardada: {location}\nCoordenadas: {coords}\n\nPrivacidad:\n/privacy\n\nGestión:\n/forget\\_location — borra la ubicación guardada, el acceso se mantiene\n/delete\\_me — borra todos los datos y el acceso al bot",
         "my_lbl_granted_at": "├ Concedido: {ts}",
         "my_lbl_source": "└ Origen: {source}",
@@ -2620,7 +2626,7 @@ UI_TEXTS = {
         "no_access": "🔒 *Pogoda World — bot privé*\n\nRejoindre le bot nécessite un code d'invitation en cours de validité.\n\nCopiez la commande ci-dessous et envoyez-la dans le chat :\n\n/start {public_code}",
         "copy_access_command": "📋 Copier la commande",
         "no_access_no_code": "🔒 *Pogoda World — inscription en pause*\n\nL'ajout de nouvelles personnes est temporairement en pause.\n\nSi un ami vous transmet un code ou un lien d'invitation, utilisez-le pour déverrouiller votre accès.",
-        "access_granted": "✅ Accès actif ! Bienvenue sur Pogoda World 🌍\n\n🌤 Consultez la météo :\n/day — prévision du jour (05:00–15:59)\n/now — prochaines 12 heures\n/trend — 14 jours à venir\n\n🔔 Pour votre confort ou les bulletins quotidiens :\nEnregistrez votre lieu principal avec /city\n\n🔒 Confidentialité et vos données : /data",
+        "access_granted": "✅ Accès actif ! Bienvenue sur Pogoda World 🌍\n\n🌤 Consultez la météo :\n/day — prévision du jour\n/now — prochaines 12 heures\n/trend — 14 jours à venir\n\n🔔 Pour votre confort ou les bulletins quotidiens :\nEnregistrez votre lieu principal avec /city\n\n🔒 Confidentialité et vos données : /data",
         "limit_reached": "🔒 *Pogoda World — limite de places atteint*\n\nLe pool de places libres est temporairement épuisé. Nous libérons régulièrement de nouvelles places !\n\nSi vous disposez d'une invitation d'un ami, conservez-la et réessayez plus tard.",
         "registration_closed": "🔒 *Pogoda World — inscription en pause*\n\nL'inscription de nouvelles personnes est actuellement en pause.\n\nSi vous disposez d'une invitation d'un ami, conservez-la et réessayez plus tard.",
 
@@ -2648,7 +2654,6 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _Dans un groupe, tapez simplement le nom de la ville maintenant, ex. :_ Paris",
         "default_city": "Votre zone",
         "guest_caption": "⚡ *Météo World*\nPrévisions complètes, alertes et radars.\n👉 Ouvrez le bot dans un chat privé !",
-        "welcome_access": "✅ Accès actif ! Bienvenue sur Pogoda World 🌍\n\n🌤 Consultez la météo :\n/day — prévision du jour (05:00–15:59)\n/now — prochaines 12 heures\n/trend — 14 jours à venir\n\n🔔 Pour votre confort ou les bulletins quotidiens :\nEnregistrez votre lieu principal avec /city\n\n🔒 Confidentialité et vos données : /data",
         "privacy_msg": (
             "📜 *CONFIDENTIALITÉ ET VOS DONNÉES*\n"
             "\n"
@@ -2668,6 +2673,7 @@ UI_TEXTS = {
             "/forget\\_location — supprimer la position\n"
             "/delete\\_me — supprimer les données et l’accès"
         ),
+        "welcome_access": "✅ Accès actif ! Bienvenue sur Pogoda World 🌍\n\n🌤 Consultez la météo :\n/day — prévision du jour\n/now — prochaines 12 heures\n/trend — 14 jours à venir\n\n🔔 Pour votre confort ou les bulletins quotidiens :\nEnregistrez votre lieu principal avec /city\n\n🔒 Confidentialité et vos données : /data",
         "my_data_msg": "📦 VOS DONNÉES\n\nAu : {now}\nIdentifiant Telegram : {chat_id}\n\nAccès : {access}\nPosition enregistrée : {location}\nCoordonnées : {coords}\n\nConfidentialité :\n/privacy\n\nGestion :\n/forget\\_location — supprime la position enregistrée, l'accès est conservé\n/delete\\_me — supprime toutes les données et l'accès au bot",
         "my_lbl_granted_at": "├ Accordé : {ts}",
         "my_lbl_source": "└ Source : {source}",
@@ -2732,7 +2738,7 @@ UI_TEXTS = {
         "no_access": "🔒 *Pogoda World — privat bot*\n\nFor å bli med i boten trenger du en gyldig invitasjonskode.\n\nKopier kommandoen nedenfor og send den i chatten:\n\n/start {public_code}",
         "copy_access_command": "📋 Kopier kommando",
         "no_access_no_code": "🔒 *Pogoda World — registrering på pause*\n\nNye personer kan foreløpig ikke bli med.\n\nHvis du får en kode eller invitasjonslenke fra en venn, bruk den for å låse opp tilgangen.",
-        "access_granted": "✅ Tilgang aktiv! Velkommen til Pogoda World 🌍\n\n🌤 Sjekk været:\n/day — dagsvarsel (05:00–15:59)\n/now — neste 12 timer\n/trend — neste 14 dager\n\n🔔 For bekvemmelighet eller daglige rapporter:\nLagre standardstedet ditt med /city\n\n🔒 Personvern og dataene dine: /data",
+        "access_granted": "✅ Tilgang aktiv! Velkommen til Pogoda World 🌍\n\n🌤 Sjekk været:\n/day — dagsvarsel\n/now — neste 12 timer\n/trend — neste 14 dager\n\n🔔 For bekvemmelighet eller daglige rapporter:\nLagre standardstedet ditt med /city\n\n🔒 Personvern og dataene dine: /data",
         "limit_reached": "🔒 *Pogoda World — plassgrense nådd*\n\nPoolen av ledige plasser er foreløpig brukt opp. Vi frigir nye plasser jevnlig!\n\nHvis du har en invitasjon fra en venn, ta vare på den og prøv igjen om en stund.",
         "registration_closed": "🔒 *Pogoda World — registrering på pause*\n\nRegistrering av nye personer er foreløpig på pause.\n\nHvis du har en invitasjon fra en venn, ta vare på den og prøv igjen om en stund.",
 
@@ -2760,7 +2766,6 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _I en gruppe skriver du nå bare bynavnet, f.eks.:_ Oslo",
         "default_city": "Ditt område",
         "guest_caption": "⚡ *Vær World*\nFull værmelding, varsler og radarer.\n👉 Åpne boten i en privat chat!",
-        "welcome_access": "✅ Tilgang aktiv! Velkommen til Pogoda World 🌍\n\n🌤 Sjekk været:\n/day — dagsvarsel (05:00–15:59)\n/now — neste 12 timer\n/trend — neste 14 dager\n\n🔔 For bekvemmelighet eller daglige rapporter:\nLagre standardstedet ditt med /city\n\n🔒 Personvern og dataene dine: /data",
         "privacy_msg": (
             "📜 *PERSONVERN OG DINE DATA*\n"
             "\n"
@@ -2780,6 +2785,7 @@ UI_TEXTS = {
             "/forget\\_location — slett posisjonen\n"
             "/delete\\_me — slett data og tilgang"
         ),
+        "welcome_access": "✅ Tilgang aktiv! Velkommen til Pogoda World 🌍\n\n🌤 Sjekk været:\n/day — dagsvarsel\n/now — neste 12 timer\n/trend — neste 14 dager\n\n🔔 For bekvemmelighet eller daglige rapporter:\nLagre standardstedet ditt med /city\n\n🔒 Personvern og dataene dine: /data",
         "my_data_msg": "📦 DINE DATA\n\nPer: {now}\nTelegram-ID: {chat_id}\n\nTilgang: {access}\nLagret posisjon: {location}\nKoordinater: {coords}\n\nPersonvern:\n/privacy\n\nAdministrasjon:\n/forget\\_location — sletter lagret posisjon, tilgangen består\n/delete\\_me — sletter alle data og tilgangen til botten",
         "my_lbl_granted_at": "├ Gitt: {ts}",
         "my_lbl_source": "└ Kilde: {source}",
