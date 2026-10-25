@@ -2198,8 +2198,31 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _Na grupie wpisz teraz po prostu nazwę miasta, np.:_ Warszawa",
         "default_city": "Twoja okolica",
         "guest_caption": "⚡ *Pogoda World*\nPełna prognoza, alerty i radary.\n👉 Otwórz bota w czacie prywatnym!",
+
+
+        "privacy_msg": (
+            "📜 *PRYWATNOŚĆ I TWOJE DANE*\n"
+            "\n"
+            "📦 *Co przechowujemy?*\n"
+            "• Identyfikator czatu, język i status dostępu\n"
+            "• Przybliżoną lokalizację po zgodzie w /miasto\n"
+            "• Współrzędne GPS zapisujemy po zaokrągleniu\n"
+            "• Nie zapisujemy imion, nazwisk ani e-maili\n"
+            "\n"
+            "🌐 *Komu przekazujemy dane?*\n"
+            "• Lokalizację przekazujemy usługom map i prognoz\n"
+            "• Korzystamy m.in. z Yr.no, Open-Meteo i OpenStreetMap\n"
+            "• Nie sprzedajemy danych\n"
+            "\n"
+            "🛠 *Zarządzanie:*\n"
+            "/dane — podgląd zapisanych danych\n"
+            "/bezGPS — usunięcie lokalizacji\n"
+            "/usunDane — usunięcie danych i dostępu"
+        ),
+
         "welcome_access": "✅ Dostęp aktywny! Witaj w Pogoda World 🌍\n\n🌤 Sprawdź pogodę:\n/dzien — prognoza na dziś\n/teraz — najbliższe 12h\n/trend — kolejne 14 dni\n\n🔔 Dla wygody lub codziennych raportów:\nZapisz stałą lokalizację komendą /miasto\n\n🔒 Prywatność i Twoje dane: /dane",
-        "privacy_msg": "📜 *PRYWATNOŚĆ I TWOJE DANE*\n\nZasady przetwarzania:\n• Zapisujemy identyfikator czatu, język i status dostępu.\n• Przybliżoną lokalizację przechowujemy wyłącznie po Twojej wyraźnej zgodzie w /miasto.\n• Nie zbieramy imion, nazwisk, adresów e-mail ani dokładnych współrzędnych GPS.\n• Nigdy nie przekazujemy ani nie sprzedajemy Twoich danych.\n\nZarządzanie:\n/dane — Twoje zapisane dane\n/bezGPS — usunięcie lokalizacji (dostęp zostaje)\n/usunDane — pełne usunięcie konta\n\nPełna polityka prywatności:\n{url}",
+
+
         "my_data_msg": "📦 TWOJE DANE\n\nStan na: {now}\nID Telegrama: {chat_id}\n\nDostęp: {access}\nZapisana lokalizacja: {location}\nWspółrzędne: {coords}\n\nPrywatność:\n/priv\n\nZarządzanie:\n/bezGPS — usuwa zapisaną lokalizację, dostęp zostaje\n/usunDane — usuwa wszystkie dane i dostęp do bota",
         "my_lbl_granted_at": "├ Przyznano: {ts}",
         "my_lbl_source": "└ Źródło: {source}",
@@ -2295,8 +2318,27 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _In a group, simply type the city name now, e.g.:_ London",
         "default_city": "Your area",
         "guest_caption": "⚡ *Weather World*\nFull forecast, alerts, and radars.\n👉 Open the bot in a private chat!",
+        "privacy_msg": (
+            "📜 *PRIVACY & YOUR DATA*\n"
+            "\n"
+            "📦 *What do we store?*\n"
+            "• Chat ID, language and access status\n"
+            "• Approximate location saved with consent via /city\n"
+            "• GPS coordinates are rounded before storage\n"
+            "• We do not store names or email addresses\n"
+            "\n"
+            "🌐 *Who receives data?*\n"
+            "• Location is sent to map and forecast services\n"
+            "• Sources include Yr.no, Open-Meteo and OpenStreetMap\n"
+            "• We do not sell your data\n"
+            "\n"
+            "🛠 *Management:*\n"
+            "/data — view stored data\n"
+            "/forget\\_location — delete location\n"
+            "/delete\\_me — delete data and access"
+        ),
+
         "welcome_access": "✅ Access active! Welcome to Pogoda World 🌍\n\n🌤 Check the weather:\n/day — today's forecast\n/now — the next 12 hours\n/trend — the next 14 days\n\n🔔 For convenience or daily reports:\nSave your default location with /city\n\n🔒 Privacy and your data: /data",
-        "privacy_msg": "📜 *PRIVACY & YOUR DATA*\n\nProcessing rules:\n• We store your chat ID, language and access status.\n• An approximate location is stored only with your explicit consent in /city.\n• We do not collect first names, surnames, e-mail addresses or exact GPS coordinates.\n• We never share or sell your data.\n\nManagement:\n/data — your stored data\n/forget\\_location — delete the location (your access stays)\n/delete\\_me — full account deletion\n\nFull privacy policy:\n{url}",
         "my_data_msg": "📦 YOUR DATA\n\nAs of: {now}\nTelegram ID: {chat_id}\n\nAccess: {access}\nSaved location: {location}\nCoordinates: {coords}\n\nPrivacy:\n/privacy\n\nManagement:\n/forget\\_location — deletes the saved location, your access stays\n/delete\\_me — deletes all data and access to the bot",
         "my_lbl_granted_at": "├ Granted: {ts}",
         "my_lbl_source": "└ Source: {source}",
@@ -2387,8 +2429,26 @@ UI_TEXTS = {
     "group_city_tip": "\n\n🔴 _In einer Gruppe gib jetzt einfach den Städtenamen ein, z. B.:_ Berlin",
     "default_city": "Deine Umgebung",
     "guest_caption": "⚡ *Wetter World*\nKomplette Vorhersage, Warnungen und Radare.\n👉 Öffne den Bot in einem privaten Chat!",
+    "privacy_msg": (
+        "📜 *DATENSCHUTZ & DEINE DATEN*\n"
+        "\n"
+        "📦 *Was speichern wir?*\n"
+        "• Chat-ID, Sprache und Zugangsstatus\n"
+        "• Ungefährer Standort nur mit Zustimmung über /city\n"
+        "• GPS-Koordinaten speichern wir gerundet\n"
+        "• Keine Namen oder E-Mail-Adressen\n"
+        "\n"
+        "🌐 *Wer erhält Daten?*\n"
+        "• Standortdaten gehen an Karten- und Wetterdienste\n"
+        "• Dazu zählen Yr.no, Open-Meteo und OpenStreetMap\n"
+        "• Wir verkaufen deine Daten nicht\n"
+        "\n"
+        "🛠 *Verwaltung:*\n"
+        "/data — gespeicherte Daten ansehen\n"
+        "/forget\\_location — Standort löschen\n"
+        "/delete\\_me — Daten und Zugang löschen"
+    ),
     "welcome_access": "✅ Zugang aktiv! Willkommen bei Pogoda World 🌍\n\n🌤 Wetter prüfen:\n/day — Prognose für heute\n/now — nächste 12 Stunden\n/trend — nächste 14 Tage\n\n🔔 Für Komfort oder tägliche Berichte:\nSpeichere deinen Standardort mit /city\n\n🔒 Privatsphäre und deine Daten: /data",
-    "privacy_msg": "📜 *DATENSCHUTZ & DEINE DATEN*\n\nGrundsätze der Verarbeitung:\n• Wir speichern die Chat-ID, die Sprache und den Zugangsstatus.\n• Einen ungefähren Standort speichern wir ausschließlich nach deiner ausdrücklichen Zustimmung in /city.\n• Wir sammeln keine Vornamen, Nachnamen, E-Mail-Adressen oder genauen GPS-Koordinaten.\n• Wir geben deine Daten niemals weiter und verkaufen sie nicht.\n\nVerwaltung:\n/data — deine gespeicherten Daten\n/forget\\_location — Standort löschen (der Zugang bleibt)\n/delete\\_me — vollständige Löschung des Kontos\n\nVollständige Datenschutzerklärung:\n{url}",
     "my_data_msg": "📦 DEINE DATEN\n\nStand: {now}\nTelegram-ID: {chat_id}\n\nZugang: {access}\nGespeicherter Standort: {location}\nKoordinaten: {coords}\n\nDatenschutz:\n/privacy\n\nVerwaltung:\n/forget\\_location — löscht den gespeicherten Standort, der Zugang bleibt\n/delete\\_me — löscht alle Daten und den Zugang zum Bot",
     "my_lbl_granted_at": "├ Erteilt: {ts}",
     "my_lbl_source": "└ Quelle: {source}",
@@ -2482,8 +2542,26 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _En un grupo, simplemente escribe el nombre de la ciudad ahora, ej.:_ Madrid",
         "default_city": "Tu área",
         "guest_caption": "⚡ *Tiempo World*\nPronóstico completo, alertas y radares.\n👉 ¡Abre el bot en un chat privado!",
+        "privacy_msg": (
+            "📜 *PRIVACIDAD Y TUS DATOS*\n"
+            "\n"
+            "📦 *¿Qué guardamos?*\n"
+            "• ID del chat, idioma y estado de acceso\n"
+            "• Ubicación aproximada solo con permiso vía /city\n"
+            "• Guardamos las coordenadas GPS redondeadas\n"
+            "• No guardamos nombres ni correos electrónicos\n"
+            "\n"
+            "🌐 *¿Quién recibe los datos?*\n"
+            "• La ubicación se envía a servicios de mapas y previsión\n"
+            "• Entre otros, Yr.no, Open-Meteo y OpenStreetMap\n"
+            "• No vendemos tus datos\n"
+            "\n"
+            "🛠 *Gestión:*\n"
+            "/data — ver datos guardados\n"
+            "/forget\\_location — borrar ubicación\n"
+            "/delete\\_me — borrar datos y acceso"
+        ),
         "welcome_access": "✅ ¡Acceso activo! Bienvenido a Pogoda World 🌍\n\n🌤 Consulta el tiempo:\n/day — pronóstico de hoy\n/now — próximas 12 horas\n/trend — próximos 14 días\n\n🔔 Para tu comodidad o los informes diarios:\nGuarda tu ubicación principal con /city\n\n🔒 Privacidad y tus datos: /data",
-        "privacy_msg": "📜 *PRIVACIDAD Y TUS DATOS*\n\nReglas de tratamiento:\n• Guardamos el identificador del chat, el idioma y el estado del acceso.\n• La ubicación aproximada se guarda únicamente con tu consentimiento expreso en /city.\n• No recogemos nombres, apellidos, correos electrónicos ni coordenadas GPS exactas.\n• Nunca cedemos ni vendemos tus datos.\n\nGestión:\n/data — tus datos guardados\n/forget\\_location — borrar la ubicación (el acceso se mantiene)\n/delete\\_me — eliminación completa de la cuenta\n\nPolítica de privacidad completa:\n{url}",
         "my_data_msg": "📦 TUS DATOS\n\nA fecha de: {now}\nID de Telegram: {chat_id}\n\nAcceso: {access}\nUbicación guardada: {location}\nCoordenadas: {coords}\n\nPrivacidad:\n/privacy\n\nGestión:\n/forget\\_location — borra la ubicación guardada, el acceso se mantiene\n/delete\\_me — borra todos los datos y el acceso al bot",
         "my_lbl_granted_at": "├ Concedido: {ts}",
         "my_lbl_source": "└ Origen: {source}",
@@ -2576,8 +2654,26 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _Dans un groupe, tapez simplement le nom de la ville maintenant, ex. :_ Paris",
         "default_city": "Votre zone",
         "guest_caption": "⚡ *Météo World*\nPrévisions complètes, alertes et radars.\n👉 Ouvrez le bot dans un chat privé !",
+        "privacy_msg": (
+            "📜 *CONFIDENTIALITÉ ET VOS DONNÉES*\n"
+            "\n"
+            "📦 *Que conservons-nous ?*\n"
+            "• ID du chat, langue et statut d’accès\n"
+            "• Position approximative avec accord via /city\n"
+            "• Coordonnées GPS arrondies avant stockage\n"
+            "• Nous ne conservons ni noms ni adresses e-mail\n"
+            "\n"
+            "🌐 *Qui reçoit les données ?*\n"
+            "• La position est envoyée aux services de carte et météo\n"
+            "• Notamment Yr.no, Open-Meteo et OpenStreetMap\n"
+            "• Nous ne vendons pas vos données\n"
+            "\n"
+            "🛠 *Gestion :*\n"
+            "/data — consulter les données enregistrées\n"
+            "/forget\\_location — supprimer la position\n"
+            "/delete\\_me — supprimer les données et l’accès"
+        ),
         "welcome_access": "✅ Accès actif ! Bienvenue sur Pogoda World 🌍\n\n🌤 Consultez la météo :\n/day — prévision du jour\n/now — prochaines 12 heures\n/trend — 14 jours à venir\n\n🔔 Pour votre confort ou les bulletins quotidiens :\nEnregistrez votre lieu principal avec /city\n\n🔒 Confidentialité et vos données : /data",
-        "privacy_msg": "📜 *CONFIDENTIALITÉ ET VOS DONNÉES*\n\nRègles de traitement :\n• Nous enregistrons l'identifiant du chat, la langue et le statut d'accès.\n• Une position approximative n'est conservée qu'avec votre consentement explicite dans /city.\n• Nous ne collectons ni prénoms, ni noms, ni adresses e-mail, ni coordonnées GPS exactes.\n• Nous ne transmettons ni ne vendons jamais vos données.\n\nGestion :\n/data — vos données enregistrées\n/forget\\_location — supprimer la position (l'accès est conservé)\n/delete\\_me — suppression complète du compte\n\nPolitique de confidentialité complète :\n{url}",
         "my_data_msg": "📦 VOS DONNÉES\n\nAu : {now}\nIdentifiant Telegram : {chat_id}\n\nAccès : {access}\nPosition enregistrée : {location}\nCoordonnées : {coords}\n\nConfidentialité :\n/privacy\n\nGestion :\n/forget\\_location — supprime la position enregistrée, l'accès est conservé\n/delete\\_me — supprime toutes les données et l'accès au bot",
         "my_lbl_granted_at": "├ Accordé : {ts}",
         "my_lbl_source": "└ Source : {source}",
@@ -2670,8 +2766,26 @@ UI_TEXTS = {
         "group_city_tip": "\n\n🔴 _I en gruppe skriver du nå bare bynavnet, f.eks.:_ Oslo",
         "default_city": "Ditt område",
         "guest_caption": "⚡ *Vær World*\nFull værmelding, varsler og radarer.\n👉 Åpne boten i en privat chat!",
+        "privacy_msg": (
+            "📜 *PERSONVERN OG DINE DATA*\n"
+            "\n"
+            "📦 *Hva lagrer vi?*\n"
+            "• Chat-ID, språk og tilgangsstatus\n"
+            "• Omtrentlig posisjon etter samtykke via /city\n"
+            "• GPS-koordinater lagres avrundet\n"
+            "• Vi lagrer ikke navn eller e-postadresser\n"
+            "\n"
+            "🌐 *Hvem mottar data?*\n"
+            "• Posisjonen sendes til kart- og værtjenester\n"
+            "• Blant annet Yr.no, Open-Meteo og OpenStreetMap\n"
+            "• Vi selger ikke dataene dine\n"
+            "\n"
+            "🛠 *Administrasjon:*\n"
+            "/data — se lagrede data\n"
+            "/forget\\_location — slett posisjonen\n"
+            "/delete\\_me — slett data og tilgang"
+        ),
         "welcome_access": "✅ Tilgang aktiv! Velkommen til Pogoda World 🌍\n\n🌤 Sjekk været:\n/day — dagsvarsel\n/now — neste 12 timer\n/trend — neste 14 dager\n\n🔔 For bekvemmelighet eller daglige rapporter:\nLagre standardstedet ditt med /city\n\n🔒 Personvern og dataene dine: /data",
-        "privacy_msg": "📜 *PERSONVERN OG DINE DATA*\n\nRegler for behandling:\n• Vi lagrer chat-ID, språk og tilgangsstatus.\n• Omtrentlig posisjon lagres kun etter ditt uttrykkelige samtykke i /city.\n• Vi samler ikke inn fornavn, etternavn, e-postadresser eller nøyaktige GPS-koordinater.\n• Vi deler eller selger aldri dataene dine.\n\nAdministrasjon:\n/data — dine lagrede data\n/forget\\_location — slett posisjonen (tilgangen beholdes)\n/delete\\_me — fullstendig sletting av kontoen\n\nFullstendig personvernerklæring:\n{url}",
         "my_data_msg": "📦 DINE DATA\n\nPer: {now}\nTelegram-ID: {chat_id}\n\nTilgang: {access}\nLagret posisjon: {location}\nKoordinater: {coords}\n\nPersonvern:\n/privacy\n\nAdministrasjon:\n/forget\\_location — sletter lagret posisjon, tilgangen består\n/delete\\_me — sletter alle data og tilgangen til botten",
         "my_lbl_granted_at": "├ Gitt: {ts}",
         "my_lbl_source": "└ Kilde: {source}",

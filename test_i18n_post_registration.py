@@ -50,7 +50,7 @@ EXPECTED_PLACEHOLDERS = {
     "geocode_no_match": set(), "search_fail": set(),
     "report_dialog": {"morning", "afternoon", "yes", "no"},
     "report_bad_answer": {"yes", "no"},
-    "privacy_msg": {"url"},
+    "privacy_msg": set(),
 }
 
 # „np.” / „lub” w każdym języku — nawias z przykładami doprecyzowania.
