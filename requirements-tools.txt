@@ -1,0 +1,13 @@
+# Narzędzia OFFLINE — NIE instalowane na produkcji i nieużywane przez runtime.
+#
+# Potrzebne wyłącznie do wygenerowania / zweryfikowania indeksu krajów:
+#     pip install -r requirements-tools.txt
+#     python tools/build_country_index.py            # regeneracja
+#     python tools/build_country_index.py --check    # kontrola w CI
+#
+# Runtime czyta wyłącznie commitowany plik data/countries/country_index.json,
+# więc bot NIE importuje Babel ani pycountry (patrz country_index.py).
+#
+# Wersje przypięte: plik danych musi być odtwarzalny bit w bit.
+babel==2.18.0
+pycountry==26.2.16

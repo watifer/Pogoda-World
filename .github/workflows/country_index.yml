@@ -1,0 +1,72 @@
+name: Country index (deterministic)
+
+# Kontrola D10: commitowany indeks krajów musi być DOKŁADNIE tym, co produkuje
+# generator offline. Rozjazd = czerwony check, bo produkcja czyta wyłącznie ten
+# plik (fail-closed) i nie może „po cichu” rozjechać się z danymi CLDR/ISO.
+#
+# Uwaga: ten workflow nie uruchamia pełnego zestawu testów (repo nie ma joba
+# testowego). Sprawdza wyłącznie deterministyczną regenerację i to, że plik
+# ładuje się bez żadnych zależności trzecich — tak jak na produkcji.
+
+on:
+  push:
+    paths:
+      - "data/countries/**"
+      - "tools/**"
+      - "country_index.py"
+      - "requirements-tools.txt"
+      - ".github/workflows/country_index.yml"
+  pull_request:
+    paths:
+      - "data/countries/**"
+      - "tools/**"
+      - "country_index.py"
+      - "requirements-tools.txt"
+      - ".github/workflows/country_index.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobranie kodu
+        uses: actions/checkout@v4
+
+      - name: Instalacja Pythona
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalacja narzędzi generatora
+        run: pip install -r requirements-tools.txt
+
+      - name: Kontrola deterministycznej regeneracji (--check)
+        run: python tools/build_country_index.py --check
+
+      - name: Indeks ładuje się bez zależności runtime (stdlib only)
+        run: |
+          python - <<'PY'
+          import json, pathlib, sys
+          import country_index
+
+          # 1. Runtime nie może potrzebować Babel ani pycountry.
+          loaded = {name for name in sys.modules if name.split(".")[0] in {"babel", "pycountry"}}
+          assert not loaded, "runtime zaimportował narzędzia offline: %s" % (loaded,)
+
+          # 2. Plik jest i przechodzi pełną walidację (fail-closed byłby błędem).
+          index = country_index.get_index()
+          assert index is not None, country_index.index_error()
+          assert index.country_count == 249, index.country_count
+          assert index.max_name_tokens == 9, index.max_name_tokens
+
+          # 3. Trzy formy ze zlecenia rozpoznają kraj.
+          assert country_index.resolve_suffix("Tokio, Japonia")[1].code == "jp"
+          assert country_index.resolve_suffix("Tokio, Japan")[1].code == "jp"
+          assert country_index.resolve_suffix("Tokio, JP")[1].code == "jp"
+          assert country_index.resolve_suffix("Polska")[0] == 0
+          print("OK:", json.dumps(index.sources, ensure_ascii=False))
+          PY

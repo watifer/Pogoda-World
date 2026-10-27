@@ -24,6 +24,7 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from main_card import DEFAULT_RANO, DEFAULT_WIECZOR, _resolve_tz
 from geopy.geocoders import Nominatim
+import country_index
 from guest_bot_handler import handle_guest_now, resolve_shortcut, iter_shortcut_keys
 from prepare_now_layout import prepare_now_layout_data
 from prepare_layout import prepare_layout_data
@@ -2173,20 +2174,27 @@ GEOCODE_CANDIDATE_LIMIT = 7
 GEOCODE_MIN_QUERY_CHARS = 3
 
 # Kraj czytamy WYŁĄCZNIE z zapytania użytkownika — język UI nigdy nie jest
-# kontekstem kraju. Klucze są już znormalizowane (casefold + bez diakrytyków),
-# a wartości to kody Nominatima: "UK" to "gb", bo takiego kodu używa geokoder.
-_GEOCODE_COUNTRY_MAX_TOKENS = 4
-_GEOCODE_COUNTRY_ALIASES = {
-    "pl": "pl", "polska": "pl", "poland": "pl",
-    "fr": "fr", "francja": "fr", "france": "fr",
-    "us": "us", "usa": "us", "stany zjednoczone": "us", "united states": "us",
-    "united states of america": "us", "ameryka": "us",
-    "de": "de", "niemcy": "de", "germany": "de", "deutschland": "de",
-    "uk": "gb", "gb": "gb", "wielka brytania": "gb", "united kingdom": "gb",
-    "great britain": "gb",
-    "no": "no", "norwegia": "no", "norway": "no", "norge": "no",
-    "es": "es", "hiszpania": "es", "spain": "es", "espana": "es", "españa": "es",
-}
+# kontekstem kraju. Rozpoznawanie nazw krajów przeniesiono do jednego,
+# wersjonowanego źródła prawdy: `country_index` (statyczny indeks CLDR/ISO 3166-1,
+# generowany offline, bez zależności runtime). Stary, ręczny słownik siedmiu
+# krajów został usunięty — nierozpoznany kraj nie może już po cichu stać się
+# kontekstem administracyjnym ("Tokio, Japonia" trafiało do country = None).
+#
+# Zasady tego samego resolvera (patrz country_index):
+#   * dopasowanie pełno-frazowe znormalizowanej nazwy, sufiks od najdłuższego
+#     (limit tokenów WYPROWADZONY Z DANYCH, nie zaszyty),
+#   * kolizja nazwy (np. "kongo" -> cd/cg) NIE jest rozstrzygana — kod nie jest
+#     wybierany, segment zachowuje dotychczasową rolę (decyzja D3/D4),
+#   * nazwa z listy `context_ambiguous` (dziś: georgia, wlochy) nie jest filtrem
+#     kraju — override istnieje tylko tam, gdzie udowodniono regresję istniejącej
+#     formy zapytania ("Atlanta, Georgia", "Warszawa, Włochy"),
+#   * kody alpha-3 są przechowywane w danych, ale nie służą do dopasowania (D5),
+#   * brak/uszkodzony indeks = GEOCODE_ERROR zamiast wyszukiwania bez kraju (D7).
+#
+# Limit długości nazwy kraju NIE jest już zaszyty w kodzie: `CountryIndex`
+# wylicza go z danych (`meta.max_name_tokens`, dziś 9). Stała
+# `_GEOCODE_COUNTRY_MAX_TOKENS = 4` została usunięta razem ze starym słownikiem,
+# bo ucinała 24 nazwy wielowyrazowe (np. "Saint Vincent et les Grenadines").
 # Minimalna mapa egzonimów (Paryż -> Paris, Nowy Jork -> New York). To WYŁĄCZNIE
 # dodatkowy wariant porównania — reguła dopasowania nazwy (pełna nazwa, pełny
 # token/fraza, bez prefiksów) zostaje bez zmian i bez bazy miast.
@@ -2326,14 +2334,19 @@ def _geocode_query_context(query):
 def _geocode_query_country(query):
     """Wydobywa jawny kraj z zapytania: ``(rdzeń, kod kraju)`` albo ``(query, None)``.
 
-    Kraj pochodzi WYŁĄCZNIE z zapytania (nigdy z języka UI). Normalizujemy jak
-    walidator nazw i próbujemy sufiksu od najdłuższego (4 tokeny -> 3 -> 2 -> 1).
-    Po trafieniu odcinamy sufiks od rdzenia, zjadamy końcowe przecinki/spacje
-    i zwracamy ``(core_query, kod)``.
+    Kraj pochodzi WYŁĄCZNIE z zapytania (nigdy z języka UI). Dopasowanie idzie
+    przez ``country_index`` (pełna fraza po normalizacji, sufiks od najdłuższego),
+    a kod wraca wyłącznie dla trafienia JEDNOZNACZNEGO. Po trafieniu odcinamy
+    sufiks od rdzenia, zjadamy końcowe przecinki/spacje i zwracamy
+    ``(core_query, kod)``.
 
     Całego zapytania NIGDY nie odcinamy: "Polska" to pytanie o miejscowość, nie
     o kraj, więc sam kraj bez rdzenia nie jest kontekstem (parser zwraca wtedy
     oryginał bez kodu).
+
+    Nazwa wieloznaczna ("Kongo") i nazwa z listy ``context_ambiguous``
+    ("Georgia", "Włochy") nie dają kodu — zostają w zapytaniu w dotychczasowej
+    roli, bo filtr kraju zmieniłby wynik istniejącej formy zapytania.
     """
     raw = str(query or "").strip()
     if not raw:
@@ -2347,45 +2360,54 @@ def _geocode_query_country(query):
     return core, code
 
 
+def _geocode_country_suffix_match(raw):
+    """``(rozmiar sufiksu w tokenach, CountryMatch)`` — jedno źródło prawdy o kraju.
+
+    Cała wiedza o nazwach krajów siedzi w ``country_index`` (statyczny, wersjonowany
+    indeks CLDR/ISO 3166-1). Tutaj zostaje wyłącznie reguła gramatyki: przecinek
+    jest separatorem (``"Hel,PL"`` == ``"Hel, PL"``), sufiks jest liczony w SUROWYCH
+    tokenach (potrzebne do bezstratnego odcięcia), a całe zapytanie nigdy nie jest
+    krajem — decyduje o tym ``CountryIndex.resolve_suffix``.
+    """
+    raw = str(raw or "")
+    if len(raw.replace(",", " ").split()) < 2:
+        return 0, country_index.NO_MATCH
+    return country_index.resolve_suffix(raw)
+
+
 def _geocode_country_suffix(raw):
     """``(rozmiar sufiksu w tokenach, kod kraju)`` albo ``(0, None)``.
 
-    Wspólne źródło prawdy dla parserów etapu 1.1 i 1.2 — wycięte z
-    ``_geocode_query_country`` bez zmiany semantyki (najdłuższy pasujący sufiks,
-    maksymalnie ``_GEOCODE_COUNTRY_MAX_TOKENS`` tokenów).
+    Zachowany kontrakt etapu 1.1 dla istniejących wywołań i testów: kod wraca
+    wyłącznie dla rozpoznania jednoznacznego. Wieloznaczność i ``context_ambiguous``
+    dają ``None``, czyli „ten segment nie jest filtrem kraju”.
     """
-    # Przecinek jest separatorem, nie częścią nazwy: "Hel, PL" i "Hel,PL" to ten
-    # sam kraj na końcu zapytania.
-    tokens = raw.replace(",", " ").split()
-    max_tokens = min(_GEOCODE_COUNTRY_MAX_TOKENS, len(tokens) - 1)
-    for size in range(max_tokens, 0, -1):
-        suffix = " ".join(tokens[-size:])
-        key = _normalize_location_text(suffix)
-        if not key:
-            continue
-        code = _GEOCODE_COUNTRY_ALIASES.get(key)
-        if code:
-            return size, code
-    return 0, None
+    size, match = _geocode_country_suffix_match(raw)
+    return size, match.code
 
 
 def _geocode_strip_country_suffix(raw, size):
-    """Usuwa ``size`` ostatnich tokenów, ZACHOWUJĄC strukturę przecinkową reszty.
+    r"""Usuwa ``size`` ostatnich tokenów, ZACHOWUJĄC strukturę przecinkową reszty.
 
     Etap 1.1 skleja resztę spacjami (``"Wiązowna, otwock, Polska"`` zmieniłoby
     się w ``"Wiązowna otwock"`` i podział na core/kontekst przestałby istnieć).
     Tu odcinamy tokeny od końca łańcucha i zjadamy powstałe separatory, więc
     zostaje ``"Wiązowna, otwock"``.
+
+    Token jest granicą **także przecinka**: poprzednia wersja szukała ostatniego
+    ``\S+``, więc ``"Hel,PL"`` traciło cały napis (``""``), a ``"Nowy Jork,USA"``
+    traciło token ``"Jork"``. Uzgadniamy to z ``_geocode_country_suffix``, który
+    zawsze traktował przecinek jako separator.
     """
-    remaining = raw
-    for _ in range(size):
+    # Końcowe separatory nie znaczą nic („Tokio, JP,” == „Tokio, JP”), a bez
+    # tego zabiegu ostatni token kończący się przecinkiem nie byłby rozpoznany.
+    remaining = str(raw or "").strip().rstrip(", \t")
+    for _ in range(int(size or 0)):
         stripped = remaining.rstrip()
-        match = re.search(r"\S+\s*$", stripped)
+        match = re.search(r"[^\s,]+$", stripped)
         if not match:
             return ""
-        remaining = stripped[:match.start()].rstrip()
-        if remaining.endswith(","):
-            remaining = remaining[:-1].rstrip()
+        remaining = stripped[:match.start()].rstrip(", \t")
     return remaining.rstrip(" ,")
 
 
@@ -2448,6 +2470,14 @@ def _geocode_query_parse(query):
     („Olsztyn województwo śląskie", „Olsztyn koło Częstochowy") — marker musi
     mieć token przed sobą i po sobie, żeby nie rozciąć nazwy własnej
     („Kolo", „Wielkie Kolo" zostają w całości).
+
+    OGRANICZENIE (świadome, do poprawy w kolejnej fazie): przy SPRZECZNYCH
+    wskazaniach kraju („Tokio, Japonia, Polska") parser rozpoznaje wyłącznie
+    ostatni segment kraju, a wcześniejszy trafia do ``admin_context``. To NIE jest
+    poprawne rozstrzyganie sprzeczności — to wyłącznie kompatybilność wsteczna
+    dotychczasowej gramatyki, utrzymana dlatego, że poprawka wymagałaby zmiany
+    publicznego kontraktu funkcji albo dodatkowego requestu do geokodera.
+    Test regresyjny pilnuje, że zachowanie się nie zmieni po cichu.
     """
     rest, country_code = _geocode_split_country(str(query or "").strip())
     rest = rest.strip()
@@ -3015,6 +3045,15 @@ def geocode_city_accepted(city_name, lang="pl"):
     query = str(city_name or "").strip()
     if _geocode_query_is_too_short(query):
         return GEOCODE_TOO_SHORT, None, None, None, None
+
+    # FAIL-CLOSED (decyzja D7): bez działającego indeksu krajów nie da się
+    # odróżnić "Tokio, Japonia" od "Wiązowna, otwock", więc wyszukiwanie bez
+    # filtra kraju byłoby cichym zgadywaniem. Zwracamy GEOCODE_ERROR (istniejący
+    # komunikat geo_conn_err) BEZ requestu do geokodera, bez karty i bez zapisu
+    # profilu. Nie ma fallbacku do starego słownika — to złamałoby tę zasadę.
+    # Ścieżki bez tekstu (GPS, pinezka, WebApp) nie wchodzą tutaj.
+    if not country_index.index_available():
+        return GEOCODE_ERROR, None, None, None, None
 
     # ETAP 1.1: jawny kraj ("Hel PL", "Paryż, Francja") jest wyłącznie z
     # zapytania — nigdy z języka UI. Rdzeń pytamy bez sufiksu kraju, a kraj
