@@ -1,0 +1,6580 @@
+{
+ "context_ambiguous": {
+  "georgia": {
+   "codes": [
+    "ge"
+   ],
+   "reason": "kraj GE oraz stan USA Georgia: 'Atlanta, Georgia' dziala dzis przez admin_context, a filtr kraju dawalby NO_MATCH"
+  },
+  "wlochy": {
+   "codes": [
+    "it"
+   ],
+   "reason": "kraj IT oraz dzielnica Warszawy Wlochy: 'Warszawa, Wlochy' dziala dzis przez admin_context, a filtr kraju dawalby NO_MATCH"
+  }
+ },
+ "countries": [
+  {
+   "alpha_2": "ad",
+   "alpha_3": "and",
+   "names": {
+    "de": "Andorra",
+    "en": "Andorra",
+    "es": "Andorra",
+    "fr": "Andorre",
+    "no": "Andorra",
+    "pl": "Andora"
+   }
+  },
+  {
+   "alpha_2": "ae",
+   "alpha_3": "are",
+   "names": {
+    "de": "Vereinigte Arabische Emirate",
+    "en": "United Arab Emirates",
+    "es": "Emiratos Árabes Unidos",
+    "fr": "Émirats arabes unis",
+    "no": "De forente arabiske emirater",
+    "pl": "Zjednoczone Emiraty Arabskie"
+   }
+  },
+  {
+   "alpha_2": "af",
+   "alpha_3": "afg",
+   "names": {
+    "de": "Afghanistan",
+    "en": "Afghanistan",
+    "es": "Afganistán",
+    "fr": "Afghanistan",
+    "no": "Afghanistan",
+    "pl": "Afganistan"
+   }
+  },
+  {
+   "alpha_2": "ag",
+   "alpha_3": "atg",
+   "names": {
+    "de": "Antigua und Barbuda",
+    "en": "Antigua & Barbuda",
+    "es": "Antigua y Barbuda",
+    "fr": "Antigua-et-Barbuda",
+    "no": "Antigua og Barbuda",
+    "pl": "Antigua i Barbuda"
+   }
+  },
+  {
+   "alpha_2": "ai",
+   "alpha_3": "aia",
+   "names": {
+    "de": "Anguilla",
+    "en": "Anguilla",
+    "es": "Anguila",
+    "fr": "Anguilla",
+    "no": "Anguilla",
+    "pl": "Anguilla"
+   }
+  },
+  {
+   "alpha_2": "al",
+   "alpha_3": "alb",
+   "names": {
+    "de": "Albanien",
+    "en": "Albania",
+    "es": "Albania",
+    "fr": "Albanie",
+    "no": "Albania",
+    "pl": "Albania"
+   }
+  },
+  {
+   "alpha_2": "am",
+   "alpha_3": "arm",
+   "names": {
+    "de": "Armenien",
+    "en": "Armenia",
+    "es": "Armenia",
+    "fr": "Arménie",
+    "no": "Armenia",
+    "pl": "Armenia"
+   }
+  },
+  {
+   "alpha_2": "ao",
+   "alpha_3": "ago",
+   "names": {
+    "de": "Angola",
+    "en": "Angola",
+    "es": "Angola",
+    "fr": "Angola",
+    "no": "Angola",
+    "pl": "Angola"
+   }
+  },
+  {
+   "alpha_2": "aq",
+   "alpha_3": "ata",
+   "names": {
+    "de": "Antarktis",
+    "en": "Antarctica",
+    "es": "Antártida",
+    "fr": "Antarctique",
+    "no": "Antarktis",
+    "pl": "Antarktyda"
+   }
+  },
+  {
+   "alpha_2": "ar",
+   "alpha_3": "arg",
+   "names": {
+    "de": "Argentinien",
+    "en": "Argentina",
+    "es": "Argentina",
+    "fr": "Argentine",
+    "no": "Argentina",
+    "pl": "Argentyna"
+   }
+  },
+  {
+   "alpha_2": "as",
+   "alpha_3": "asm",
+   "names": {
+    "de": "Amerikanisch-Samoa",
+    "en": "American Samoa",
+    "es": "Samoa Americana",
+    "fr": "Samoa américaines",
+    "no": "Amerikansk Samoa",
+    "pl": "Samoa Amerykańskie"
+   }
+  },
+  {
+   "alpha_2": "at",
+   "alpha_3": "aut",
+   "names": {
+    "de": "Österreich",
+    "en": "Austria",
+    "es": "Austria",
+    "fr": "Autriche",
+    "no": "Østerrike",
+    "pl": "Austria"
+   }
+  },
+  {
+   "alpha_2": "au",
+   "alpha_3": "aus",
+   "names": {
+    "de": "Australien",
+    "en": "Australia",
+    "es": "Australia",
+    "fr": "Australie",
+    "no": "Australia",
+    "pl": "Australia"
+   }
+  },
+  {
+   "alpha_2": "aw",
+   "alpha_3": "abw",
+   "names": {
+    "de": "Aruba",
+    "en": "Aruba",
+    "es": "Aruba",
+    "fr": "Aruba",
+    "no": "Aruba",
+    "pl": "Aruba"
+   }
+  },
+  {
+   "alpha_2": "ax",
+   "alpha_3": "ala",
+   "names": {
+    "de": "Ålandinseln",
+    "en": "Åland Islands",
+    "es": "Islas Aland",
+    "fr": "Îles Åland",
+    "no": "Åland",
+    "pl": "Wyspy Alandzkie"
+   }
+  },
+  {
+   "alpha_2": "az",
+   "alpha_3": "aze",
+   "names": {
+    "de": "Aserbaidschan",
+    "en": "Azerbaijan",
+    "es": "Azerbaiyán",
+    "fr": "Azerbaïdjan",
+    "no": "Aserbajdsjan",
+    "pl": "Azerbejdżan"
+   }
+  },
+  {
+   "alpha_2": "ba",
+   "alpha_3": "bih",
+   "names": {
+    "de": "Bosnien und Herzegowina",
+    "en": "Bosnia & Herzegovina",
+    "es": "Bosnia y Herzegovina",
+    "fr": "Bosnie-Herzégovine",
+    "no": "Bosnia-Hercegovina",
+    "pl": "Bośnia i Hercegowina"
+   }
+  },
+  {
+   "alpha_2": "bb",
+   "alpha_3": "brb",
+   "names": {
+    "de": "Barbados",
+    "en": "Barbados",
+    "es": "Barbados",
+    "fr": "Barbade",
+    "no": "Barbados",
+    "pl": "Barbados"
+   }
+  },
+  {
+   "alpha_2": "bd",
+   "alpha_3": "bgd",
+   "names": {
+    "de": "Bangladesch",
+    "en": "Bangladesh",
+    "es": "Bangladés",
+    "fr": "Bangladesh",
+    "no": "Bangladesh",
+    "pl": "Bangladesz"
+   }
+  },
+  {
+   "alpha_2": "be",
+   "alpha_3": "bel",
+   "names": {
+    "de": "Belgien",
+    "en": "Belgium",
+    "es": "Bélgica",
+    "fr": "Belgique",
+    "no": "Belgia",
+    "pl": "Belgia"
+   }
+  },
+  {
+   "alpha_2": "bf",
+   "alpha_3": "bfa",
+   "names": {
+    "de": "Burkina Faso",
+    "en": "Burkina Faso",
+    "es": "Burkina Faso",
+    "fr": "Burkina Faso",
+    "no": "Burkina Faso",
+    "pl": "Burkina Faso"
+   }
+  },
+  {
+   "alpha_2": "bg",
+   "alpha_3": "bgr",
+   "names": {
+    "de": "Bulgarien",
+    "en": "Bulgaria",
+    "es": "Bulgaria",
+    "fr": "Bulgarie",
+    "no": "Bulgaria",
+    "pl": "Bułgaria"
+   }
+  },
+  {
+   "alpha_2": "bh",
+   "alpha_3": "bhr",
+   "names": {
+    "de": "Bahrain",
+    "en": "Bahrain",
+    "es": "Baréin",
+    "fr": "Bahreïn",
+    "no": "Bahrain",
+    "pl": "Bahrajn"
+   }
+  },
+  {
+   "alpha_2": "bi",
+   "alpha_3": "bdi",
+   "names": {
+    "de": "Burundi",
+    "en": "Burundi",
+    "es": "Burundi",
+    "fr": "Burundi",
+    "no": "Burundi",
+    "pl": "Burundi"
+   }
+  },
+  {
+   "alpha_2": "bj",
+   "alpha_3": "ben",
+   "names": {
+    "de": "Benin",
+    "en": "Benin",
+    "es": "Benín",
+    "fr": "Bénin",
+    "no": "Benin",
+    "pl": "Benin"
+   }
+  },
+  {
+   "alpha_2": "bl",
+   "alpha_3": "blm",
+   "names": {
+    "de": "St. Barthélemy",
+    "en": "St. Barthélemy",
+    "es": "San Bartolomé",
+    "fr": "Saint-Barthélemy",
+    "no": "Saint-Barthélemy",
+    "pl": "Saint-Barthélemy"
+   }
+  },
+  {
+   "alpha_2": "bm",
+   "alpha_3": "bmu",
+   "names": {
+    "de": "Bermuda",
+    "en": "Bermuda",
+    "es": "Bermudas",
+    "fr": "Bermudes",
+    "no": "Bermuda",
+    "pl": "Bermudy"
+   }
+  },
+  {
+   "alpha_2": "bn",
+   "alpha_3": "brn",
+   "names": {
+    "de": "Brunei Darussalam",
+    "en": "Brunei",
+    "es": "Brunéi",
+    "fr": "Brunei",
+    "no": "Brunei",
+    "pl": "Brunei"
+   }
+  },
+  {
+   "alpha_2": "bo",
+   "alpha_3": "bol",
+   "names": {
+    "de": "Bolivien",
+    "en": "Bolivia",
+    "es": "Bolivia",
+    "fr": "Bolivie",
+    "no": "Bolivia",
+    "pl": "Boliwia"
+   }
+  },
+  {
+   "alpha_2": "bq",
+   "alpha_3": "bes",
+   "names": {
+    "de": "Karibische Niederlande",
+    "en": "Caribbean Netherlands",
+    "es": "Caribe neerlandés",
+    "fr": "Pays-Bas caribéens",
+    "no": "Karibisk Nederland",
+    "pl": "Niderlandy Karaibskie"
+   }
+  },
+  {
+   "alpha_2": "br",
+   "alpha_3": "bra",
+   "names": {
+    "de": "Brasilien",
+    "en": "Brazil",
+    "es": "Brasil",
+    "fr": "Brésil",
+    "no": "Brasil",
+    "pl": "Brazylia"
+   }
+  },
+  {
+   "alpha_2": "bs",
+   "alpha_3": "bhs",
+   "names": {
+    "de": "Bahamas",
+    "en": "Bahamas",
+    "es": "Bahamas",
+    "fr": "Bahamas",
+    "no": "Bahamas",
+    "pl": "Bahamy"
+   }
+  },
+  {
+   "alpha_2": "bt",
+   "alpha_3": "btn",
+   "names": {
+    "de": "Bhutan",
+    "en": "Bhutan",
+    "es": "Bután",
+    "fr": "Bhoutan",
+    "no": "Bhutan",
+    "pl": "Bhutan"
+   }
+  },
+  {
+   "alpha_2": "bv",
+   "alpha_3": "bvt",
+   "names": {
+    "de": "Bouvetinsel",
+    "en": "Bouvet Island",
+    "es": "Isla Bouvet",
+    "fr": "Île Bouvet",
+    "no": "Bouvetøya",
+    "pl": "Wyspa Bouveta"
+   }
+  },
+  {
+   "alpha_2": "bw",
+   "alpha_3": "bwa",
+   "names": {
+    "de": "Botsuana",
+    "en": "Botswana",
+    "es": "Botsuana",
+    "fr": "Botswana",
+    "no": "Botswana",
+    "pl": "Botswana"
+   }
+  },
+  {
+   "alpha_2": "by",
+   "alpha_3": "blr",
+   "names": {
+    "de": "Belarus",
+    "en": "Belarus",
+    "es": "Bielorrusia",
+    "fr": "Biélorussie",
+    "no": "Belarus",
+    "pl": "Białoruś"
+   }
+  },
+  {
+   "alpha_2": "bz",
+   "alpha_3": "blz",
+   "names": {
+    "de": "Belize",
+    "en": "Belize",
+    "es": "Belice",
+    "fr": "Belize",
+    "no": "Belize",
+    "pl": "Belize"
+   }
+  },
+  {
+   "alpha_2": "ca",
+   "alpha_3": "can",
+   "names": {
+    "de": "Kanada",
+    "en": "Canada",
+    "es": "Canadá",
+    "fr": "Canada",
+    "no": "Canada",
+    "pl": "Kanada"
+   }
+  },
+  {
+   "alpha_2": "cc",
+   "alpha_3": "cck",
+   "names": {
+    "de": "Kokosinseln",
+    "en": "Cocos (Keeling) Islands",
+    "es": "Islas Cocos",
+    "fr": "Îles Cocos",
+    "no": "Kokosøyene",
+    "pl": "Wyspy Kokosowe"
+   }
+  },
+  {
+   "alpha_2": "cd",
+   "alpha_3": "cod",
+   "names": {
+    "de": "Kongo-Kinshasa",
+    "en": "Congo - Kinshasa",
+    "es": "República Democrática del Congo",
+    "fr": "Congo-Kinshasa",
+    "no": "Kongo",
+    "pl": "Demokratyczna Republika Konga"
+   }
+  },
+  {
+   "alpha_2": "cf",
+   "alpha_3": "caf",
+   "names": {
+    "de": "Zentralafrikanische Republik",
+    "en": "Central African Republic",
+    "es": "República Centroafricana",
+    "fr": "République centrafricaine",
+    "no": "Den sentralafrikanske republikk",
+    "pl": "Republika Środkowoafrykańska"
+   }
+  },
+  {
+   "alpha_2": "cg",
+   "alpha_3": "cog",
+   "names": {
+    "de": "Kongo-Brazzaville",
+    "en": "Congo - Brazzaville",
+    "es": "Congo",
+    "fr": "Congo-Brazzaville",
+    "no": "Kongo-Brazzaville",
+    "pl": "Kongo"
+   }
+  },
+  {
+   "alpha_2": "ch",
+   "alpha_3": "che",
+   "names": {
+    "de": "Schweiz",
+    "en": "Switzerland",
+    "es": "Suiza",
+    "fr": "Suisse",
+    "no": "Sveits",
+    "pl": "Szwajcaria"
+   }
+  },
+  {
+   "alpha_2": "ci",
+   "alpha_3": "civ",
+   "names": {
+    "de": "Côte d’Ivoire",
+    "en": "Côte d’Ivoire",
+    "es": "Côte d’Ivoire",
+    "fr": "Côte d’Ivoire",
+    "no": "Elfenbenskysten",
+    "pl": "Côte d’Ivoire"
+   }
+  },
+  {
+   "alpha_2": "ck",
+   "alpha_3": "cok",
+   "names": {
+    "de": "Cookinseln",
+    "en": "Cook Islands",
+    "es": "Islas Cook",
+    "fr": "Îles Cook",
+    "no": "Cookøyene",
+    "pl": "Wyspy Cooka"
+   }
+  },
+  {
+   "alpha_2": "cl",
+   "alpha_3": "chl",
+   "names": {
+    "de": "Chile",
+    "en": "Chile",
+    "es": "Chile",
+    "fr": "Chili",
+    "no": "Chile",
+    "pl": "Chile"
+   }
+  },
+  {
+   "alpha_2": "cm",
+   "alpha_3": "cmr",
+   "names": {
+    "de": "Kamerun",
+    "en": "Cameroon",
+    "es": "Camerún",
+    "fr": "Cameroun",
+    "no": "Kamerun",
+    "pl": "Kamerun"
+   }
+  },
+  {
+   "alpha_2": "cn",
+   "alpha_3": "chn",
+   "names": {
+    "de": "China",
+    "en": "China",
+    "es": "China",
+    "fr": "Chine",
+    "no": "Kina",
+    "pl": "Chiny"
+   }
+  },
+  {
+   "alpha_2": "co",
+   "alpha_3": "col",
+   "names": {
+    "de": "Kolumbien",
+    "en": "Colombia",
+    "es": "Colombia",
+    "fr": "Colombie",
+    "no": "Colombia",
+    "pl": "Kolumbia"
+   }
+  },
+  {
+   "alpha_2": "cr",
+   "alpha_3": "cri",
+   "names": {
+    "de": "Costa Rica",
+    "en": "Costa Rica",
+    "es": "Costa Rica",
+    "fr": "Costa Rica",
+    "no": "Costa Rica",
+    "pl": "Kostaryka"
+   }
+  },
+  {
+   "alpha_2": "cu",
+   "alpha_3": "cub",
+   "names": {
+    "de": "Kuba",
+    "en": "Cuba",
+    "es": "Cuba",
+    "fr": "Cuba",
+    "no": "Cuba",
+    "pl": "Kuba"
+   }
+  },
+  {
+   "alpha_2": "cv",
+   "alpha_3": "cpv",
+   "names": {
+    "de": "Cabo Verde",
+    "en": "Cape Verde",
+    "es": "Cabo Verde",
+    "fr": "Cap-Vert",
+    "no": "Kapp Verde",
+    "pl": "Republika Zielonego Przylądka"
+   }
+  },
+  {
+   "alpha_2": "cw",
+   "alpha_3": "cuw",
+   "names": {
+    "de": "Curaçao",
+    "en": "Curaçao",
+    "es": "Curazao",
+    "fr": "Curaçao",
+    "no": "Curaçao",
+    "pl": "Curaçao"
+   }
+  },
+  {
+   "alpha_2": "cx",
+   "alpha_3": "cxr",
+   "names": {
+    "de": "Weihnachtsinsel",
+    "en": "Christmas Island",
+    "es": "Isla de Navidad",
+    "fr": "Île Christmas",
+    "no": "Christmasøya",
+    "pl": "Wyspa Bożego Narodzenia"
+   }
+  },
+  {
+   "alpha_2": "cy",
+   "alpha_3": "cyp",
+   "names": {
+    "de": "Zypern",
+    "en": "Cyprus",
+    "es": "Chipre",
+    "fr": "Chypre",
+    "no": "Kypros",
+    "pl": "Cypr"
+   }
+  },
+  {
+   "alpha_2": "cz",
+   "alpha_3": "cze",
+   "names": {
+    "de": "Tschechien",
+    "en": "Czechia",
+    "es": "Chequia",
+    "fr": "Tchéquie",
+    "no": "Tsjekkia",
+    "pl": "Czechy"
+   }
+  },
+  {
+   "alpha_2": "de",
+   "alpha_3": "deu",
+   "names": {
+    "de": "Deutschland",
+    "en": "Germany",
+    "es": "Alemania",
+    "fr": "Allemagne",
+    "no": "Tyskland",
+    "pl": "Niemcy"
+   }
+  },
+  {
+   "alpha_2": "dj",
+   "alpha_3": "dji",
+   "names": {
+    "de": "Dschibuti",
+    "en": "Djibouti",
+    "es": "Yibuti",
+    "fr": "Djibouti",
+    "no": "Djibouti",
+    "pl": "Dżibuti"
+   }
+  },
+  {
+   "alpha_2": "dk",
+   "alpha_3": "dnk",
+   "names": {
+    "de": "Dänemark",
+    "en": "Denmark",
+    "es": "Dinamarca",
+    "fr": "Danemark",
+    "no": "Danmark",
+    "pl": "Dania"
+   }
+  },
+  {
+   "alpha_2": "dm",
+   "alpha_3": "dma",
+   "names": {
+    "de": "Dominica",
+    "en": "Dominica",
+    "es": "Dominica",
+    "fr": "Dominique",
+    "no": "Dominica",
+    "pl": "Dominika"
+   }
+  },
+  {
+   "alpha_2": "do",
+   "alpha_3": "dom",
+   "names": {
+    "de": "Dominikanische Republik",
+    "en": "Dominican Republic",
+    "es": "República Dominicana",
+    "fr": "République dominicaine",
+    "no": "Den dominikanske republikk",
+    "pl": "Dominikana"
+   }
+  },
+  {
+   "alpha_2": "dz",
+   "alpha_3": "dza",
+   "names": {
+    "de": "Algerien",
+    "en": "Algeria",
+    "es": "Argelia",
+    "fr": "Algérie",
+    "no": "Algerie",
+    "pl": "Algieria"
+   }
+  },
+  {
+   "alpha_2": "ec",
+   "alpha_3": "ecu",
+   "names": {
+    "de": "Ecuador",
+    "en": "Ecuador",
+    "es": "Ecuador",
+    "fr": "Équateur",
+    "no": "Ecuador",
+    "pl": "Ekwador"
+   }
+  },
+  {
+   "alpha_2": "ee",
+   "alpha_3": "est",
+   "names": {
+    "de": "Estland",
+    "en": "Estonia",
+    "es": "Estonia",
+    "fr": "Estonie",
+    "no": "Estland",
+    "pl": "Estonia"
+   }
+  },
+  {
+   "alpha_2": "eg",
+   "alpha_3": "egy",
+   "names": {
+    "de": "Ägypten",
+    "en": "Egypt",
+    "es": "Egipto",
+    "fr": "Égypte",
+    "no": "Egypt",
+    "pl": "Egipt"
+   }
+  },
+  {
+   "alpha_2": "eh",
+   "alpha_3": "esh",
+   "names": {
+    "de": "Westsahara",
+    "en": "Western Sahara",
+    "es": "Sáhara Occidental",
+    "fr": "Sahara occidental",
+    "no": "Vest-Sahara",
+    "pl": "Sahara Zachodnia"
+   }
+  },
+  {
+   "alpha_2": "er",
+   "alpha_3": "eri",
+   "names": {
+    "de": "Eritrea",
+    "en": "Eritrea",
+    "es": "Eritrea",
+    "fr": "Érythrée",
+    "no": "Eritrea",
+    "pl": "Erytrea"
+   }
+  },
+  {
+   "alpha_2": "es",
+   "alpha_3": "esp",
+   "names": {
+    "de": "Spanien",
+    "en": "Spain",
+    "es": "España",
+    "fr": "Espagne",
+    "no": "Spania",
+    "pl": "Hiszpania"
+   }
+  },
+  {
+   "alpha_2": "et",
+   "alpha_3": "eth",
+   "names": {
+    "de": "Äthiopien",
+    "en": "Ethiopia",
+    "es": "Etiopía",
+    "fr": "Éthiopie",
+    "no": "Etiopia",
+    "pl": "Etiopia"
+   }
+  },
+  {
+   "alpha_2": "fi",
+   "alpha_3": "fin",
+   "names": {
+    "de": "Finnland",
+    "en": "Finland",
+    "es": "Finlandia",
+    "fr": "Finlande",
+    "no": "Finland",
+    "pl": "Finlandia"
+   }
+  },
+  {
+   "alpha_2": "fj",
+   "alpha_3": "fji",
+   "names": {
+    "de": "Fidschi",
+    "en": "Fiji",
+    "es": "Fiyi",
+    "fr": "Fidji",
+    "no": "Fiji",
+    "pl": "Fidżi"
+   }
+  },
+  {
+   "alpha_2": "fk",
+   "alpha_3": "flk",
+   "names": {
+    "de": "Falklandinseln",
+    "en": "Falkland Islands",
+    "es": "Islas Malvinas",
+    "fr": "Îles Malouines",
+    "no": "Falklandsøyene",
+    "pl": "Falklandy"
+   }
+  },
+  {
+   "alpha_2": "fm",
+   "alpha_3": "fsm",
+   "names": {
+    "de": "Mikronesien",
+    "en": "Micronesia",
+    "es": "Micronesia",
+    "fr": "Micronésie",
+    "no": "Mikronesiaføderasjonen",
+    "pl": "Mikronezja"
+   }
+  },
+  {
+   "alpha_2": "fo",
+   "alpha_3": "fro",
+   "names": {
+    "de": "Färöer",
+    "en": "Faroe Islands",
+    "es": "Islas Feroe",
+    "fr": "Îles Féroé",
+    "no": "Færøyene",
+    "pl": "Wyspy Owcze"
+   }
+  },
+  {
+   "alpha_2": "fr",
+   "alpha_3": "fra",
+   "names": {
+    "de": "Frankreich",
+    "en": "France",
+    "es": "Francia",
+    "fr": "France",
+    "no": "Frankrike",
+    "pl": "Francja"
+   }
+  },
+  {
+   "alpha_2": "ga",
+   "alpha_3": "gab",
+   "names": {
+    "de": "Gabun",
+    "en": "Gabon",
+    "es": "Gabón",
+    "fr": "Gabon",
+    "no": "Gabon",
+    "pl": "Gabon"
+   }
+  },
+  {
+   "alpha_2": "gb",
+   "alpha_3": "gbr",
+   "names": {
+    "de": "Vereinigtes Königreich",
+    "en": "United Kingdom",
+    "es": "Reino Unido",
+    "fr": "Royaume-Uni",
+    "no": "Storbritannia",
+    "pl": "Wielka Brytania"
+   }
+  },
+  {
+   "alpha_2": "gd",
+   "alpha_3": "grd",
+   "names": {
+    "de": "Grenada",
+    "en": "Grenada",
+    "es": "Granada",
+    "fr": "Grenade",
+    "no": "Grenada",
+    "pl": "Grenada"
+   }
+  },
+  {
+   "alpha_2": "ge",
+   "alpha_3": "geo",
+   "names": {
+    "de": "Georgien",
+    "en": "Georgia",
+    "es": "Georgia",
+    "fr": "Géorgie",
+    "no": "Georgia",
+    "pl": "Gruzja"
+   }
+  },
+  {
+   "alpha_2": "gf",
+   "alpha_3": "guf",
+   "names": {
+    "de": "Französisch-Guayana",
+    "en": "French Guiana",
+    "es": "Guayana Francesa",
+    "fr": "Guyane française",
+    "no": "Fransk Guyana",
+    "pl": "Gujana Francuska"
+   }
+  },
+  {
+   "alpha_2": "gg",
+   "alpha_3": "ggy",
+   "names": {
+    "de": "Guernsey",
+    "en": "Guernsey",
+    "es": "Guernesey",
+    "fr": "Guernesey",
+    "no": "Guernsey",
+    "pl": "Guernsey"
+   }
+  },
+  {
+   "alpha_2": "gh",
+   "alpha_3": "gha",
+   "names": {
+    "de": "Ghana",
+    "en": "Ghana",
+    "es": "Ghana",
+    "fr": "Ghana",
+    "no": "Ghana",
+    "pl": "Ghana"
+   }
+  },
+  {
+   "alpha_2": "gi",
+   "alpha_3": "gib",
+   "names": {
+    "de": "Gibraltar",
+    "en": "Gibraltar",
+    "es": "Gibraltar",
+    "fr": "Gibraltar",
+    "no": "Gibraltar",
+    "pl": "Gibraltar"
+   }
+  },
+  {
+   "alpha_2": "gl",
+   "alpha_3": "grl",
+   "names": {
+    "de": "Grönland",
+    "en": "Greenland",
+    "es": "Groenlandia",
+    "fr": "Groenland",
+    "no": "Grønland",
+    "pl": "Grenlandia"
+   }
+  },
+  {
+   "alpha_2": "gm",
+   "alpha_3": "gmb",
+   "names": {
+    "de": "Gambia",
+    "en": "Gambia",
+    "es": "Gambia",
+    "fr": "Gambie",
+    "no": "Gambia",
+    "pl": "Gambia"
+   }
+  },
+  {
+   "alpha_2": "gn",
+   "alpha_3": "gin",
+   "names": {
+    "de": "Guinea",
+    "en": "Guinea",
+    "es": "Guinea",
+    "fr": "Guinée",
+    "no": "Guinea",
+    "pl": "Gwinea"
+   }
+  },
+  {
+   "alpha_2": "gp",
+   "alpha_3": "glp",
+   "names": {
+    "de": "Guadeloupe",
+    "en": "Guadeloupe",
+    "es": "Guadalupe",
+    "fr": "Guadeloupe",
+    "no": "Guadeloupe",
+    "pl": "Gwadelupa"
+   }
+  },
+  {
+   "alpha_2": "gq",
+   "alpha_3": "gnq",
+   "names": {
+    "de": "Äquatorialguinea",
+    "en": "Equatorial Guinea",
+    "es": "Guinea Ecuatorial",
+    "fr": "Guinée équatoriale",
+    "no": "Ekvatorial-Guinea",
+    "pl": "Gwinea Równikowa"
+   }
+  },
+  {
+   "alpha_2": "gr",
+   "alpha_3": "grc",
+   "names": {
+    "de": "Griechenland",
+    "en": "Greece",
+    "es": "Grecia",
+    "fr": "Grèce",
+    "no": "Hellas",
+    "pl": "Grecja"
+   }
+  },
+  {
+   "alpha_2": "gs",
+   "alpha_3": "sgs",
+   "names": {
+    "de": "Südgeorgien und die Südlichen Sandwichinseln",
+    "en": "South Georgia & South Sandwich Islands",
+    "es": "Islas Georgia del Sur y Sandwich del Sur",
+    "fr": "Géorgie du Sud-et-les Îles Sandwich du Sud",
+    "no": "Sør-Georgia og Sør-Sandwichøyene",
+    "pl": "Georgia Południowa i Sandwich Południowy"
+   }
+  },
+  {
+   "alpha_2": "gt",
+   "alpha_3": "gtm",
+   "names": {
+    "de": "Guatemala",
+    "en": "Guatemala",
+    "es": "Guatemala",
+    "fr": "Guatemala",
+    "no": "Guatemala",
+    "pl": "Gwatemala"
+   }
+  },
+  {
+   "alpha_2": "gu",
+   "alpha_3": "gum",
+   "names": {
+    "de": "Guam",
+    "en": "Guam",
+    "es": "Guam",
+    "fr": "Guam",
+    "no": "Guam",
+    "pl": "Guam"
+   }
+  },
+  {
+   "alpha_2": "gw",
+   "alpha_3": "gnb",
+   "names": {
+    "de": "Guinea-Bissau",
+    "en": "Guinea-Bissau",
+    "es": "Guinea-Bisáu",
+    "fr": "Guinée-Bissau",
+    "no": "Guinea-Bissau",
+    "pl": "Gwinea Bissau"
+   }
+  },
+  {
+   "alpha_2": "gy",
+   "alpha_3": "guy",
+   "names": {
+    "de": "Guyana",
+    "en": "Guyana",
+    "es": "Guyana",
+    "fr": "Guyana",
+    "no": "Guyana",
+    "pl": "Gujana"
+   }
+  },
+  {
+   "alpha_2": "hk",
+   "alpha_3": "hkg",
+   "names": {
+    "de": "Sonderverwaltungsregion Hongkong",
+    "en": "Hong Kong SAR China",
+    "es": "RAE de Hong Kong (China)",
+    "fr": "R.A.S. chinoise de Hong Kong",
+    "no": "Hongkong SAR Kina",
+    "pl": "SRA Hongkong (Chiny)"
+   }
+  },
+  {
+   "alpha_2": "hm",
+   "alpha_3": "hmd",
+   "names": {
+    "de": "Heard und McDonaldinseln",
+    "en": "Heard & McDonald Islands",
+    "es": "Islas Heard y McDonald",
+    "fr": "Îles Heard-et-MacDonald",
+    "no": "Heard- og McDonaldøyene",
+    "pl": "Wyspy Heard i McDonalda"
+   }
+  },
+  {
+   "alpha_2": "hn",
+   "alpha_3": "hnd",
+   "names": {
+    "de": "Honduras",
+    "en": "Honduras",
+    "es": "Honduras",
+    "fr": "Honduras",
+    "no": "Honduras",
+    "pl": "Honduras"
+   }
+  },
+  {
+   "alpha_2": "hr",
+   "alpha_3": "hrv",
+   "names": {
+    "de": "Kroatien",
+    "en": "Croatia",
+    "es": "Croacia",
+    "fr": "Croatie",
+    "no": "Kroatia",
+    "pl": "Chorwacja"
+   }
+  },
+  {
+   "alpha_2": "ht",
+   "alpha_3": "hti",
+   "names": {
+    "de": "Haiti",
+    "en": "Haiti",
+    "es": "Haití",
+    "fr": "Haïti",
+    "no": "Haiti",
+    "pl": "Haiti"
+   }
+  },
+  {
+   "alpha_2": "hu",
+   "alpha_3": "hun",
+   "names": {
+    "de": "Ungarn",
+    "en": "Hungary",
+    "es": "Hungría",
+    "fr": "Hongrie",
+    "no": "Ungarn",
+    "pl": "Węgry"
+   }
+  },
+  {
+   "alpha_2": "id",
+   "alpha_3": "idn",
+   "names": {
+    "de": "Indonesien",
+    "en": "Indonesia",
+    "es": "Indonesia",
+    "fr": "Indonésie",
+    "no": "Indonesia",
+    "pl": "Indonezja"
+   }
+  },
+  {
+   "alpha_2": "ie",
+   "alpha_3": "irl",
+   "names": {
+    "de": "Irland",
+    "en": "Ireland",
+    "es": "Irlanda",
+    "fr": "Irlande",
+    "no": "Irland",
+    "pl": "Irlandia"
+   }
+  },
+  {
+   "alpha_2": "il",
+   "alpha_3": "isr",
+   "names": {
+    "de": "Israel",
+    "en": "Israel",
+    "es": "Israel",
+    "fr": "Israël",
+    "no": "Israel",
+    "pl": "Izrael"
+   }
+  },
+  {
+   "alpha_2": "im",
+   "alpha_3": "imn",
+   "names": {
+    "de": "Isle of Man",
+    "en": "Isle of Man",
+    "es": "Isla de Man",
+    "fr": "Île de Man",
+    "no": "Man",
+    "pl": "Wyspa Man"
+   }
+  },
+  {
+   "alpha_2": "in",
+   "alpha_3": "ind",
+   "names": {
+    "de": "Indien",
+    "en": "India",
+    "es": "India",
+    "fr": "Inde",
+    "no": "India",
+    "pl": "Indie"
+   }
+  },
+  {
+   "alpha_2": "io",
+   "alpha_3": "iot",
+   "names": {
+    "de": "Britisches Territorium im Indischen Ozean",
+    "en": "British Indian Ocean Territory",
+    "es": "Territorio Británico del Océano Índico",
+    "fr": "Territoire britannique de l’océan Indien",
+    "no": "Det britiske territoriet i Indiahavet",
+    "pl": "Brytyjskie Terytorium Oceanu Indyjskiego"
+   }
+  },
+  {
+   "alpha_2": "iq",
+   "alpha_3": "irq",
+   "names": {
+    "de": "Irak",
+    "en": "Iraq",
+    "es": "Irak",
+    "fr": "Irak",
+    "no": "Irak",
+    "pl": "Irak"
+   }
+  },
+  {
+   "alpha_2": "ir",
+   "alpha_3": "irn",
+   "names": {
+    "de": "Iran",
+    "en": "Iran",
+    "es": "Irán",
+    "fr": "Iran",
+    "no": "Iran",
+    "pl": "Iran"
+   }
+  },
+  {
+   "alpha_2": "is",
+   "alpha_3": "isl",
+   "names": {
+    "de": "Island",
+    "en": "Iceland",
+    "es": "Islandia",
+    "fr": "Islande",
+    "no": "Island",
+    "pl": "Islandia"
+   }
+  },
+  {
+   "alpha_2": "it",
+   "alpha_3": "ita",
+   "names": {
+    "de": "Italien",
+    "en": "Italy",
+    "es": "Italia",
+    "fr": "Italie",
+    "no": "Italia",
+    "pl": "Włochy"
+   }
+  },
+  {
+   "alpha_2": "je",
+   "alpha_3": "jey",
+   "names": {
+    "de": "Jersey",
+    "en": "Jersey",
+    "es": "Jersey",
+    "fr": "Jersey",
+    "no": "Jersey",
+    "pl": "Jersey"
+   }
+  },
+  {
+   "alpha_2": "jm",
+   "alpha_3": "jam",
+   "names": {
+    "de": "Jamaika",
+    "en": "Jamaica",
+    "es": "Jamaica",
+    "fr": "Jamaïque",
+    "no": "Jamaica",
+    "pl": "Jamajka"
+   }
+  },
+  {
+   "alpha_2": "jo",
+   "alpha_3": "jor",
+   "names": {
+    "de": "Jordanien",
+    "en": "Jordan",
+    "es": "Jordania",
+    "fr": "Jordanie",
+    "no": "Jordan",
+    "pl": "Jordania"
+   }
+  },
+  {
+   "alpha_2": "jp",
+   "alpha_3": "jpn",
+   "names": {
+    "de": "Japan",
+    "en": "Japan",
+    "es": "Japón",
+    "fr": "Japon",
+    "no": "Japan",
+    "pl": "Japonia"
+   }
+  },
+  {
+   "alpha_2": "ke",
+   "alpha_3": "ken",
+   "names": {
+    "de": "Kenia",
+    "en": "Kenya",
+    "es": "Kenia",
+    "fr": "Kenya",
+    "no": "Kenya",
+    "pl": "Kenia"
+   }
+  },
+  {
+   "alpha_2": "kg",
+   "alpha_3": "kgz",
+   "names": {
+    "de": "Kirgisistan",
+    "en": "Kyrgyzstan",
+    "es": "Kirguistán",
+    "fr": "Kirghizstan",
+    "no": "Kirgisistan",
+    "pl": "Kirgistan"
+   }
+  },
+  {
+   "alpha_2": "kh",
+   "alpha_3": "khm",
+   "names": {
+    "de": "Kambodscha",
+    "en": "Cambodia",
+    "es": "Camboya",
+    "fr": "Cambodge",
+    "no": "Kambodsja",
+    "pl": "Kambodża"
+   }
+  },
+  {
+   "alpha_2": "ki",
+   "alpha_3": "kir",
+   "names": {
+    "de": "Kiribati",
+    "en": "Kiribati",
+    "es": "Kiribati",
+    "fr": "Kiribati",
+    "no": "Kiribati",
+    "pl": "Kiribati"
+   }
+  },
+  {
+   "alpha_2": "km",
+   "alpha_3": "com",
+   "names": {
+    "de": "Komoren",
+    "en": "Comoros",
+    "es": "Comoras",
+    "fr": "Comores",
+    "no": "Komorene",
+    "pl": "Komory"
+   }
+  },
+  {
+   "alpha_2": "kn",
+   "alpha_3": "kna",
+   "names": {
+    "de": "St. Kitts und Nevis",
+    "en": "St. Kitts & Nevis",
+    "es": "San Cristóbal y Nieves",
+    "fr": "Saint-Christophe-et-Niévès",
+    "no": "Saint Kitts og Nevis",
+    "pl": "Saint Kitts i Nevis"
+   }
+  },
+  {
+   "alpha_2": "kp",
+   "alpha_3": "prk",
+   "names": {
+    "de": "Nordkorea",
+    "en": "North Korea",
+    "es": "Corea del Norte",
+    "fr": "Corée du Nord",
+    "no": "Nord-Korea",
+    "pl": "Korea Północna"
+   }
+  },
+  {
+   "alpha_2": "kr",
+   "alpha_3": "kor",
+   "names": {
+    "de": "Südkorea",
+    "en": "South Korea",
+    "es": "Corea del Sur",
+    "fr": "Corée du Sud",
+    "no": "Sør-Korea",
+    "pl": "Korea Południowa"
+   }
+  },
+  {
+   "alpha_2": "kw",
+   "alpha_3": "kwt",
+   "names": {
+    "de": "Kuwait",
+    "en": "Kuwait",
+    "es": "Kuwait",
+    "fr": "Koweït",
+    "no": "Kuwait",
+    "pl": "Kuwejt"
+   }
+  },
+  {
+   "alpha_2": "ky",
+   "alpha_3": "cym",
+   "names": {
+    "de": "Kaimaninseln",
+    "en": "Cayman Islands",
+    "es": "Islas Caimán",
+    "fr": "Îles Caïmans",
+    "no": "Caymanøyene",
+    "pl": "Kajmany"
+   }
+  },
+  {
+   "alpha_2": "kz",
+   "alpha_3": "kaz",
+   "names": {
+    "de": "Kasachstan",
+    "en": "Kazakhstan",
+    "es": "Kazajistán",
+    "fr": "Kazakhstan",
+    "no": "Kasakhstan",
+    "pl": "Kazachstan"
+   }
+  },
+  {
+   "alpha_2": "la",
+   "alpha_3": "lao",
+   "names": {
+    "de": "Laos",
+    "en": "Laos",
+    "es": "Laos",
+    "fr": "Laos",
+    "no": "Laos",
+    "pl": "Laos"
+   }
+  },
+  {
+   "alpha_2": "lb",
+   "alpha_3": "lbn",
+   "names": {
+    "de": "Libanon",
+    "en": "Lebanon",
+    "es": "Líbano",
+    "fr": "Liban",
+    "no": "Libanon",
+    "pl": "Liban"
+   }
+  },
+  {
+   "alpha_2": "lc",
+   "alpha_3": "lca",
+   "names": {
+    "de": "St. Lucia",
+    "en": "St. Lucia",
+    "es": "Santa Lucía",
+    "fr": "Sainte-Lucie",
+    "no": "St. Lucia",
+    "pl": "Saint Lucia"
+   }
+  },
+  {
+   "alpha_2": "li",
+   "alpha_3": "lie",
+   "names": {
+    "de": "Liechtenstein",
+    "en": "Liechtenstein",
+    "es": "Liechtenstein",
+    "fr": "Liechtenstein",
+    "no": "Liechtenstein",
+    "pl": "Liechtenstein"
+   }
+  },
+  {
+   "alpha_2": "lk",
+   "alpha_3": "lka",
+   "names": {
+    "de": "Sri Lanka",
+    "en": "Sri Lanka",
+    "es": "Sri Lanka",
+    "fr": "Sri Lanka",
+    "no": "Sri Lanka",
+    "pl": "Sri Lanka"
+   }
+  },
+  {
+   "alpha_2": "lr",
+   "alpha_3": "lbr",
+   "names": {
+    "de": "Liberia",
+    "en": "Liberia",
+    "es": "Liberia",
+    "fr": "Liberia",
+    "no": "Liberia",
+    "pl": "Liberia"
+   }
+  },
+  {
+   "alpha_2": "ls",
+   "alpha_3": "lso",
+   "names": {
+    "de": "Lesotho",
+    "en": "Lesotho",
+    "es": "Lesoto",
+    "fr": "Lesotho",
+    "no": "Lesotho",
+    "pl": "Lesotho"
+   }
+  },
+  {
+   "alpha_2": "lt",
+   "alpha_3": "ltu",
+   "names": {
+    "de": "Litauen",
+    "en": "Lithuania",
+    "es": "Lituania",
+    "fr": "Lituanie",
+    "no": "Litauen",
+    "pl": "Litwa"
+   }
+  },
+  {
+   "alpha_2": "lu",
+   "alpha_3": "lux",
+   "names": {
+    "de": "Luxemburg",
+    "en": "Luxembourg",
+    "es": "Luxemburgo",
+    "fr": "Luxembourg",
+    "no": "Luxemburg",
+    "pl": "Luksemburg"
+   }
+  },
+  {
+   "alpha_2": "lv",
+   "alpha_3": "lva",
+   "names": {
+    "de": "Lettland",
+    "en": "Latvia",
+    "es": "Letonia",
+    "fr": "Lettonie",
+    "no": "Latvia",
+    "pl": "Łotwa"
+   }
+  },
+  {
+   "alpha_2": "ly",
+   "alpha_3": "lby",
+   "names": {
+    "de": "Libyen",
+    "en": "Libya",
+    "es": "Libia",
+    "fr": "Libye",
+    "no": "Libya",
+    "pl": "Libia"
+   }
+  },
+  {
+   "alpha_2": "ma",
+   "alpha_3": "mar",
+   "names": {
+    "de": "Marokko",
+    "en": "Morocco",
+    "es": "Marruecos",
+    "fr": "Maroc",
+    "no": "Marokko",
+    "pl": "Maroko"
+   }
+  },
+  {
+   "alpha_2": "mc",
+   "alpha_3": "mco",
+   "names": {
+    "de": "Monaco",
+    "en": "Monaco",
+    "es": "Mónaco",
+    "fr": "Monaco",
+    "no": "Monaco",
+    "pl": "Monako"
+   }
+  },
+  {
+   "alpha_2": "md",
+   "alpha_3": "mda",
+   "names": {
+    "de": "Republik Moldau",
+    "en": "Moldova",
+    "es": "Moldavia",
+    "fr": "Moldavie",
+    "no": "Moldova",
+    "pl": "Mołdawia"
+   }
+  },
+  {
+   "alpha_2": "me",
+   "alpha_3": "mne",
+   "names": {
+    "de": "Montenegro",
+    "en": "Montenegro",
+    "es": "Montenegro",
+    "fr": "Monténégro",
+    "no": "Montenegro",
+    "pl": "Czarnogóra"
+   }
+  },
+  {
+   "alpha_2": "mf",
+   "alpha_3": "maf",
+   "names": {
+    "de": "St. Martin",
+    "en": "St. Martin",
+    "es": "San Martín",
+    "fr": "Saint-Martin",
+    "no": "Saint-Martin",
+    "pl": "Saint-Martin"
+   }
+  },
+  {
+   "alpha_2": "mg",
+   "alpha_3": "mdg",
+   "names": {
+    "de": "Madagaskar",
+    "en": "Madagascar",
+    "es": "Madagascar",
+    "fr": "Madagascar",
+    "no": "Madagaskar",
+    "pl": "Madagaskar"
+   }
+  },
+  {
+   "alpha_2": "mh",
+   "alpha_3": "mhl",
+   "names": {
+    "de": "Marshallinseln",
+    "en": "Marshall Islands",
+    "es": "Islas Marshall",
+    "fr": "Îles Marshall",
+    "no": "Marshalløyene",
+    "pl": "Wyspy Marshalla"
+   }
+  },
+  {
+   "alpha_2": "mk",
+   "alpha_3": "mkd",
+   "names": {
+    "de": "Nordmazedonien",
+    "en": "North Macedonia",
+    "es": "Macedonia del Norte",
+    "fr": "Macédoine du Nord",
+    "no": "Nord-Makedonia",
+    "pl": "Macedonia Północna"
+   }
+  },
+  {
+   "alpha_2": "ml",
+   "alpha_3": "mli",
+   "names": {
+    "de": "Mali",
+    "en": "Mali",
+    "es": "Mali",
+    "fr": "Mali",
+    "no": "Mali",
+    "pl": "Mali"
+   }
+  },
+  {
+   "alpha_2": "mm",
+   "alpha_3": "mmr",
+   "names": {
+    "de": "Myanmar",
+    "en": "Myanmar (Burma)",
+    "es": "Myanmar (Birmania)",
+    "fr": "Myanmar (Birmanie)",
+    "no": "Myanmar (Burma)",
+    "pl": "Mjanma (Birma)"
+   }
+  },
+  {
+   "alpha_2": "mn",
+   "alpha_3": "mng",
+   "names": {
+    "de": "Mongolei",
+    "en": "Mongolia",
+    "es": "Mongolia",
+    "fr": "Mongolie",
+    "no": "Mongolia",
+    "pl": "Mongolia"
+   }
+  },
+  {
+   "alpha_2": "mo",
+   "alpha_3": "mac",
+   "names": {
+    "de": "Sonderverwaltungsregion Macau",
+    "en": "Macao SAR China",
+    "es": "RAE de Macao (China)",
+    "fr": "R.A.S. chinoise de Macao",
+    "no": "Macao SAR Kina",
+    "pl": "SRA Makau (Chiny)"
+   }
+  },
+  {
+   "alpha_2": "mp",
+   "alpha_3": "mnp",
+   "names": {
+    "de": "Nördliche Marianen",
+    "en": "Northern Mariana Islands",
+    "es": "Islas Marianas del Norte",
+    "fr": "Îles Mariannes du Nord",
+    "no": "Nord-Marianene",
+    "pl": "Mariany Północne"
+   }
+  },
+  {
+   "alpha_2": "mq",
+   "alpha_3": "mtq",
+   "names": {
+    "de": "Martinique",
+    "en": "Martinique",
+    "es": "Martinica",
+    "fr": "Martinique",
+    "no": "Martinique",
+    "pl": "Martynika"
+   }
+  },
+  {
+   "alpha_2": "mr",
+   "alpha_3": "mrt",
+   "names": {
+    "de": "Mauretanien",
+    "en": "Mauritania",
+    "es": "Mauritania",
+    "fr": "Mauritanie",
+    "no": "Mauritania",
+    "pl": "Mauretania"
+   }
+  },
+  {
+   "alpha_2": "ms",
+   "alpha_3": "msr",
+   "names": {
+    "de": "Montserrat",
+    "en": "Montserrat",
+    "es": "Montserrat",
+    "fr": "Montserrat",
+    "no": "Montserrat",
+    "pl": "Montserrat"
+   }
+  },
+  {
+   "alpha_2": "mt",
+   "alpha_3": "mlt",
+   "names": {
+    "de": "Malta",
+    "en": "Malta",
+    "es": "Malta",
+    "fr": "Malte",
+    "no": "Malta",
+    "pl": "Malta"
+   }
+  },
+  {
+   "alpha_2": "mu",
+   "alpha_3": "mus",
+   "names": {
+    "de": "Mauritius",
+    "en": "Mauritius",
+    "es": "Mauricio",
+    "fr": "Maurice",
+    "no": "Mauritius",
+    "pl": "Mauritius"
+   }
+  },
+  {
+   "alpha_2": "mv",
+   "alpha_3": "mdv",
+   "names": {
+    "de": "Malediven",
+    "en": "Maldives",
+    "es": "Maldivas",
+    "fr": "Maldives",
+    "no": "Maldivene",
+    "pl": "Malediwy"
+   }
+  },
+  {
+   "alpha_2": "mw",
+   "alpha_3": "mwi",
+   "names": {
+    "de": "Malawi",
+    "en": "Malawi",
+    "es": "Malaui",
+    "fr": "Malawi",
+    "no": "Malawi",
+    "pl": "Malawi"
+   }
+  },
+  {
+   "alpha_2": "mx",
+   "alpha_3": "mex",
+   "names": {
+    "de": "Mexiko",
+    "en": "Mexico",
+    "es": "México",
+    "fr": "Mexique",
+    "no": "Mexico",
+    "pl": "Meksyk"
+   }
+  },
+  {
+   "alpha_2": "my",
+   "alpha_3": "mys",
+   "names": {
+    "de": "Malaysia",
+    "en": "Malaysia",
+    "es": "Malasia",
+    "fr": "Malaisie",
+    "no": "Malaysia",
+    "pl": "Malezja"
+   }
+  },
+  {
+   "alpha_2": "mz",
+   "alpha_3": "moz",
+   "names": {
+    "de": "Mosambik",
+    "en": "Mozambique",
+    "es": "Mozambique",
+    "fr": "Mozambique",
+    "no": "Mosambik",
+    "pl": "Mozambik"
+   }
+  },
+  {
+   "alpha_2": "na",
+   "alpha_3": "nam",
+   "names": {
+    "de": "Namibia",
+    "en": "Namibia",
+    "es": "Namibia",
+    "fr": "Namibie",
+    "no": "Namibia",
+    "pl": "Namibia"
+   }
+  },
+  {
+   "alpha_2": "nc",
+   "alpha_3": "ncl",
+   "names": {
+    "de": "Neukaledonien",
+    "en": "New Caledonia",
+    "es": "Nueva Caledonia",
+    "fr": "Nouvelle-Calédonie",
+    "no": "Ny-Caledonia",
+    "pl": "Nowa Kaledonia"
+   }
+  },
+  {
+   "alpha_2": "ne",
+   "alpha_3": "ner",
+   "names": {
+    "de": "Niger",
+    "en": "Niger",
+    "es": "Níger",
+    "fr": "Niger",
+    "no": "Niger",
+    "pl": "Niger"
+   }
+  },
+  {
+   "alpha_2": "nf",
+   "alpha_3": "nfk",
+   "names": {
+    "de": "Norfolkinsel",
+    "en": "Norfolk Island",
+    "es": "Isla Norfolk",
+    "fr": "Île Norfolk",
+    "no": "Norfolkøya",
+    "pl": "Norfolk"
+   }
+  },
+  {
+   "alpha_2": "ng",
+   "alpha_3": "nga",
+   "names": {
+    "de": "Nigeria",
+    "en": "Nigeria",
+    "es": "Nigeria",
+    "fr": "Nigeria",
+    "no": "Nigeria",
+    "pl": "Nigeria"
+   }
+  },
+  {
+   "alpha_2": "ni",
+   "alpha_3": "nic",
+   "names": {
+    "de": "Nicaragua",
+    "en": "Nicaragua",
+    "es": "Nicaragua",
+    "fr": "Nicaragua",
+    "no": "Nicaragua",
+    "pl": "Nikaragua"
+   }
+  },
+  {
+   "alpha_2": "nl",
+   "alpha_3": "nld",
+   "names": {
+    "de": "Niederlande",
+    "en": "Netherlands",
+    "es": "Países Bajos",
+    "fr": "Pays-Bas",
+    "no": "Nederland",
+    "pl": "Holandia"
+   }
+  },
+  {
+   "alpha_2": "no",
+   "alpha_3": "nor",
+   "names": {
+    "de": "Norwegen",
+    "en": "Norway",
+    "es": "Noruega",
+    "fr": "Norvège",
+    "no": "Norge",
+    "pl": "Norwegia"
+   }
+  },
+  {
+   "alpha_2": "np",
+   "alpha_3": "npl",
+   "names": {
+    "de": "Nepal",
+    "en": "Nepal",
+    "es": "Nepal",
+    "fr": "Népal",
+    "no": "Nepal",
+    "pl": "Nepal"
+   }
+  },
+  {
+   "alpha_2": "nr",
+   "alpha_3": "nru",
+   "names": {
+    "de": "Nauru",
+    "en": "Nauru",
+    "es": "Nauru",
+    "fr": "Nauru",
+    "no": "Nauru",
+    "pl": "Nauru"
+   }
+  },
+  {
+   "alpha_2": "nu",
+   "alpha_3": "niu",
+   "names": {
+    "de": "Niue",
+    "en": "Niue",
+    "es": "Niue",
+    "fr": "Niue",
+    "no": "Niue",
+    "pl": "Niue"
+   }
+  },
+  {
+   "alpha_2": "nz",
+   "alpha_3": "nzl",
+   "names": {
+    "de": "Neuseeland",
+    "en": "New Zealand",
+    "es": "Nueva Zelanda",
+    "fr": "Nouvelle-Zélande",
+    "no": "New Zealand",
+    "pl": "Nowa Zelandia"
+   }
+  },
+  {
+   "alpha_2": "om",
+   "alpha_3": "omn",
+   "names": {
+    "de": "Oman",
+    "en": "Oman",
+    "es": "Omán",
+    "fr": "Oman",
+    "no": "Oman",
+    "pl": "Oman"
+   }
+  },
+  {
+   "alpha_2": "pa",
+   "alpha_3": "pan",
+   "names": {
+    "de": "Panama",
+    "en": "Panama",
+    "es": "Panamá",
+    "fr": "Panama",
+    "no": "Panama",
+    "pl": "Panama"
+   }
+  },
+  {
+   "alpha_2": "pe",
+   "alpha_3": "per",
+   "names": {
+    "de": "Peru",
+    "en": "Peru",
+    "es": "Perú",
+    "fr": "Pérou",
+    "no": "Peru",
+    "pl": "Peru"
+   }
+  },
+  {
+   "alpha_2": "pf",
+   "alpha_3": "pyf",
+   "names": {
+    "de": "Französisch-Polynesien",
+    "en": "French Polynesia",
+    "es": "Polinesia Francesa",
+    "fr": "Polynésie française",
+    "no": "Fransk Polynesia",
+    "pl": "Polinezja Francuska"
+   }
+  },
+  {
+   "alpha_2": "pg",
+   "alpha_3": "png",
+   "names": {
+    "de": "Papua-Neuguinea",
+    "en": "Papua New Guinea",
+    "es": "Papúa Nueva Guinea",
+    "fr": "Papouasie-Nouvelle-Guinée",
+    "no": "Papua Ny-Guinea",
+    "pl": "Papua-Nowa Gwinea"
+   }
+  },
+  {
+   "alpha_2": "ph",
+   "alpha_3": "phl",
+   "names": {
+    "de": "Philippinen",
+    "en": "Philippines",
+    "es": "Filipinas",
+    "fr": "Philippines",
+    "no": "Filippinene",
+    "pl": "Filipiny"
+   }
+  },
+  {
+   "alpha_2": "pk",
+   "alpha_3": "pak",
+   "names": {
+    "de": "Pakistan",
+    "en": "Pakistan",
+    "es": "Pakistán",
+    "fr": "Pakistan",
+    "no": "Pakistan",
+    "pl": "Pakistan"
+   }
+  },
+  {
+   "alpha_2": "pl",
+   "alpha_3": "pol",
+   "names": {
+    "de": "Polen",
+    "en": "Poland",
+    "es": "Polonia",
+    "fr": "Pologne",
+    "no": "Polen",
+    "pl": "Polska"
+   }
+  },
+  {
+   "alpha_2": "pm",
+   "alpha_3": "spm",
+   "names": {
+    "de": "St. Pierre und Miquelon",
+    "en": "St. Pierre & Miquelon",
+    "es": "San Pedro y Miquelón",
+    "fr": "Saint-Pierre-et-Miquelon",
+    "no": "Saint-Pierre-et-Miquelon",
+    "pl": "Saint-Pierre i Miquelon"
+   }
+  },
+  {
+   "alpha_2": "pn",
+   "alpha_3": "pcn",
+   "names": {
+    "de": "Pitcairninseln",
+    "en": "Pitcairn Islands",
+    "es": "Islas Pitcairn",
+    "fr": "Îles Pitcairn",
+    "no": "Pitcairnøyene",
+    "pl": "Pitcairn"
+   }
+  },
+  {
+   "alpha_2": "pr",
+   "alpha_3": "pri",
+   "names": {
+    "de": "Puerto Rico",
+    "en": "Puerto Rico",
+    "es": "Puerto Rico",
+    "fr": "Porto Rico",
+    "no": "Puerto Rico",
+    "pl": "Portoryko"
+   }
+  },
+  {
+   "alpha_2": "ps",
+   "alpha_3": "pse",
+   "names": {
+    "de": "Palästinensische Autonomiegebiete",
+    "en": "Palestinian Territories",
+    "es": "Territorios Palestinos",
+    "fr": "Territoires palestiniens",
+    "no": "Det palestinske området",
+    "pl": "Terytoria Palestyńskie"
+   }
+  },
+  {
+   "alpha_2": "pt",
+   "alpha_3": "prt",
+   "names": {
+    "de": "Portugal",
+    "en": "Portugal",
+    "es": "Portugal",
+    "fr": "Portugal",
+    "no": "Portugal",
+    "pl": "Portugalia"
+   }
+  },
+  {
+   "alpha_2": "pw",
+   "alpha_3": "plw",
+   "names": {
+    "de": "Palau",
+    "en": "Palau",
+    "es": "Palaos",
+    "fr": "Palaos",
+    "no": "Palau",
+    "pl": "Palau"
+   }
+  },
+  {
+   "alpha_2": "py",
+   "alpha_3": "pry",
+   "names": {
+    "de": "Paraguay",
+    "en": "Paraguay",
+    "es": "Paraguay",
+    "fr": "Paraguay",
+    "no": "Paraguay",
+    "pl": "Paragwaj"
+   }
+  },
+  {
+   "alpha_2": "qa",
+   "alpha_3": "qat",
+   "names": {
+    "de": "Katar",
+    "en": "Qatar",
+    "es": "Catar",
+    "fr": "Qatar",
+    "no": "Qatar",
+    "pl": "Katar"
+   }
+  },
+  {
+   "alpha_2": "re",
+   "alpha_3": "reu",
+   "names": {
+    "de": "Réunion",
+    "en": "Réunion",
+    "es": "Reunión",
+    "fr": "La Réunion",
+    "no": "Réunion",
+    "pl": "Reunion"
+   }
+  },
+  {
+   "alpha_2": "ro",
+   "alpha_3": "rou",
+   "names": {
+    "de": "Rumänien",
+    "en": "Romania",
+    "es": "Rumanía",
+    "fr": "Roumanie",
+    "no": "Romania",
+    "pl": "Rumunia"
+   }
+  },
+  {
+   "alpha_2": "rs",
+   "alpha_3": "srb",
+   "names": {
+    "de": "Serbien",
+    "en": "Serbia",
+    "es": "Serbia",
+    "fr": "Serbie",
+    "no": "Serbia",
+    "pl": "Serbia"
+   }
+  },
+  {
+   "alpha_2": "ru",
+   "alpha_3": "rus",
+   "names": {
+    "de": "Russland",
+    "en": "Russia",
+    "es": "Rusia",
+    "fr": "Russie",
+    "no": "Russland",
+    "pl": "Rosja"
+   }
+  },
+  {
+   "alpha_2": "rw",
+   "alpha_3": "rwa",
+   "names": {
+    "de": "Ruanda",
+    "en": "Rwanda",
+    "es": "Ruanda",
+    "fr": "Rwanda",
+    "no": "Rwanda",
+    "pl": "Rwanda"
+   }
+  },
+  {
+   "alpha_2": "sa",
+   "alpha_3": "sau",
+   "names": {
+    "de": "Saudi-Arabien",
+    "en": "Saudi Arabia",
+    "es": "Arabia Saudí",
+    "fr": "Arabie saoudite",
+    "no": "Saudi-Arabia",
+    "pl": "Arabia Saudyjska"
+   }
+  },
+  {
+   "alpha_2": "sb",
+   "alpha_3": "slb",
+   "names": {
+    "de": "Salomonen",
+    "en": "Solomon Islands",
+    "es": "Islas Salomón",
+    "fr": "Îles Salomon",
+    "no": "Salomonøyene",
+    "pl": "Wyspy Salomona"
+   }
+  },
+  {
+   "alpha_2": "sc",
+   "alpha_3": "syc",
+   "names": {
+    "de": "Seychellen",
+    "en": "Seychelles",
+    "es": "Seychelles",
+    "fr": "Seychelles",
+    "no": "Seychellene",
+    "pl": "Seszele"
+   }
+  },
+  {
+   "alpha_2": "sd",
+   "alpha_3": "sdn",
+   "names": {
+    "de": "Sudan",
+    "en": "Sudan",
+    "es": "Sudán",
+    "fr": "Soudan",
+    "no": "Sudan",
+    "pl": "Sudan"
+   }
+  },
+  {
+   "alpha_2": "se",
+   "alpha_3": "swe",
+   "names": {
+    "de": "Schweden",
+    "en": "Sweden",
+    "es": "Suecia",
+    "fr": "Suède",
+    "no": "Sverige",
+    "pl": "Szwecja"
+   }
+  },
+  {
+   "alpha_2": "sg",
+   "alpha_3": "sgp",
+   "names": {
+    "de": "Singapur",
+    "en": "Singapore",
+    "es": "Singapur",
+    "fr": "Singapour",
+    "no": "Singapore",
+    "pl": "Singapur"
+   }
+  },
+  {
+   "alpha_2": "sh",
+   "alpha_3": "shn",
+   "names": {
+    "de": "St. Helena",
+    "en": "St. Helena",
+    "es": "Santa Elena",
+    "fr": "Sainte-Hélène",
+    "no": "St. Helena",
+    "pl": "Wyspa Świętej Heleny"
+   }
+  },
+  {
+   "alpha_2": "si",
+   "alpha_3": "svn",
+   "names": {
+    "de": "Slowenien",
+    "en": "Slovenia",
+    "es": "Eslovenia",
+    "fr": "Slovénie",
+    "no": "Slovenia",
+    "pl": "Słowenia"
+   }
+  },
+  {
+   "alpha_2": "sj",
+   "alpha_3": "sjm",
+   "names": {
+    "de": "Spitzbergen und Jan Mayen",
+    "en": "Svalbard & Jan Mayen",
+    "es": "Svalbard y Jan Mayen",
+    "fr": "Svalbard et Jan Mayen",
+    "no": "Svalbard og Jan Mayen",
+    "pl": "Svalbard i Jan Mayen"
+   }
+  },
+  {
+   "alpha_2": "sk",
+   "alpha_3": "svk",
+   "names": {
+    "de": "Slowakei",
+    "en": "Slovakia",
+    "es": "Eslovaquia",
+    "fr": "Slovaquie",
+    "no": "Slovakia",
+    "pl": "Słowacja"
+   }
+  },
+  {
+   "alpha_2": "sl",
+   "alpha_3": "sle",
+   "names": {
+    "de": "Sierra Leone",
+    "en": "Sierra Leone",
+    "es": "Sierra Leona",
+    "fr": "Sierra Leone",
+    "no": "Sierra Leone",
+    "pl": "Sierra Leone"
+   }
+  },
+  {
+   "alpha_2": "sm",
+   "alpha_3": "smr",
+   "names": {
+    "de": "San Marino",
+    "en": "San Marino",
+    "es": "San Marino",
+    "fr": "Saint-Marin",
+    "no": "San Marino",
+    "pl": "San Marino"
+   }
+  },
+  {
+   "alpha_2": "sn",
+   "alpha_3": "sen",
+   "names": {
+    "de": "Senegal",
+    "en": "Senegal",
+    "es": "Senegal",
+    "fr": "Sénégal",
+    "no": "Senegal",
+    "pl": "Senegal"
+   }
+  },
+  {
+   "alpha_2": "so",
+   "alpha_3": "som",
+   "names": {
+    "de": "Somalia",
+    "en": "Somalia",
+    "es": "Somalia",
+    "fr": "Somalie",
+    "no": "Somalia",
+    "pl": "Somalia"
+   }
+  },
+  {
+   "alpha_2": "sr",
+   "alpha_3": "sur",
+   "names": {
+    "de": "Suriname",
+    "en": "Suriname",
+    "es": "Surinam",
+    "fr": "Suriname",
+    "no": "Surinam",
+    "pl": "Surinam"
+   }
+  },
+  {
+   "alpha_2": "ss",
+   "alpha_3": "ssd",
+   "names": {
+    "de": "Südsudan",
+    "en": "South Sudan",
+    "es": "Sudán del Sur",
+    "fr": "Soudan du Sud",
+    "no": "Sør-Sudan",
+    "pl": "Sudan Południowy"
+   }
+  },
+  {
+   "alpha_2": "st",
+   "alpha_3": "stp",
+   "names": {
+    "de": "São Tomé und Príncipe",
+    "en": "São Tomé & Príncipe",
+    "es": "Santo Tomé y Príncipe",
+    "fr": "Sao Tomé-et-Principe",
+    "no": "São Tomé og Príncipe",
+    "pl": "Wyspy Świętego Tomasza i Książęca"
+   }
+  },
+  {
+   "alpha_2": "sv",
+   "alpha_3": "slv",
+   "names": {
+    "de": "El Salvador",
+    "en": "El Salvador",
+    "es": "El Salvador",
+    "fr": "Salvador",
+    "no": "El Salvador",
+    "pl": "Salwador"
+   }
+  },
+  {
+   "alpha_2": "sx",
+   "alpha_3": "sxm",
+   "names": {
+    "de": "Sint Maarten",
+    "en": "Sint Maarten",
+    "es": "Sint Maarten",
+    "fr": "Saint-Martin (partie néerlandaise)",
+    "no": "Sint Maarten",
+    "pl": "Sint Maarten"
+   }
+  },
+  {
+   "alpha_2": "sy",
+   "alpha_3": "syr",
+   "names": {
+    "de": "Syrien",
+    "en": "Syria",
+    "es": "Siria",
+    "fr": "Syrie",
+    "no": "Syria",
+    "pl": "Syria"
+   }
+  },
+  {
+   "alpha_2": "sz",
+   "alpha_3": "swz",
+   "names": {
+    "de": "Eswatini",
+    "en": "Eswatini",
+    "es": "Esuatini",
+    "fr": "Eswatini",
+    "no": "Eswatini",
+    "pl": "Eswatini"
+   }
+  },
+  {
+   "alpha_2": "tc",
+   "alpha_3": "tca",
+   "names": {
+    "de": "Turks- und Caicosinseln",
+    "en": "Turks & Caicos Islands",
+    "es": "Islas Turcas y Caicos",
+    "fr": "Îles Turques-et-Caïques",
+    "no": "Turks- og Caicosøyene",
+    "pl": "Turks i Caicos"
+   }
+  },
+  {
+   "alpha_2": "td",
+   "alpha_3": "tcd",
+   "names": {
+    "de": "Tschad",
+    "en": "Chad",
+    "es": "Chad",
+    "fr": "Tchad",
+    "no": "Tsjad",
+    "pl": "Czad"
+   }
+  },
+  {
+   "alpha_2": "tf",
+   "alpha_3": "atf",
+   "names": {
+    "de": "Französische Süd- und Antarktisgebiete",
+    "en": "French Southern Territories",
+    "es": "Territorios Australes Franceses",
+    "fr": "Terres australes françaises",
+    "no": "De franske sørterritorier",
+    "pl": "Francuskie Terytoria Południowe i Antarktyczne"
+   }
+  },
+  {
+   "alpha_2": "tg",
+   "alpha_3": "tgo",
+   "names": {
+    "de": "Togo",
+    "en": "Togo",
+    "es": "Togo",
+    "fr": "Togo",
+    "no": "Togo",
+    "pl": "Togo"
+   }
+  },
+  {
+   "alpha_2": "th",
+   "alpha_3": "tha",
+   "names": {
+    "de": "Thailand",
+    "en": "Thailand",
+    "es": "Tailandia",
+    "fr": "Thaïlande",
+    "no": "Thailand",
+    "pl": "Tajlandia"
+   }
+  },
+  {
+   "alpha_2": "tj",
+   "alpha_3": "tjk",
+   "names": {
+    "de": "Tadschikistan",
+    "en": "Tajikistan",
+    "es": "Tayikistán",
+    "fr": "Tadjikistan",
+    "no": "Tadsjikistan",
+    "pl": "Tadżykistan"
+   }
+  },
+  {
+   "alpha_2": "tk",
+   "alpha_3": "tkl",
+   "names": {
+    "de": "Tokelau",
+    "en": "Tokelau",
+    "es": "Tokelau",
+    "fr": "Tokelau",
+    "no": "Tokelau",
+    "pl": "Tokelau"
+   }
+  },
+  {
+   "alpha_2": "tl",
+   "alpha_3": "tls",
+   "names": {
+    "de": "Timor-Leste",
+    "en": "Timor-Leste",
+    "es": "Timor-Leste",
+    "fr": "Timor oriental",
+    "no": "Øst-Timor",
+    "pl": "Timor Wschodni"
+   }
+  },
+  {
+   "alpha_2": "tm",
+   "alpha_3": "tkm",
+   "names": {
+    "de": "Turkmenistan",
+    "en": "Turkmenistan",
+    "es": "Turkmenistán",
+    "fr": "Turkménistan",
+    "no": "Turkmenistan",
+    "pl": "Turkmenistan"
+   }
+  },
+  {
+   "alpha_2": "tn",
+   "alpha_3": "tun",
+   "names": {
+    "de": "Tunesien",
+    "en": "Tunisia",
+    "es": "Túnez",
+    "fr": "Tunisie",
+    "no": "Tunisia",
+    "pl": "Tunezja"
+   }
+  },
+  {
+   "alpha_2": "to",
+   "alpha_3": "ton",
+   "names": {
+    "de": "Tonga",
+    "en": "Tonga",
+    "es": "Tonga",
+    "fr": "Tonga",
+    "no": "Tonga",
+    "pl": "Tonga"
+   }
+  },
+  {
+   "alpha_2": "tr",
+   "alpha_3": "tur",
+   "names": {
+    "de": "Türkei",
+    "en": "Türkiye",
+    "es": "Turquía",
+    "fr": "Turquie",
+    "no": "Tyrkia",
+    "pl": "Turcja"
+   }
+  },
+  {
+   "alpha_2": "tt",
+   "alpha_3": "tto",
+   "names": {
+    "de": "Trinidad und Tobago",
+    "en": "Trinidad & Tobago",
+    "es": "Trinidad y Tobago",
+    "fr": "Trinité-et-Tobago",
+    "no": "Trinidad og Tobago",
+    "pl": "Trynidad i Tobago"
+   }
+  },
+  {
+   "alpha_2": "tv",
+   "alpha_3": "tuv",
+   "names": {
+    "de": "Tuvalu",
+    "en": "Tuvalu",
+    "es": "Tuvalu",
+    "fr": "Tuvalu",
+    "no": "Tuvalu",
+    "pl": "Tuvalu"
+   }
+  },
+  {
+   "alpha_2": "tw",
+   "alpha_3": "twn",
+   "names": {
+    "de": "Taiwan",
+    "en": "Taiwan",
+    "es": "Taiwán",
+    "fr": "Taïwan",
+    "no": "Taiwan",
+    "pl": "Tajwan"
+   }
+  },
+  {
+   "alpha_2": "tz",
+   "alpha_3": "tza",
+   "names": {
+    "de": "Tansania",
+    "en": "Tanzania",
+    "es": "Tanzania",
+    "fr": "Tanzanie",
+    "no": "Tanzania",
+    "pl": "Tanzania"
+   }
+  },
+  {
+   "alpha_2": "ua",
+   "alpha_3": "ukr",
+   "names": {
+    "de": "Ukraine",
+    "en": "Ukraine",
+    "es": "Ucrania",
+    "fr": "Ukraine",
+    "no": "Ukraina",
+    "pl": "Ukraina"
+   }
+  },
+  {
+   "alpha_2": "ug",
+   "alpha_3": "uga",
+   "names": {
+    "de": "Uganda",
+    "en": "Uganda",
+    "es": "Uganda",
+    "fr": "Ouganda",
+    "no": "Uganda",
+    "pl": "Uganda"
+   }
+  },
+  {
+   "alpha_2": "um",
+   "alpha_3": "umi",
+   "names": {
+    "de": "Amerikanische Überseeinseln",
+    "en": "U.S. Outlying Islands",
+    "es": "Islas menores alejadas de EE. UU.",
+    "fr": "Îles mineures éloignées des États-Unis",
+    "no": "USAs ytre øyer",
+    "pl": "Dalekie Wyspy Mniejsze Stanów Zjednoczonych"
+   }
+  },
+  {
+   "alpha_2": "us",
+   "alpha_3": "usa",
+   "names": {
+    "de": "Vereinigte Staaten",
+    "en": "United States",
+    "es": "Estados Unidos",
+    "fr": "États-Unis",
+    "no": "USA",
+    "pl": "Stany Zjednoczone"
+   }
+  },
+  {
+   "alpha_2": "uy",
+   "alpha_3": "ury",
+   "names": {
+    "de": "Uruguay",
+    "en": "Uruguay",
+    "es": "Uruguay",
+    "fr": "Uruguay",
+    "no": "Uruguay",
+    "pl": "Urugwaj"
+   }
+  },
+  {
+   "alpha_2": "uz",
+   "alpha_3": "uzb",
+   "names": {
+    "de": "Usbekistan",
+    "en": "Uzbekistan",
+    "es": "Uzbekistán",
+    "fr": "Ouzbékistan",
+    "no": "Usbekistan",
+    "pl": "Uzbekistan"
+   }
+  },
+  {
+   "alpha_2": "va",
+   "alpha_3": "vat",
+   "names": {
+    "de": "Vatikanstadt",
+    "en": "Vatican City",
+    "es": "Ciudad del Vaticano",
+    "fr": "État de la Cité du Vatican",
+    "no": "Vatikanstaten",
+    "pl": "Watykan"
+   }
+  },
+  {
+   "alpha_2": "vc",
+   "alpha_3": "vct",
+   "names": {
+    "de": "St. Vincent und die Grenadinen",
+    "en": "St. Vincent & Grenadines",
+    "es": "San Vicente y las Granadinas",
+    "fr": "Saint-Vincent-et-les Grenadines",
+    "no": "St. Vincent og Grenadinene",
+    "pl": "Saint Vincent i Grenadyny"
+   }
+  },
+  {
+   "alpha_2": "ve",
+   "alpha_3": "ven",
+   "names": {
+    "de": "Venezuela",
+    "en": "Venezuela",
+    "es": "Venezuela",
+    "fr": "Venezuela",
+    "no": "Venezuela",
+    "pl": "Wenezuela"
+   }
+  },
+  {
+   "alpha_2": "vg",
+   "alpha_3": "vgb",
+   "names": {
+    "de": "Britische Jungferninseln",
+    "en": "British Virgin Islands",
+    "es": "Islas Vírgenes Británicas",
+    "fr": "Îles Vierges britanniques",
+    "no": "De britiske jomfruøyene",
+    "pl": "Brytyjskie Wyspy Dziewicze"
+   }
+  },
+  {
+   "alpha_2": "vi",
+   "alpha_3": "vir",
+   "names": {
+    "de": "Amerikanische Jungferninseln",
+    "en": "U.S. Virgin Islands",
+    "es": "Islas Vírgenes de EE. UU.",
+    "fr": "Îles Vierges des États-Unis",
+    "no": "De amerikanske jomfruøyene",
+    "pl": "Wyspy Dziewicze Stanów Zjednoczonych"
+   }
+  },
+  {
+   "alpha_2": "vn",
+   "alpha_3": "vnm",
+   "names": {
+    "de": "Vietnam",
+    "en": "Vietnam",
+    "es": "Vietnam",
+    "fr": "Viêt Nam",
+    "no": "Vietnam",
+    "pl": "Wietnam"
+   }
+  },
+  {
+   "alpha_2": "vu",
+   "alpha_3": "vut",
+   "names": {
+    "de": "Vanuatu",
+    "en": "Vanuatu",
+    "es": "Vanuatu",
+    "fr": "Vanuatu",
+    "no": "Vanuatu",
+    "pl": "Vanuatu"
+   }
+  },
+  {
+   "alpha_2": "wf",
+   "alpha_3": "wlf",
+   "names": {
+    "de": "Wallis und Futuna",
+    "en": "Wallis & Futuna",
+    "es": "Wallis y Futuna",
+    "fr": "Wallis-et-Futuna",
+    "no": "Wallis og Futuna",
+    "pl": "Wallis i Futuna"
+   }
+  },
+  {
+   "alpha_2": "ws",
+   "alpha_3": "wsm",
+   "names": {
+    "de": "Samoa",
+    "en": "Samoa",
+    "es": "Samoa",
+    "fr": "Samoa",
+    "no": "Samoa",
+    "pl": "Samoa"
+   }
+  },
+  {
+   "alpha_2": "ye",
+   "alpha_3": "yem",
+   "names": {
+    "de": "Jemen",
+    "en": "Yemen",
+    "es": "Yemen",
+    "fr": "Yémen",
+    "no": "Jemen",
+    "pl": "Jemen"
+   }
+  },
+  {
+   "alpha_2": "yt",
+   "alpha_3": "myt",
+   "names": {
+    "de": "Mayotte",
+    "en": "Mayotte",
+    "es": "Mayotte",
+    "fr": "Mayotte",
+    "no": "Mayotte",
+    "pl": "Majotta"
+   }
+  },
+  {
+   "alpha_2": "za",
+   "alpha_3": "zaf",
+   "names": {
+    "de": "Südafrika",
+    "en": "South Africa",
+    "es": "Sudáfrica",
+    "fr": "Afrique du Sud",
+    "no": "Sør-Afrika",
+    "pl": "Republika Południowej Afryki"
+   }
+  },
+  {
+   "alpha_2": "zm",
+   "alpha_3": "zmb",
+   "names": {
+    "de": "Sambia",
+    "en": "Zambia",
+    "es": "Zambia",
+    "fr": "Zambie",
+    "no": "Zambia",
+    "pl": "Zambia"
+   }
+  },
+  {
+   "alpha_2": "zw",
+   "alpha_3": "zwe",
+   "names": {
+    "de": "Simbabwe",
+    "en": "Zimbabwe",
+    "es": "Zimbabue",
+    "fr": "Zimbabwe",
+    "no": "Zimbabwe",
+    "pl": "Zimbabwe"
+   }
+  }
+ ],
+ "lookup": {
+  "ad": [
+   "ad"
+  ],
+  "ae": [
+   "ae"
+  ],
+  "af": [
+   "af"
+  ],
+  "afganistan": [
+   "af"
+  ],
+  "afghanistan": [
+   "af"
+  ],
+  "afrique du sud": [
+   "za"
+  ],
+  "ag": [
+   "ag"
+  ],
+  "agypten": [
+   "eg"
+  ],
+  "ai": [
+   "ai"
+  ],
+  "al": [
+   "al"
+  ],
+  "aland": [
+   "ax"
+  ],
+  "aland islands": [
+   "ax"
+  ],
+  "alandinseln": [
+   "ax"
+  ],
+  "albania": [
+   "al"
+  ],
+  "albanie": [
+   "al"
+  ],
+  "albanien": [
+   "al"
+  ],
+  "alemania": [
+   "de"
+  ],
+  "algeria": [
+   "dz"
+  ],
+  "algerie": [
+   "dz"
+  ],
+  "algerien": [
+   "dz"
+  ],
+  "algieria": [
+   "dz"
+  ],
+  "allemagne": [
+   "de"
+  ],
+  "am": [
+   "am"
+  ],
+  "american samoa": [
+   "as"
+  ],
+  "amerikanisch samoa": [
+   "as"
+  ],
+  "amerikanische jungferninseln": [
+   "vi"
+  ],
+  "amerikanische uberseeinseln": [
+   "um"
+  ],
+  "amerikansk samoa": [
+   "as"
+  ],
+  "ameryka": [
+   "us"
+  ],
+  "andora": [
+   "ad"
+  ],
+  "andorra": [
+   "ad"
+  ],
+  "andorre": [
+   "ad"
+  ],
+  "angola": [
+   "ao"
+  ],
+  "anguila": [
+   "ai"
+  ],
+  "anguilla": [
+   "ai"
+  ],
+  "antarctica": [
+   "aq"
+  ],
+  "antarctique": [
+   "aq"
+  ],
+  "antarktis": [
+   "aq"
+  ],
+  "antarktyda": [
+   "aq"
+  ],
+  "antartida": [
+   "aq"
+  ],
+  "antigua barbuda": [
+   "ag"
+  ],
+  "antigua et barbuda": [
+   "ag"
+  ],
+  "antigua i barbuda": [
+   "ag"
+  ],
+  "antigua og barbuda": [
+   "ag"
+  ],
+  "antigua und barbuda": [
+   "ag"
+  ],
+  "antigua y barbuda": [
+   "ag"
+  ],
+  "ao": [
+   "ao"
+  ],
+  "aq": [
+   "aq"
+  ],
+  "aquatorialguinea": [
+   "gq"
+  ],
+  "ar": [
+   "ar"
+  ],
+  "arabia saudi": [
+   "sa"
+  ],
+  "arabia saudyjska": [
+   "sa"
+  ],
+  "arabie saoudite": [
+   "sa"
+  ],
+  "argelia": [
+   "dz"
+  ],
+  "argentina": [
+   "ar"
+  ],
+  "argentine": [
+   "ar"
+  ],
+  "argentinien": [
+   "ar"
+  ],
+  "argentyna": [
+   "ar"
+  ],
+  "armenia": [
+   "am"
+  ],
+  "armenie": [
+   "am"
+  ],
+  "armenien": [
+   "am"
+  ],
+  "aruba": [
+   "aw"
+  ],
+  "as": [
+   "as"
+  ],
+  "aserbaidschan": [
+   "az"
+  ],
+  "aserbajdsjan": [
+   "az"
+  ],
+  "at": [
+   "at"
+  ],
+  "athiopien": [
+   "et"
+  ],
+  "au": [
+   "au"
+  ],
+  "australia": [
+   "au"
+  ],
+  "australie": [
+   "au"
+  ],
+  "australien": [
+   "au"
+  ],
+  "austria": [
+   "at"
+  ],
+  "autriche": [
+   "at"
+  ],
+  "aw": [
+   "aw"
+  ],
+  "ax": [
+   "ax"
+  ],
+  "az": [
+   "az"
+  ],
+  "azerbaidjan": [
+   "az"
+  ],
+  "azerbaijan": [
+   "az"
+  ],
+  "azerbaiyan": [
+   "az"
+  ],
+  "azerbejdzan": [
+   "az"
+  ],
+  "ba": [
+   "ba"
+  ],
+  "bahamas": [
+   "bs"
+  ],
+  "bahamy": [
+   "bs"
+  ],
+  "bahrain": [
+   "bh"
+  ],
+  "bahrajn": [
+   "bh"
+  ],
+  "bahrein": [
+   "bh"
+  ],
+  "banglades": [
+   "bd"
+  ],
+  "bangladesch": [
+   "bd"
+  ],
+  "bangladesh": [
+   "bd"
+  ],
+  "bangladesz": [
+   "bd"
+  ],
+  "barbade": [
+   "bb"
+  ],
+  "barbados": [
+   "bb"
+  ],
+  "barein": [
+   "bh"
+  ],
+  "bb": [
+   "bb"
+  ],
+  "bd": [
+   "bd"
+  ],
+  "be": [
+   "be"
+  ],
+  "belarus": [
+   "by"
+  ],
+  "belgia": [
+   "be"
+  ],
+  "belgica": [
+   "be"
+  ],
+  "belgien": [
+   "be"
+  ],
+  "belgique": [
+   "be"
+  ],
+  "belgium": [
+   "be"
+  ],
+  "belice": [
+   "bz"
+  ],
+  "belize": [
+   "bz"
+  ],
+  "benin": [
+   "bj"
+  ],
+  "bermuda": [
+   "bm"
+  ],
+  "bermudas": [
+   "bm"
+  ],
+  "bermudes": [
+   "bm"
+  ],
+  "bermudy": [
+   "bm"
+  ],
+  "bf": [
+   "bf"
+  ],
+  "bg": [
+   "bg"
+  ],
+  "bh": [
+   "bh"
+  ],
+  "bhoutan": [
+   "bt"
+  ],
+  "bhutan": [
+   "bt"
+  ],
+  "bi": [
+   "bi"
+  ],
+  "bialorus": [
+   "by"
+  ],
+  "bielorrusia": [
+   "by"
+  ],
+  "bielorussie": [
+   "by"
+  ],
+  "bj": [
+   "bj"
+  ],
+  "bl": [
+   "bl"
+  ],
+  "bm": [
+   "bm"
+  ],
+  "bn": [
+   "bn"
+  ],
+  "bo": [
+   "bo"
+  ],
+  "bolivia": [
+   "bo"
+  ],
+  "bolivie": [
+   "bo"
+  ],
+  "bolivien": [
+   "bo"
+  ],
+  "boliwia": [
+   "bo"
+  ],
+  "bosnia hercegovina": [
+   "ba"
+  ],
+  "bosnia herzegovina": [
+   "ba"
+  ],
+  "bosnia i hercegowina": [
+   "ba"
+  ],
+  "bosnia y herzegovina": [
+   "ba"
+  ],
+  "bosnie herzegovine": [
+   "ba"
+  ],
+  "bosnien und herzegowina": [
+   "ba"
+  ],
+  "botsuana": [
+   "bw"
+  ],
+  "botswana": [
+   "bw"
+  ],
+  "bouvet island": [
+   "bv"
+  ],
+  "bouvetinsel": [
+   "bv"
+  ],
+  "bouvetoya": [
+   "bv"
+  ],
+  "bq": [
+   "bq"
+  ],
+  "br": [
+   "br"
+  ],
+  "brasil": [
+   "br"
+  ],
+  "brasilien": [
+   "br"
+  ],
+  "brazil": [
+   "br"
+  ],
+  "brazylia": [
+   "br"
+  ],
+  "bresil": [
+   "br"
+  ],
+  "britische jungferninseln": [
+   "vg"
+  ],
+  "britisches territorium im indischen ozean": [
+   "io"
+  ],
+  "british indian ocean territory": [
+   "io"
+  ],
+  "british virgin islands": [
+   "vg"
+  ],
+  "brunei": [
+   "bn"
+  ],
+  "brunei darussalam": [
+   "bn"
+  ],
+  "brytyjskie terytorium oceanu indyjskiego": [
+   "io"
+  ],
+  "brytyjskie wyspy dziewicze": [
+   "vg"
+  ],
+  "bs": [
+   "bs"
+  ],
+  "bt": [
+   "bt"
+  ],
+  "bulgaria": [
+   "bg"
+  ],
+  "bulgarie": [
+   "bg"
+  ],
+  "bulgarien": [
+   "bg"
+  ],
+  "burkina faso": [
+   "bf"
+  ],
+  "burundi": [
+   "bi"
+  ],
+  "butan": [
+   "bt"
+  ],
+  "bv": [
+   "bv"
+  ],
+  "bw": [
+   "bw"
+  ],
+  "by": [
+   "by"
+  ],
+  "bz": [
+   "bz"
+  ],
+  "ca": [
+   "ca"
+  ],
+  "cabo verde": [
+   "cv"
+  ],
+  "cambodge": [
+   "kh"
+  ],
+  "cambodia": [
+   "kh"
+  ],
+  "camboya": [
+   "kh"
+  ],
+  "cameroon": [
+   "cm"
+  ],
+  "cameroun": [
+   "cm"
+  ],
+  "camerun": [
+   "cm"
+  ],
+  "canada": [
+   "ca"
+  ],
+  "cap vert": [
+   "cv"
+  ],
+  "cape verde": [
+   "cv"
+  ],
+  "caribbean netherlands": [
+   "bq"
+  ],
+  "caribe neerlandes": [
+   "bq"
+  ],
+  "catar": [
+   "qa"
+  ],
+  "cayman islands": [
+   "ky"
+  ],
+  "caymanoyene": [
+   "ky"
+  ],
+  "cc": [
+   "cc"
+  ],
+  "cd": [
+   "cd"
+  ],
+  "central african republic": [
+   "cf"
+  ],
+  "cf": [
+   "cf"
+  ],
+  "cg": [
+   "cg"
+  ],
+  "ch": [
+   "ch"
+  ],
+  "chad": [
+   "td"
+  ],
+  "chequia": [
+   "cz"
+  ],
+  "chile": [
+   "cl"
+  ],
+  "chili": [
+   "cl"
+  ],
+  "china": [
+   "cn"
+  ],
+  "chine": [
+   "cn"
+  ],
+  "chiny": [
+   "cn"
+  ],
+  "chipre": [
+   "cy"
+  ],
+  "chorwacja": [
+   "hr"
+  ],
+  "christmas island": [
+   "cx"
+  ],
+  "christmasoya": [
+   "cx"
+  ],
+  "chypre": [
+   "cy"
+  ],
+  "ci": [
+   "ci"
+  ],
+  "ciudad del vaticano": [
+   "va"
+  ],
+  "ck": [
+   "ck"
+  ],
+  "cl": [
+   "cl"
+  ],
+  "cm": [
+   "cm"
+  ],
+  "cn": [
+   "cn"
+  ],
+  "co": [
+   "co"
+  ],
+  "cocos keeling islands": [
+   "cc"
+  ],
+  "colombia": [
+   "co"
+  ],
+  "colombie": [
+   "co"
+  ],
+  "comoras": [
+   "km"
+  ],
+  "comores": [
+   "km"
+  ],
+  "comoros": [
+   "km"
+  ],
+  "congo": [
+   "cg"
+  ],
+  "congo brazzaville": [
+   "cg"
+  ],
+  "congo kinshasa": [
+   "cd"
+  ],
+  "cook islands": [
+   "ck"
+  ],
+  "cookinseln": [
+   "ck"
+  ],
+  "cookoyene": [
+   "ck"
+  ],
+  "corea del norte": [
+   "kp"
+  ],
+  "corea del sur": [
+   "kr"
+  ],
+  "coree du nord": [
+   "kp"
+  ],
+  "coree du sud": [
+   "kr"
+  ],
+  "costa rica": [
+   "cr"
+  ],
+  "cote d ivoire": [
+   "ci"
+  ],
+  "cr": [
+   "cr"
+  ],
+  "croacia": [
+   "hr"
+  ],
+  "croatia": [
+   "hr"
+  ],
+  "croatie": [
+   "hr"
+  ],
+  "cu": [
+   "cu"
+  ],
+  "cuba": [
+   "cu"
+  ],
+  "curacao": [
+   "cw"
+  ],
+  "curazao": [
+   "cw"
+  ],
+  "cv": [
+   "cv"
+  ],
+  "cw": [
+   "cw"
+  ],
+  "cx": [
+   "cx"
+  ],
+  "cy": [
+   "cy"
+  ],
+  "cypr": [
+   "cy"
+  ],
+  "cyprus": [
+   "cy"
+  ],
+  "cz": [
+   "cz"
+  ],
+  "czad": [
+   "td"
+  ],
+  "czarnogora": [
+   "me"
+  ],
+  "czechia": [
+   "cz"
+  ],
+  "czechy": [
+   "cz"
+  ],
+  "dalekie wyspy mniejsze stanow zjednoczonych": [
+   "um"
+  ],
+  "danemark": [
+   "dk"
+  ],
+  "dania": [
+   "dk"
+  ],
+  "danmark": [
+   "dk"
+  ],
+  "de": [
+   "de"
+  ],
+  "de amerikanske jomfruoyene": [
+   "vi"
+  ],
+  "de britiske jomfruoyene": [
+   "vg"
+  ],
+  "de forente arabiske emirater": [
+   "ae"
+  ],
+  "de franske sorterritorier": [
+   "tf"
+  ],
+  "democratic republic of congo": [
+   "cd"
+  ],
+  "democratic republic of the congo": [
+   "cd"
+  ],
+  "demokratyczna republika konga": [
+   "cd"
+  ],
+  "den dominikanske republikk": [
+   "do"
+  ],
+  "den sentralafrikanske republikk": [
+   "cf"
+  ],
+  "denmark": [
+   "dk"
+  ],
+  "det britiske territoriet i indiahavet": [
+   "io"
+  ],
+  "det palestinske omradet": [
+   "ps"
+  ],
+  "deutschland": [
+   "de"
+  ],
+  "dinamarca": [
+   "dk"
+  ],
+  "dj": [
+   "dj"
+  ],
+  "djibouti": [
+   "dj"
+  ],
+  "dk": [
+   "dk"
+  ],
+  "dm": [
+   "dm"
+  ],
+  "do": [
+   "do"
+  ],
+  "dominica": [
+   "dm"
+  ],
+  "dominican republic": [
+   "do"
+  ],
+  "dominika": [
+   "dm"
+  ],
+  "dominikana": [
+   "do"
+  ],
+  "dominikanische republik": [
+   "do"
+  ],
+  "dominique": [
+   "dm"
+  ],
+  "dschibuti": [
+   "dj"
+  ],
+  "dz": [
+   "dz"
+  ],
+  "dzibuti": [
+   "dj"
+  ],
+  "ec": [
+   "ec"
+  ],
+  "ecuador": [
+   "ec"
+  ],
+  "ee": [
+   "ee"
+  ],
+  "eg": [
+   "eg"
+  ],
+  "egipt": [
+   "eg"
+  ],
+  "egipto": [
+   "eg"
+  ],
+  "egypt": [
+   "eg"
+  ],
+  "egypte": [
+   "eg"
+  ],
+  "eh": [
+   "eh"
+  ],
+  "ekvatorial guinea": [
+   "gq"
+  ],
+  "ekwador": [
+   "ec"
+  ],
+  "el salvador": [
+   "sv"
+  ],
+  "elfenbenskysten": [
+   "ci"
+  ],
+  "emiratos arabes unidos": [
+   "ae"
+  ],
+  "emirats arabes unis": [
+   "ae"
+  ],
+  "equateur": [
+   "ec"
+  ],
+  "equatorial guinea": [
+   "gq"
+  ],
+  "er": [
+   "er"
+  ],
+  "eritrea": [
+   "er"
+  ],
+  "erythree": [
+   "er"
+  ],
+  "erytrea": [
+   "er"
+  ],
+  "es": [
+   "es"
+  ],
+  "eslovaquia": [
+   "sk"
+  ],
+  "eslovenia": [
+   "si"
+  ],
+  "espagne": [
+   "es"
+  ],
+  "espana": [
+   "es"
+  ],
+  "estados unidos": [
+   "us"
+  ],
+  "estland": [
+   "ee"
+  ],
+  "estonia": [
+   "ee"
+  ],
+  "estonie": [
+   "ee"
+  ],
+  "esuatini": [
+   "sz"
+  ],
+  "eswatini": [
+   "sz"
+  ],
+  "et": [
+   "et"
+  ],
+  "etat de la cite du vatican": [
+   "va"
+  ],
+  "etats unis": [
+   "us"
+  ],
+  "ethiopia": [
+   "et"
+  ],
+  "ethiopie": [
+   "et"
+  ],
+  "etiopia": [
+   "et"
+  ],
+  "faeroyene": [
+   "fo"
+  ],
+  "falkland islands": [
+   "fk"
+  ],
+  "falklandinseln": [
+   "fk"
+  ],
+  "falklandsoyene": [
+   "fk"
+  ],
+  "falklandy": [
+   "fk"
+  ],
+  "faroe islands": [
+   "fo"
+  ],
+  "faroer": [
+   "fo"
+  ],
+  "fi": [
+   "fi"
+  ],
+  "fidji": [
+   "fj"
+  ],
+  "fidschi": [
+   "fj"
+  ],
+  "fidzi": [
+   "fj"
+  ],
+  "fiji": [
+   "fj"
+  ],
+  "filipinas": [
+   "ph"
+  ],
+  "filipiny": [
+   "ph"
+  ],
+  "filippinene": [
+   "ph"
+  ],
+  "finland": [
+   "fi"
+  ],
+  "finlande": [
+   "fi"
+  ],
+  "finlandia": [
+   "fi"
+  ],
+  "finnland": [
+   "fi"
+  ],
+  "fiyi": [
+   "fj"
+  ],
+  "fj": [
+   "fj"
+  ],
+  "fk": [
+   "fk"
+  ],
+  "fm": [
+   "fm"
+  ],
+  "fo": [
+   "fo"
+  ],
+  "fr": [
+   "fr"
+  ],
+  "france": [
+   "fr"
+  ],
+  "francia": [
+   "fr"
+  ],
+  "francja": [
+   "fr"
+  ],
+  "francuskie terytoria poludniowe i antarktyczne": [
+   "tf"
+  ],
+  "frankreich": [
+   "fr"
+  ],
+  "frankrike": [
+   "fr"
+  ],
+  "fransk guyana": [
+   "gf"
+  ],
+  "fransk polynesia": [
+   "pf"
+  ],
+  "franzosisch guayana": [
+   "gf"
+  ],
+  "franzosisch polynesien": [
+   "pf"
+  ],
+  "franzosische sud und antarktisgebiete": [
+   "tf"
+  ],
+  "french guiana": [
+   "gf"
+  ],
+  "french polynesia": [
+   "pf"
+  ],
+  "french southern territories": [
+   "tf"
+  ],
+  "ga": [
+   "ga"
+  ],
+  "gabon": [
+   "ga"
+  ],
+  "gabun": [
+   "ga"
+  ],
+  "gambia": [
+   "gm"
+  ],
+  "gambie": [
+   "gm"
+  ],
+  "gb": [
+   "gb"
+  ],
+  "gd": [
+   "gd"
+  ],
+  "ge": [
+   "ge"
+  ],
+  "georgia": [
+   "ge"
+  ],
+  "georgia poludniowa i sandwich poludniowy": [
+   "gs"
+  ],
+  "georgie": [
+   "ge"
+  ],
+  "georgie du sud et les iles sandwich du sud": [
+   "gs"
+  ],
+  "georgien": [
+   "ge"
+  ],
+  "germany": [
+   "de"
+  ],
+  "gf": [
+   "gf"
+  ],
+  "gg": [
+   "gg"
+  ],
+  "gh": [
+   "gh"
+  ],
+  "ghana": [
+   "gh"
+  ],
+  "gi": [
+   "gi"
+  ],
+  "gibraltar": [
+   "gi"
+  ],
+  "gl": [
+   "gl"
+  ],
+  "gm": [
+   "gm"
+  ],
+  "gn": [
+   "gn"
+  ],
+  "gp": [
+   "gp"
+  ],
+  "gq": [
+   "gq"
+  ],
+  "gr": [
+   "gr"
+  ],
+  "granada": [
+   "gd"
+  ],
+  "great britain": [
+   "gb"
+  ],
+  "grece": [
+   "gr"
+  ],
+  "grecia": [
+   "gr"
+  ],
+  "grecja": [
+   "gr"
+  ],
+  "greece": [
+   "gr"
+  ],
+  "greenland": [
+   "gl"
+  ],
+  "grenada": [
+   "gd"
+  ],
+  "grenade": [
+   "gd"
+  ],
+  "grenlandia": [
+   "gl"
+  ],
+  "griechenland": [
+   "gr"
+  ],
+  "groenland": [
+   "gl"
+  ],
+  "groenlandia": [
+   "gl"
+  ],
+  "gronland": [
+   "gl"
+  ],
+  "gruzja": [
+   "ge"
+  ],
+  "gs": [
+   "gs"
+  ],
+  "gt": [
+   "gt"
+  ],
+  "gu": [
+   "gu"
+  ],
+  "guadalupe": [
+   "gp"
+  ],
+  "guadeloupe": [
+   "gp"
+  ],
+  "guam": [
+   "gu"
+  ],
+  "guatemala": [
+   "gt"
+  ],
+  "guayana francesa": [
+   "gf"
+  ],
+  "guernesey": [
+   "gg"
+  ],
+  "guernsey": [
+   "gg"
+  ],
+  "guinea": [
+   "gn"
+  ],
+  "guinea bisau": [
+   "gw"
+  ],
+  "guinea bissau": [
+   "gw"
+  ],
+  "guinea ecuatorial": [
+   "gq"
+  ],
+  "guinee": [
+   "gn"
+  ],
+  "guinee bissau": [
+   "gw"
+  ],
+  "guinee equatoriale": [
+   "gq"
+  ],
+  "gujana": [
+   "gy"
+  ],
+  "gujana francuska": [
+   "gf"
+  ],
+  "guyana": [
+   "gy"
+  ],
+  "guyane francaise": [
+   "gf"
+  ],
+  "gw": [
+   "gw"
+  ],
+  "gwadelupa": [
+   "gp"
+  ],
+  "gwatemala": [
+   "gt"
+  ],
+  "gwinea": [
+   "gn"
+  ],
+  "gwinea bissau": [
+   "gw"
+  ],
+  "gwinea rownikowa": [
+   "gq"
+  ],
+  "gy": [
+   "gy"
+  ],
+  "haiti": [
+   "ht"
+  ],
+  "heard mcdonald islands": [
+   "hm"
+  ],
+  "heard og mcdonaldoyene": [
+   "hm"
+  ],
+  "heard und mcdonaldinseln": [
+   "hm"
+  ],
+  "hellas": [
+   "gr"
+  ],
+  "hiszpania": [
+   "es"
+  ],
+  "hk": [
+   "hk"
+  ],
+  "hm": [
+   "hm"
+  ],
+  "hn": [
+   "hn"
+  ],
+  "holandia": [
+   "nl"
+  ],
+  "honduras": [
+   "hn"
+  ],
+  "hong kong sar china": [
+   "hk"
+  ],
+  "hongkong sar kina": [
+   "hk"
+  ],
+  "hongrie": [
+   "hu"
+  ],
+  "hr": [
+   "hr"
+  ],
+  "ht": [
+   "ht"
+  ],
+  "hu": [
+   "hu"
+  ],
+  "hungary": [
+   "hu"
+  ],
+  "hungria": [
+   "hu"
+  ],
+  "iceland": [
+   "is"
+  ],
+  "id": [
+   "id"
+  ],
+  "ie": [
+   "ie"
+  ],
+  "il": [
+   "il"
+  ],
+  "ile bouvet": [
+   "bv"
+  ],
+  "ile christmas": [
+   "cx"
+  ],
+  "ile de man": [
+   "im"
+  ],
+  "ile norfolk": [
+   "nf"
+  ],
+  "iles aland": [
+   "ax"
+  ],
+  "iles caimans": [
+   "ky"
+  ],
+  "iles cocos": [
+   "cc"
+  ],
+  "iles cook": [
+   "ck"
+  ],
+  "iles feroe": [
+   "fo"
+  ],
+  "iles heard et macdonald": [
+   "hm"
+  ],
+  "iles malouines": [
+   "fk"
+  ],
+  "iles mariannes du nord": [
+   "mp"
+  ],
+  "iles marshall": [
+   "mh"
+  ],
+  "iles mineures eloignees des etats unis": [
+   "um"
+  ],
+  "iles pitcairn": [
+   "pn"
+  ],
+  "iles salomon": [
+   "sb"
+  ],
+  "iles turques et caiques": [
+   "tc"
+  ],
+  "iles vierges britanniques": [
+   "vg"
+  ],
+  "iles vierges des etats unis": [
+   "vi"
+  ],
+  "im": [
+   "im"
+  ],
+  "in": [
+   "in"
+  ],
+  "inde": [
+   "in"
+  ],
+  "india": [
+   "in"
+  ],
+  "indie": [
+   "in"
+  ],
+  "indien": [
+   "in"
+  ],
+  "indonesia": [
+   "id"
+  ],
+  "indonesie": [
+   "id"
+  ],
+  "indonesien": [
+   "id"
+  ],
+  "indonezja": [
+   "id"
+  ],
+  "io": [
+   "io"
+  ],
+  "iq": [
+   "iq"
+  ],
+  "ir": [
+   "ir"
+  ],
+  "irak": [
+   "iq"
+  ],
+  "iran": [
+   "ir"
+  ],
+  "iraq": [
+   "iq"
+  ],
+  "ireland": [
+   "ie"
+  ],
+  "irland": [
+   "ie"
+  ],
+  "irlanda": [
+   "ie"
+  ],
+  "irlande": [
+   "ie"
+  ],
+  "irlandia": [
+   "ie"
+  ],
+  "is": [
+   "is"
+  ],
+  "isla bouvet": [
+   "bv"
+  ],
+  "isla de man": [
+   "im"
+  ],
+  "isla de navidad": [
+   "cx"
+  ],
+  "isla norfolk": [
+   "nf"
+  ],
+  "island": [
+   "is"
+  ],
+  "islande": [
+   "is"
+  ],
+  "islandia": [
+   "is"
+  ],
+  "islas aland": [
+   "ax"
+  ],
+  "islas caiman": [
+   "ky"
+  ],
+  "islas cocos": [
+   "cc"
+  ],
+  "islas cook": [
+   "ck"
+  ],
+  "islas feroe": [
+   "fo"
+  ],
+  "islas georgia del sur y sandwich del sur": [
+   "gs"
+  ],
+  "islas heard y mcdonald": [
+   "hm"
+  ],
+  "islas malvinas": [
+   "fk"
+  ],
+  "islas marianas del norte": [
+   "mp"
+  ],
+  "islas marshall": [
+   "mh"
+  ],
+  "islas menores alejadas de ee uu": [
+   "um"
+  ],
+  "islas pitcairn": [
+   "pn"
+  ],
+  "islas salomon": [
+   "sb"
+  ],
+  "islas turcas y caicos": [
+   "tc"
+  ],
+  "islas virgenes britanicas": [
+   "vg"
+  ],
+  "islas virgenes de ee uu": [
+   "vi"
+  ],
+  "isle of man": [
+   "im"
+  ],
+  "israel": [
+   "il"
+  ],
+  "it": [
+   "it"
+  ],
+  "italia": [
+   "it"
+  ],
+  "italie": [
+   "it"
+  ],
+  "italien": [
+   "it"
+  ],
+  "italy": [
+   "it"
+  ],
+  "izrael": [
+   "il"
+  ],
+  "jamaica": [
+   "jm"
+  ],
+  "jamaika": [
+   "jm"
+  ],
+  "jamaique": [
+   "jm"
+  ],
+  "jamajka": [
+   "jm"
+  ],
+  "japan": [
+   "jp"
+  ],
+  "japon": [
+   "jp"
+  ],
+  "japonia": [
+   "jp"
+  ],
+  "je": [
+   "je"
+  ],
+  "jemen": [
+   "ye"
+  ],
+  "jersey": [
+   "je"
+  ],
+  "jm": [
+   "jm"
+  ],
+  "jo": [
+   "jo"
+  ],
+  "jordan": [
+   "jo"
+  ],
+  "jordania": [
+   "jo"
+  ],
+  "jordanie": [
+   "jo"
+  ],
+  "jordanien": [
+   "jo"
+  ],
+  "jp": [
+   "jp"
+  ],
+  "kaimaninseln": [
+   "ky"
+  ],
+  "kajmany": [
+   "ky"
+  ],
+  "kambodscha": [
+   "kh"
+  ],
+  "kambodsja": [
+   "kh"
+  ],
+  "kambodza": [
+   "kh"
+  ],
+  "kamerun": [
+   "cm"
+  ],
+  "kanada": [
+   "ca"
+  ],
+  "kapp verde": [
+   "cv"
+  ],
+  "karibische niederlande": [
+   "bq"
+  ],
+  "karibisk nederland": [
+   "bq"
+  ],
+  "kasachstan": [
+   "kz"
+  ],
+  "kasakhstan": [
+   "kz"
+  ],
+  "katar": [
+   "qa"
+  ],
+  "kazachstan": [
+   "kz"
+  ],
+  "kazajistan": [
+   "kz"
+  ],
+  "kazakhstan": [
+   "kz"
+  ],
+  "ke": [
+   "ke"
+  ],
+  "kenia": [
+   "ke"
+  ],
+  "kenya": [
+   "ke"
+  ],
+  "kg": [
+   "kg"
+  ],
+  "kh": [
+   "kh"
+  ],
+  "ki": [
+   "ki"
+  ],
+  "kina": [
+   "cn"
+  ],
+  "kirghizstan": [
+   "kg"
+  ],
+  "kirgisistan": [
+   "kg"
+  ],
+  "kirgistan": [
+   "kg"
+  ],
+  "kirguistan": [
+   "kg"
+  ],
+  "kiribati": [
+   "ki"
+  ],
+  "km": [
+   "km"
+  ],
+  "kn": [
+   "kn"
+  ],
+  "kokosinseln": [
+   "cc"
+  ],
+  "kokosoyene": [
+   "cc"
+  ],
+  "kolumbia": [
+   "co"
+  ],
+  "kolumbien": [
+   "co"
+  ],
+  "komoren": [
+   "km"
+  ],
+  "komorene": [
+   "km"
+  ],
+  "komory": [
+   "km"
+  ],
+  "kongo": [
+   "cd",
+   "cg"
+  ],
+  "kongo brazzaville": [
+   "cg"
+  ],
+  "kongo kinshasa": [
+   "cd"
+  ],
+  "korea polnocna": [
+   "kp"
+  ],
+  "korea poludniowa": [
+   "kr"
+  ],
+  "kostaryka": [
+   "cr"
+  ],
+  "koweit": [
+   "kw"
+  ],
+  "kp": [
+   "kp"
+  ],
+  "kr": [
+   "kr"
+  ],
+  "kroatia": [
+   "hr"
+  ],
+  "kroatien": [
+   "hr"
+  ],
+  "kuba": [
+   "cu"
+  ],
+  "kuwait": [
+   "kw"
+  ],
+  "kuwejt": [
+   "kw"
+  ],
+  "kw": [
+   "kw"
+  ],
+  "ky": [
+   "ky"
+  ],
+  "kypros": [
+   "cy"
+  ],
+  "kyrgyzstan": [
+   "kg"
+  ],
+  "kz": [
+   "kz"
+  ],
+  "la": [
+   "la"
+  ],
+  "la reunion": [
+   "re"
+  ],
+  "laos": [
+   "la"
+  ],
+  "latvia": [
+   "lv"
+  ],
+  "lb": [
+   "lb"
+  ],
+  "lc": [
+   "lc"
+  ],
+  "lebanon": [
+   "lb"
+  ],
+  "lesotho": [
+   "ls"
+  ],
+  "lesoto": [
+   "ls"
+  ],
+  "letonia": [
+   "lv"
+  ],
+  "lettland": [
+   "lv"
+  ],
+  "lettonie": [
+   "lv"
+  ],
+  "li": [
+   "li"
+  ],
+  "liban": [
+   "lb"
+  ],
+  "libano": [
+   "lb"
+  ],
+  "libanon": [
+   "lb"
+  ],
+  "liberia": [
+   "lr"
+  ],
+  "libia": [
+   "ly"
+  ],
+  "libya": [
+   "ly"
+  ],
+  "libye": [
+   "ly"
+  ],
+  "libyen": [
+   "ly"
+  ],
+  "liechtenstein": [
+   "li"
+  ],
+  "litauen": [
+   "lt"
+  ],
+  "lithuania": [
+   "lt"
+  ],
+  "lituania": [
+   "lt"
+  ],
+  "lituanie": [
+   "lt"
+  ],
+  "litwa": [
+   "lt"
+  ],
+  "lk": [
+   "lk"
+  ],
+  "lotwa": [
+   "lv"
+  ],
+  "lr": [
+   "lr"
+  ],
+  "ls": [
+   "ls"
+  ],
+  "lt": [
+   "lt"
+  ],
+  "lu": [
+   "lu"
+  ],
+  "luksemburg": [
+   "lu"
+  ],
+  "luxembourg": [
+   "lu"
+  ],
+  "luxemburg": [
+   "lu"
+  ],
+  "luxemburgo": [
+   "lu"
+  ],
+  "lv": [
+   "lv"
+  ],
+  "ly": [
+   "ly"
+  ],
+  "ma": [
+   "ma"
+  ],
+  "macao sar china": [
+   "mo"
+  ],
+  "macao sar kina": [
+   "mo"
+  ],
+  "macedoine du nord": [
+   "mk"
+  ],
+  "macedonia del norte": [
+   "mk"
+  ],
+  "macedonia polnocna": [
+   "mk"
+  ],
+  "madagascar": [
+   "mg"
+  ],
+  "madagaskar": [
+   "mg"
+  ],
+  "majotta": [
+   "yt"
+  ],
+  "malaisie": [
+   "my"
+  ],
+  "malasia": [
+   "my"
+  ],
+  "malaui": [
+   "mw"
+  ],
+  "malawi": [
+   "mw"
+  ],
+  "malaysia": [
+   "my"
+  ],
+  "maldivas": [
+   "mv"
+  ],
+  "maldivene": [
+   "mv"
+  ],
+  "maldives": [
+   "mv"
+  ],
+  "malediven": [
+   "mv"
+  ],
+  "malediwy": [
+   "mv"
+  ],
+  "malezja": [
+   "my"
+  ],
+  "mali": [
+   "ml"
+  ],
+  "malta": [
+   "mt"
+  ],
+  "malte": [
+   "mt"
+  ],
+  "man": [
+   "im"
+  ],
+  "mariany polnocne": [
+   "mp"
+  ],
+  "maroc": [
+   "ma"
+  ],
+  "marokko": [
+   "ma"
+  ],
+  "maroko": [
+   "ma"
+  ],
+  "marruecos": [
+   "ma"
+  ],
+  "marshall islands": [
+   "mh"
+  ],
+  "marshallinseln": [
+   "mh"
+  ],
+  "marshalloyene": [
+   "mh"
+  ],
+  "martinica": [
+   "mq"
+  ],
+  "martinique": [
+   "mq"
+  ],
+  "martynika": [
+   "mq"
+  ],
+  "mauretania": [
+   "mr"
+  ],
+  "mauretanien": [
+   "mr"
+  ],
+  "maurice": [
+   "mu"
+  ],
+  "mauricio": [
+   "mu"
+  ],
+  "mauritania": [
+   "mr"
+  ],
+  "mauritanie": [
+   "mr"
+  ],
+  "mauritius": [
+   "mu"
+  ],
+  "mayotte": [
+   "yt"
+  ],
+  "mc": [
+   "mc"
+  ],
+  "md": [
+   "md"
+  ],
+  "me": [
+   "me"
+  ],
+  "meksyk": [
+   "mx"
+  ],
+  "mexico": [
+   "mx"
+  ],
+  "mexiko": [
+   "mx"
+  ],
+  "mexique": [
+   "mx"
+  ],
+  "mf": [
+   "mf"
+  ],
+  "mg": [
+   "mg"
+  ],
+  "mh": [
+   "mh"
+  ],
+  "micronesia": [
+   "fm"
+  ],
+  "micronesie": [
+   "fm"
+  ],
+  "mikronesiafoderasjonen": [
+   "fm"
+  ],
+  "mikronesien": [
+   "fm"
+  ],
+  "mikronezja": [
+   "fm"
+  ],
+  "mjanma birma": [
+   "mm"
+  ],
+  "mk": [
+   "mk"
+  ],
+  "ml": [
+   "ml"
+  ],
+  "mm": [
+   "mm"
+  ],
+  "mn": [
+   "mn"
+  ],
+  "mo": [
+   "mo"
+  ],
+  "moldavia": [
+   "md"
+  ],
+  "moldavie": [
+   "md"
+  ],
+  "moldawia": [
+   "md"
+  ],
+  "moldova": [
+   "md"
+  ],
+  "monaco": [
+   "mc"
+  ],
+  "monako": [
+   "mc"
+  ],
+  "mongolei": [
+   "mn"
+  ],
+  "mongolia": [
+   "mn"
+  ],
+  "mongolie": [
+   "mn"
+  ],
+  "montenegro": [
+   "me"
+  ],
+  "montserrat": [
+   "ms"
+  ],
+  "morocco": [
+   "ma"
+  ],
+  "mosambik": [
+   "mz"
+  ],
+  "mozambik": [
+   "mz"
+  ],
+  "mozambique": [
+   "mz"
+  ],
+  "mp": [
+   "mp"
+  ],
+  "mq": [
+   "mq"
+  ],
+  "mr": [
+   "mr"
+  ],
+  "ms": [
+   "ms"
+  ],
+  "mt": [
+   "mt"
+  ],
+  "mu": [
+   "mu"
+  ],
+  "mv": [
+   "mv"
+  ],
+  "mw": [
+   "mw"
+  ],
+  "mx": [
+   "mx"
+  ],
+  "my": [
+   "my"
+  ],
+  "myanmar": [
+   "mm"
+  ],
+  "myanmar birmania": [
+   "mm"
+  ],
+  "myanmar birmanie": [
+   "mm"
+  ],
+  "myanmar burma": [
+   "mm"
+  ],
+  "mz": [
+   "mz"
+  ],
+  "na": [
+   "na"
+  ],
+  "namibia": [
+   "na"
+  ],
+  "namibie": [
+   "na"
+  ],
+  "nauru": [
+   "nr"
+  ],
+  "nc": [
+   "nc"
+  ],
+  "ne": [
+   "ne"
+  ],
+  "nederland": [
+   "nl"
+  ],
+  "nepal": [
+   "np"
+  ],
+  "netherlands": [
+   "nl"
+  ],
+  "neukaledonien": [
+   "nc"
+  ],
+  "neuseeland": [
+   "nz"
+  ],
+  "new caledonia": [
+   "nc"
+  ],
+  "new zealand": [
+   "nz"
+  ],
+  "nf": [
+   "nf"
+  ],
+  "ng": [
+   "ng"
+  ],
+  "ni": [
+   "ni"
+  ],
+  "nicaragua": [
+   "ni"
+  ],
+  "niderlandy karaibskie": [
+   "bq"
+  ],
+  "niederlande": [
+   "nl"
+  ],
+  "niemcy": [
+   "de"
+  ],
+  "niger": [
+   "ne"
+  ],
+  "nigeria": [
+   "ng"
+  ],
+  "nikaragua": [
+   "ni"
+  ],
+  "niue": [
+   "nu"
+  ],
+  "nl": [
+   "nl"
+  ],
+  "no": [
+   "no"
+  ],
+  "nord korea": [
+   "kp"
+  ],
+  "nord makedonia": [
+   "mk"
+  ],
+  "nord marianene": [
+   "mp"
+  ],
+  "nordkorea": [
+   "kp"
+  ],
+  "nordliche marianen": [
+   "mp"
+  ],
+  "nordmazedonien": [
+   "mk"
+  ],
+  "norfolk": [
+   "nf"
+  ],
+  "norfolk island": [
+   "nf"
+  ],
+  "norfolkinsel": [
+   "nf"
+  ],
+  "norfolkoya": [
+   "nf"
+  ],
+  "norge": [
+   "no"
+  ],
+  "north korea": [
+   "kp"
+  ],
+  "north macedonia": [
+   "mk"
+  ],
+  "northern mariana islands": [
+   "mp"
+  ],
+  "noruega": [
+   "no"
+  ],
+  "norvege": [
+   "no"
+  ],
+  "norway": [
+   "no"
+  ],
+  "norwegen": [
+   "no"
+  ],
+  "norwegia": [
+   "no"
+  ],
+  "nouvelle caledonie": [
+   "nc"
+  ],
+  "nouvelle zelande": [
+   "nz"
+  ],
+  "nowa kaledonia": [
+   "nc"
+  ],
+  "nowa zelandia": [
+   "nz"
+  ],
+  "np": [
+   "np"
+  ],
+  "nr": [
+   "nr"
+  ],
+  "nu": [
+   "nu"
+  ],
+  "nueva caledonia": [
+   "nc"
+  ],
+  "nueva zelanda": [
+   "nz"
+  ],
+  "ny caledonia": [
+   "nc"
+  ],
+  "nz": [
+   "nz"
+  ],
+  "om": [
+   "om"
+  ],
+  "oman": [
+   "om"
+  ],
+  "ost timor": [
+   "tl"
+  ],
+  "osterreich": [
+   "at"
+  ],
+  "osterrike": [
+   "at"
+  ],
+  "ouganda": [
+   "ug"
+  ],
+  "ouzbekistan": [
+   "uz"
+  ],
+  "pa": [
+   "pa"
+  ],
+  "paises bajos": [
+   "nl"
+  ],
+  "pakistan": [
+   "pk"
+  ],
+  "palaos": [
+   "pw"
+  ],
+  "palastinensische autonomiegebiete": [
+   "ps"
+  ],
+  "palau": [
+   "pw"
+  ],
+  "palestinian territories": [
+   "ps"
+  ],
+  "panama": [
+   "pa"
+  ],
+  "papouasie nouvelle guinee": [
+   "pg"
+  ],
+  "papua neuguinea": [
+   "pg"
+  ],
+  "papua new guinea": [
+   "pg"
+  ],
+  "papua nowa gwinea": [
+   "pg"
+  ],
+  "papua nueva guinea": [
+   "pg"
+  ],
+  "papua ny guinea": [
+   "pg"
+  ],
+  "paraguay": [
+   "py"
+  ],
+  "paragwaj": [
+   "py"
+  ],
+  "pays bas": [
+   "nl"
+  ],
+  "pays bas caribeens": [
+   "bq"
+  ],
+  "pe": [
+   "pe"
+  ],
+  "perou": [
+   "pe"
+  ],
+  "peru": [
+   "pe"
+  ],
+  "pf": [
+   "pf"
+  ],
+  "pg": [
+   "pg"
+  ],
+  "ph": [
+   "ph"
+  ],
+  "philippinen": [
+   "ph"
+  ],
+  "philippines": [
+   "ph"
+  ],
+  "pitcairn": [
+   "pn"
+  ],
+  "pitcairn islands": [
+   "pn"
+  ],
+  "pitcairninseln": [
+   "pn"
+  ],
+  "pitcairnoyene": [
+   "pn"
+  ],
+  "pk": [
+   "pk"
+  ],
+  "pl": [
+   "pl"
+  ],
+  "pm": [
+   "pm"
+  ],
+  "pn": [
+   "pn"
+  ],
+  "poland": [
+   "pl"
+  ],
+  "polen": [
+   "pl"
+  ],
+  "polinesia francesa": [
+   "pf"
+  ],
+  "polinezja francuska": [
+   "pf"
+  ],
+  "pologne": [
+   "pl"
+  ],
+  "polonia": [
+   "pl"
+  ],
+  "polska": [
+   "pl"
+  ],
+  "polynesie francaise": [
+   "pf"
+  ],
+  "porto rico": [
+   "pr"
+  ],
+  "portoryko": [
+   "pr"
+  ],
+  "portugal": [
+   "pt"
+  ],
+  "portugalia": [
+   "pt"
+  ],
+  "pr": [
+   "pr"
+  ],
+  "ps": [
+   "ps"
+  ],
+  "pt": [
+   "pt"
+  ],
+  "puerto rico": [
+   "pr"
+  ],
+  "pw": [
+   "pw"
+  ],
+  "py": [
+   "py"
+  ],
+  "qa": [
+   "qa"
+  ],
+  "qatar": [
+   "qa"
+  ],
+  "r a s chinoise de hong kong": [
+   "hk"
+  ],
+  "r a s chinoise de macao": [
+   "mo"
+  ],
+  "rae de hong kong china": [
+   "hk"
+  ],
+  "rae de macao china": [
+   "mo"
+  ],
+  "re": [
+   "re"
+  ],
+  "reino unido": [
+   "gb"
+  ],
+  "republica centroafricana": [
+   "cf"
+  ],
+  "republica democratica del congo": [
+   "cd"
+  ],
+  "republica dominicana": [
+   "do"
+  ],
+  "republik moldau": [
+   "md"
+  ],
+  "republika poludniowej afryki": [
+   "za"
+  ],
+  "republika srodkowoafrykanska": [
+   "cf"
+  ],
+  "republika zielonego przyladka": [
+   "cv"
+  ],
+  "republique centrafricaine": [
+   "cf"
+  ],
+  "republique dominicaine": [
+   "do"
+  ],
+  "reunion": [
+   "re"
+  ],
+  "ro": [
+   "ro"
+  ],
+  "romania": [
+   "ro"
+  ],
+  "rosja": [
+   "ru"
+  ],
+  "roumanie": [
+   "ro"
+  ],
+  "royaume uni": [
+   "gb"
+  ],
+  "rs": [
+   "rs"
+  ],
+  "ru": [
+   "ru"
+  ],
+  "ruanda": [
+   "rw"
+  ],
+  "rumania": [
+   "ro"
+  ],
+  "rumanien": [
+   "ro"
+  ],
+  "rumunia": [
+   "ro"
+  ],
+  "rusia": [
+   "ru"
+  ],
+  "russia": [
+   "ru"
+  ],
+  "russie": [
+   "ru"
+  ],
+  "russland": [
+   "ru"
+  ],
+  "rw": [
+   "rw"
+  ],
+  "rwanda": [
+   "rw"
+  ],
+  "sa": [
+   "sa"
+  ],
+  "sahara occidental": [
+   "eh"
+  ],
+  "sahara zachodnia": [
+   "eh"
+  ],
+  "saint barthelemy": [
+   "bl"
+  ],
+  "saint christophe et nieves": [
+   "kn"
+  ],
+  "saint kitts i nevis": [
+   "kn"
+  ],
+  "saint kitts og nevis": [
+   "kn"
+  ],
+  "saint lucia": [
+   "lc"
+  ],
+  "saint marin": [
+   "sm"
+  ],
+  "saint martin": [
+   "mf"
+  ],
+  "saint martin partie neerlandaise": [
+   "sx"
+  ],
+  "saint pierre et miquelon": [
+   "pm"
+  ],
+  "saint pierre i miquelon": [
+   "pm"
+  ],
+  "saint vincent et les grenadines": [
+   "vc"
+  ],
+  "saint vincent i grenadyny": [
+   "vc"
+  ],
+  "sainte helene": [
+   "sh"
+  ],
+  "sainte lucie": [
+   "lc"
+  ],
+  "salomonen": [
+   "sb"
+  ],
+  "salomonoyene": [
+   "sb"
+  ],
+  "salvador": [
+   "sv"
+  ],
+  "salwador": [
+   "sv"
+  ],
+  "sambia": [
+   "zm"
+  ],
+  "samoa": [
+   "ws"
+  ],
+  "samoa americaines": [
+   "as"
+  ],
+  "samoa americana": [
+   "as"
+  ],
+  "samoa amerykanskie": [
+   "as"
+  ],
+  "san bartolome": [
+   "bl"
+  ],
+  "san cristobal y nieves": [
+   "kn"
+  ],
+  "san marino": [
+   "sm"
+  ],
+  "san martin": [
+   "mf"
+  ],
+  "san pedro y miquelon": [
+   "pm"
+  ],
+  "san vicente y las granadinas": [
+   "vc"
+  ],
+  "santa elena": [
+   "sh"
+  ],
+  "santa lucia": [
+   "lc"
+  ],
+  "santo tome y principe": [
+   "st"
+  ],
+  "sao tome et principe": [
+   "st"
+  ],
+  "sao tome og principe": [
+   "st"
+  ],
+  "sao tome principe": [
+   "st"
+  ],
+  "sao tome und principe": [
+   "st"
+  ],
+  "saudi arabia": [
+   "sa"
+  ],
+  "saudi arabien": [
+   "sa"
+  ],
+  "sb": [
+   "sb"
+  ],
+  "sc": [
+   "sc"
+  ],
+  "schweden": [
+   "se"
+  ],
+  "schweiz": [
+   "ch"
+  ],
+  "sd": [
+   "sd"
+  ],
+  "se": [
+   "se"
+  ],
+  "senegal": [
+   "sn"
+  ],
+  "serbia": [
+   "rs"
+  ],
+  "serbie": [
+   "rs"
+  ],
+  "serbien": [
+   "rs"
+  ],
+  "seszele": [
+   "sc"
+  ],
+  "seychellen": [
+   "sc"
+  ],
+  "seychellene": [
+   "sc"
+  ],
+  "seychelles": [
+   "sc"
+  ],
+  "sg": [
+   "sg"
+  ],
+  "sh": [
+   "sh"
+  ],
+  "si": [
+   "si"
+  ],
+  "sierra leona": [
+   "sl"
+  ],
+  "sierra leone": [
+   "sl"
+  ],
+  "simbabwe": [
+   "zw"
+  ],
+  "singapore": [
+   "sg"
+  ],
+  "singapour": [
+   "sg"
+  ],
+  "singapur": [
+   "sg"
+  ],
+  "sint maarten": [
+   "sx"
+  ],
+  "siria": [
+   "sy"
+  ],
+  "sj": [
+   "sj"
+  ],
+  "sk": [
+   "sk"
+  ],
+  "sl": [
+   "sl"
+  ],
+  "slovakia": [
+   "sk"
+  ],
+  "slovaquie": [
+   "sk"
+  ],
+  "slovenia": [
+   "si"
+  ],
+  "slovenie": [
+   "si"
+  ],
+  "slowacja": [
+   "sk"
+  ],
+  "slowakei": [
+   "sk"
+  ],
+  "slowenia": [
+   "si"
+  ],
+  "slowenien": [
+   "si"
+  ],
+  "sm": [
+   "sm"
+  ],
+  "sn": [
+   "sn"
+  ],
+  "so": [
+   "so"
+  ],
+  "solomon islands": [
+   "sb"
+  ],
+  "somalia": [
+   "so"
+  ],
+  "somalie": [
+   "so"
+  ],
+  "sonderverwaltungsregion hongkong": [
+   "hk"
+  ],
+  "sonderverwaltungsregion macau": [
+   "mo"
+  ],
+  "sor afrika": [
+   "za"
+  ],
+  "sor georgia og sor sandwichoyene": [
+   "gs"
+  ],
+  "sor korea": [
+   "kr"
+  ],
+  "sor sudan": [
+   "ss"
+  ],
+  "soudan": [
+   "sd"
+  ],
+  "soudan du sud": [
+   "ss"
+  ],
+  "south africa": [
+   "za"
+  ],
+  "south georgia south sandwich islands": [
+   "gs"
+  ],
+  "south korea": [
+   "kr"
+  ],
+  "south sudan": [
+   "ss"
+  ],
+  "spain": [
+   "es"
+  ],
+  "spania": [
+   "es"
+  ],
+  "spanien": [
+   "es"
+  ],
+  "spitzbergen und jan mayen": [
+   "sj"
+  ],
+  "sr": [
+   "sr"
+  ],
+  "sra hongkong chiny": [
+   "hk"
+  ],
+  "sra makau chiny": [
+   "mo"
+  ],
+  "sri lanka": [
+   "lk"
+  ],
+  "ss": [
+   "ss"
+  ],
+  "st": [
+   "st"
+  ],
+  "st barthelemy": [
+   "bl"
+  ],
+  "st helena": [
+   "sh"
+  ],
+  "st kitts nevis": [
+   "kn"
+  ],
+  "st kitts und nevis": [
+   "kn"
+  ],
+  "st lucia": [
+   "lc"
+  ],
+  "st martin": [
+   "mf"
+  ],
+  "st pierre miquelon": [
+   "pm"
+  ],
+  "st pierre und miquelon": [
+   "pm"
+  ],
+  "st vincent grenadines": [
+   "vc"
+  ],
+  "st vincent og grenadinene": [
+   "vc"
+  ],
+  "st vincent und die grenadinen": [
+   "vc"
+  ],
+  "stany zjednoczone": [
+   "us"
+  ],
+  "storbritannia": [
+   "gb"
+  ],
+  "sudafrica": [
+   "za"
+  ],
+  "sudafrika": [
+   "za"
+  ],
+  "sudan": [
+   "sd"
+  ],
+  "sudan del sur": [
+   "ss"
+  ],
+  "sudan poludniowy": [
+   "ss"
+  ],
+  "sudgeorgien und die sudlichen sandwichinseln": [
+   "gs"
+  ],
+  "sudkorea": [
+   "kr"
+  ],
+  "sudsudan": [
+   "ss"
+  ],
+  "suecia": [
+   "se"
+  ],
+  "suede": [
+   "se"
+  ],
+  "suisse": [
+   "ch"
+  ],
+  "suiza": [
+   "ch"
+  ],
+  "surinam": [
+   "sr"
+  ],
+  "suriname": [
+   "sr"
+  ],
+  "sv": [
+   "sv"
+  ],
+  "svalbard et jan mayen": [
+   "sj"
+  ],
+  "svalbard i jan mayen": [
+   "sj"
+  ],
+  "svalbard jan mayen": [
+   "sj"
+  ],
+  "svalbard og jan mayen": [
+   "sj"
+  ],
+  "svalbard y jan mayen": [
+   "sj"
+  ],
+  "sveits": [
+   "ch"
+  ],
+  "sverige": [
+   "se"
+  ],
+  "sweden": [
+   "se"
+  ],
+  "switzerland": [
+   "ch"
+  ],
+  "sx": [
+   "sx"
+  ],
+  "sy": [
+   "sy"
+  ],
+  "syria": [
+   "sy"
+  ],
+  "syrie": [
+   "sy"
+  ],
+  "syrien": [
+   "sy"
+  ],
+  "sz": [
+   "sz"
+  ],
+  "szwajcaria": [
+   "ch"
+  ],
+  "szwecja": [
+   "se"
+  ],
+  "tadjikistan": [
+   "tj"
+  ],
+  "tadschikistan": [
+   "tj"
+  ],
+  "tadsjikistan": [
+   "tj"
+  ],
+  "tadzykistan": [
+   "tj"
+  ],
+  "tailandia": [
+   "th"
+  ],
+  "taiwan": [
+   "tw"
+  ],
+  "tajikistan": [
+   "tj"
+  ],
+  "tajlandia": [
+   "th"
+  ],
+  "tajwan": [
+   "tw"
+  ],
+  "tansania": [
+   "tz"
+  ],
+  "tanzania": [
+   "tz"
+  ],
+  "tanzanie": [
+   "tz"
+  ],
+  "tayikistan": [
+   "tj"
+  ],
+  "tc": [
+   "tc"
+  ],
+  "tchad": [
+   "td"
+  ],
+  "tchequie": [
+   "cz"
+  ],
+  "td": [
+   "td"
+  ],
+  "terres australes francaises": [
+   "tf"
+  ],
+  "territoire britannique de l ocean indien": [
+   "io"
+  ],
+  "territoires palestiniens": [
+   "ps"
+  ],
+  "territorio britanico del oceano indico": [
+   "io"
+  ],
+  "territorios australes franceses": [
+   "tf"
+  ],
+  "territorios palestinos": [
+   "ps"
+  ],
+  "terytoria palestynskie": [
+   "ps"
+  ],
+  "tf": [
+   "tf"
+  ],
+  "tg": [
+   "tg"
+  ],
+  "th": [
+   "th"
+  ],
+  "thailand": [
+   "th"
+  ],
+  "thailande": [
+   "th"
+  ],
+  "timor leste": [
+   "tl"
+  ],
+  "timor oriental": [
+   "tl"
+  ],
+  "timor wschodni": [
+   "tl"
+  ],
+  "tj": [
+   "tj"
+  ],
+  "tk": [
+   "tk"
+  ],
+  "tl": [
+   "tl"
+  ],
+  "tm": [
+   "tm"
+  ],
+  "tn": [
+   "tn"
+  ],
+  "to": [
+   "to"
+  ],
+  "togo": [
+   "tg"
+  ],
+  "tokelau": [
+   "tk"
+  ],
+  "tonga": [
+   "to"
+  ],
+  "tr": [
+   "tr"
+  ],
+  "trinidad and tobago": [
+   "tt"
+  ],
+  "trinidad og tobago": [
+   "tt"
+  ],
+  "trinidad tobago": [
+   "tt"
+  ],
+  "trinidad und tobago": [
+   "tt"
+  ],
+  "trinidad y tobago": [
+   "tt"
+  ],
+  "trinite et tobago": [
+   "tt"
+  ],
+  "trynidad i tobago": [
+   "tt"
+  ],
+  "tschad": [
+   "td"
+  ],
+  "tschechien": [
+   "cz"
+  ],
+  "tsjad": [
+   "td"
+  ],
+  "tsjekkia": [
+   "cz"
+  ],
+  "tt": [
+   "tt"
+  ],
+  "tunesien": [
+   "tn"
+  ],
+  "tunez": [
+   "tn"
+  ],
+  "tunezja": [
+   "tn"
+  ],
+  "tunisia": [
+   "tn"
+  ],
+  "tunisie": [
+   "tn"
+  ],
+  "turcja": [
+   "tr"
+  ],
+  "turkei": [
+   "tr"
+  ],
+  "turkiye": [
+   "tr"
+  ],
+  "turkmenistan": [
+   "tm"
+  ],
+  "turks caicos islands": [
+   "tc"
+  ],
+  "turks i caicos": [
+   "tc"
+  ],
+  "turks og caicosoyene": [
+   "tc"
+  ],
+  "turks und caicosinseln": [
+   "tc"
+  ],
+  "turquia": [
+   "tr"
+  ],
+  "turquie": [
+   "tr"
+  ],
+  "tuvalu": [
+   "tv"
+  ],
+  "tv": [
+   "tv"
+  ],
+  "tw": [
+   "tw"
+  ],
+  "tyrkia": [
+   "tr"
+  ],
+  "tyskland": [
+   "de"
+  ],
+  "tz": [
+   "tz"
+  ],
+  "u s outlying islands": [
+   "um"
+  ],
+  "u s virgin islands": [
+   "vi"
+  ],
+  "ua": [
+   "ua"
+  ],
+  "ucrania": [
+   "ua"
+  ],
+  "ug": [
+   "ug"
+  ],
+  "uganda": [
+   "ug"
+  ],
+  "uk": [
+   "gb"
+  ],
+  "ukraina": [
+   "ua"
+  ],
+  "ukraine": [
+   "ua"
+  ],
+  "um": [
+   "um"
+  ],
+  "ungarn": [
+   "hu"
+  ],
+  "united arab emirates": [
+   "ae"
+  ],
+  "united kingdom": [
+   "gb"
+  ],
+  "united states": [
+   "us"
+  ],
+  "united states of america": [
+   "us"
+  ],
+  "uruguay": [
+   "uy"
+  ],
+  "urugwaj": [
+   "uy"
+  ],
+  "us": [
+   "us"
+  ],
+  "usa": [
+   "us"
+  ],
+  "usas ytre oyer": [
+   "um"
+  ],
+  "usbekistan": [
+   "uz"
+  ],
+  "uy": [
+   "uy"
+  ],
+  "uz": [
+   "uz"
+  ],
+  "uzbekistan": [
+   "uz"
+  ],
+  "va": [
+   "va"
+  ],
+  "vanuatu": [
+   "vu"
+  ],
+  "vatican city": [
+   "va"
+  ],
+  "vatikanstadt": [
+   "va"
+  ],
+  "vatikanstaten": [
+   "va"
+  ],
+  "vc": [
+   "vc"
+  ],
+  "ve": [
+   "ve"
+  ],
+  "venezuela": [
+   "ve"
+  ],
+  "vereinigte arabische emirate": [
+   "ae"
+  ],
+  "vereinigte staaten": [
+   "us"
+  ],
+  "vereinigtes konigreich": [
+   "gb"
+  ],
+  "vest sahara": [
+   "eh"
+  ],
+  "vg": [
+   "vg"
+  ],
+  "vi": [
+   "vi"
+  ],
+  "viet nam": [
+   "vn"
+  ],
+  "vietnam": [
+   "vn"
+  ],
+  "vn": [
+   "vn"
+  ],
+  "vu": [
+   "vu"
+  ],
+  "wallis et futuna": [
+   "wf"
+  ],
+  "wallis futuna": [
+   "wf"
+  ],
+  "wallis i futuna": [
+   "wf"
+  ],
+  "wallis og futuna": [
+   "wf"
+  ],
+  "wallis und futuna": [
+   "wf"
+  ],
+  "wallis y futuna": [
+   "wf"
+  ],
+  "watykan": [
+   "va"
+  ],
+  "wegry": [
+   "hu"
+  ],
+  "weihnachtsinsel": [
+   "cx"
+  ],
+  "wenezuela": [
+   "ve"
+  ],
+  "western sahara": [
+   "eh"
+  ],
+  "westsahara": [
+   "eh"
+  ],
+  "wf": [
+   "wf"
+  ],
+  "wielka brytania": [
+   "gb"
+  ],
+  "wietnam": [
+   "vn"
+  ],
+  "wlochy": [
+   "it"
+  ],
+  "ws": [
+   "ws"
+  ],
+  "wyspa bouveta": [
+   "bv"
+  ],
+  "wyspa bozego narodzenia": [
+   "cx"
+  ],
+  "wyspa man": [
+   "im"
+  ],
+  "wyspa swietej heleny": [
+   "sh"
+  ],
+  "wyspy alandzkie": [
+   "ax"
+  ],
+  "wyspy cooka": [
+   "ck"
+  ],
+  "wyspy dziewicze stanow zjednoczonych": [
+   "vi"
+  ],
+  "wyspy heard i mcdonalda": [
+   "hm"
+  ],
+  "wyspy kokosowe": [
+   "cc"
+  ],
+  "wyspy marshalla": [
+   "mh"
+  ],
+  "wyspy owcze": [
+   "fo"
+  ],
+  "wyspy salomona": [
+   "sb"
+  ],
+  "wyspy swietego tomasza i ksiazeca": [
+   "st"
+  ],
+  "ye": [
+   "ye"
+  ],
+  "yemen": [
+   "ye"
+  ],
+  "yibuti": [
+   "dj"
+  ],
+  "yt": [
+   "yt"
+  ],
+  "za": [
+   "za"
+  ],
+  "zambia": [
+   "zm"
+  ],
+  "zambie": [
+   "zm"
+  ],
+  "zentralafrikanische republik": [
+   "cf"
+  ],
+  "zimbabue": [
+   "zw"
+  ],
+  "zimbabwe": [
+   "zw"
+  ],
+  "zjednoczone emiraty arabskie": [
+   "ae"
+  ],
+  "zm": [
+   "zm"
+  ],
+  "zw": [
+   "zw"
+  ],
+  "zypern": [
+   "cy"
+  ]
+ },
+ "meta": {
+  "country_count": 249,
+  "languages": [
+   "pl",
+   "en",
+   "de",
+   "fr",
+   "es",
+   "no"
+  ],
+  "max_name_tokens": 9,
+  "payload_sha256": "c22036ffd66ca02056773c961fc5190cea73724c7f3c4e6f108891deac73fde0",
+  "schema_version": 1,
+  "source": {
+   "cldr": "CLDR 47 (Babel 2.18.0)",
+   "iso3166": "pycountry 26.2.16",
+   "overrides": "tools/country_index_overrides.json@2"
+  }
+ }
+}

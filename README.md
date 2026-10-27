@@ -55,6 +55,45 @@ The code shared in this repository serves as a **public technology portfolio**. 
 *   **Database (DRY Principle):** Google Sheets API (`gspread`). A Google Sheet acts as a flexible CRM system (easy database overview). The bot features a built-in **Smart Auto-Cleanup** to automatically purge inactive accounts from the database.
 *   **Deterministic Text Engine & AI:** Instead of relying on raw WMO codes, the application calculates precipitation millimeters, pressure, and cloud layers on the fly via a cross-classifier. This guarantees 100% consistency between the text description and the presented icons, with simultaneous LLM support for stable forecasts.
 
+### 🌍 Country index (static data file — deployment requirement)
+
+Text location search recognises an explicit country in the query (`Tokio, Japonia`,
+`Tokio, Japan`, `Tokio, JP`, `Bath, UK`, `Hel,PL`). Country names come from a
+**versioned, committed data file**:
+
+```
+data/countries/country_index.json     # generated offline, read at runtime
+```
+
+* The runtime (`country_index.py`) uses **only the standard library**. `Babel`
+  and `pycountry` are generator-only tools (`requirements-tools.txt`) and are
+  **not** installed in production.
+* Source and versions are stored inside the file (`meta.source`) and documented
+  in `data/countries/NOTICE.md` (CLDR/Unicode + ISO 3166-1 attribution).
+* **The file must be deployed.** The loader is fail-closed on purpose: a missing
+  or corrupted index disables text location search (`GEOCODE_ERROR`, the same
+  `geo_conn_err` message) instead of silently searching without a country
+  filter. GPS, map pins and the WebApp do not use this file and keep working.
+  There is intentionally **no fallback** to a hardcoded country list.
+* After deploying, check the startup log for one line:
+  `[COUNTRY_INDEX] Wczytano indeks krajów: 249 krajów, …` (an error line means
+  the file did not reach the server).
+* Regenerating (deterministic, byte-for-byte) — only when CLDR/ISO data changes:
+
+```bash
+pip install -r requirements-tools.txt
+python tools/build_country_index.py            # rewrite the JSON
+python tools/build_country_index.py --check    # verify it is up to date (CI)
+```
+
+* CI workflow `.github/workflows/country_index.yml` runs `--check`, so the commit
+  can never drift from the generator.
+* Match rules (deliberate, tested): full-phrase match after normalisation — no
+  prefixes, no fuzzy matching, no inflection, no transliteration, Latin script
+  only. Ambiguous names (e.g. `Kongo`) are never resolved by picking a code, and
+  names like `Georgia`/`Włochy` stay administrative context because they are also
+  real admin units (`Atlanta, Georgia`, `Warszawa, Włochy`).
+
 
 <p align="center">
   <img src="info/day-card.jpg" alt="Today's forecast" width="350"><br><br>
