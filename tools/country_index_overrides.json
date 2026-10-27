@@ -1,0 +1,41 @@
+{
+  "version": 2,
+  "description": [
+    "Kuratorowane wejście generatora indeksu krajów (tools/build_country_index.py).",
+    "Klucze MUSZĄ być już znormalizowane kontraktem country_index.normalize_country_name",
+    "  (casefold, bez diakrytyków, '-' i apostrof -> spacja), generator to sprawdza.",
+    "aliases: dodatkowe nazwy, których nie ma w CLDR, a których wymaga produkt:",
+    "  (a) dotychczasowe zachowanie bota (uk, great britain, united states of america, ameryka),",
+    "  (b) pełne nazwy państw nazywanych przez CLDR inaczej niż potocznie:",
+    "      'democratic republic of the congo' / 'democratic republic of congo' -> cd",
+    "      (CLDR: 'Congo - Kinshasa'; bez aliasu zapytanie spadało do krótkiego",
+    "       sufiksu 'congo' = cg i było odrzucane przez filtr country_code=cd),",
+    "      'trinidad and tobago' -> tt (CLDR używa '&', które normalizacja zamienia",
+    "       na spację; forma z 'and' jest osobnym, stabilnym aliasem, NIE zamianą 'and' na '&').",
+    "  Każdy alias jest pełną frazą — nadal bez prefiksów i bez fuzzy matchingu.",
+    "context_ambiguous: OVERRIDE wyłączający filtr kraju. Wolno tu wpisać wyłącznie nazwę,",
+    "  dla której istnieje (1) realnie obsługiwana forma zapytania, (2) syntetyczny",
+    "  kandydat odtwarzający regresję, (3) test. Wpis osłabia rozpoznawanie kraju,",
+    "  więc lista jest celowo zamknięta. Odrzucone bez dowodu regresji:",
+    "  jordan, chad, niger, guinea (te mają tylko testy pełnego dopasowania)."
+  ],
+  "aliases": {
+    "ameryka": ["us"],
+    "democratic republic of congo": ["cd"],
+    "democratic republic of the congo": ["cd"],
+    "great britain": ["gb"],
+    "trinidad and tobago": ["tt"],
+    "uk": ["gb"],
+    "united states of america": ["us"]
+  },
+  "context_ambiguous": {
+    "georgia": {
+      "codes": ["ge"],
+      "reason": "kraj GE oraz stan USA Georgia: 'Atlanta, Georgia' dziala dzis przez admin_context, a filtr kraju dawalby NO_MATCH"
+    },
+    "wlochy": {
+      "codes": ["it"],
+      "reason": "kraj IT oraz dzielnica Warszawy Wlochy: 'Warszawa, Wlochy' dziala dzis przez admin_context, a filtr kraju dawalby NO_MATCH"
+    }
+  }
+}
