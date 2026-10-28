@@ -1136,3 +1136,549 @@ pozostają odłożone bez żadnych przygotowań w kodzie.
 (`Tokyo`), brak alfabetów niełacińskich, brak fuzzy/literówek, brak zamiany `and` → `&` dla nazw,
 które nie dostały aliasu (`Bosnia and Herzegovina`, `Antigua and Barbuda` itd.), `xk`/Kosowo poza
 indeksem (D2), oraz świadomy koszt wariantu A dla `Georgia`.
+
+---
+
+## 20. Faza 2 — audyt stanu po fazie 1 i plan (BEZ zmian w kodzie)
+
+**Status tej sekcji: audyt + plan. Żaden plik produkcyjny nie został zmieniony**
+(`git status` czysty poza tym dokumentem). Wszystkie pomiary poniżej wykonano
+w tym checkoucie, offline, na atrapach geokodera — zero requestów do Nominatima.
+
+### 20.0 Stan checkoutu (zweryfikowany, nie z pamięci)
+
+| Element | Wartość | Jak sprawdzono |
+|---|---|---|
+| Gałąź | `arena/152775ef-pogoda-world` | `git status --porcelain -b` |
+| HEAD | `b8130bd` = `Merge pull request #90 from watifer/main` | `git log --oneline -1` |
+| `origin/staging` | `b8130bd58ecd3ea61a581eb300f519e0465d5f85` | `git ls-remote origin staging` |
+| `origin/main` | `3b9688dc…` = `Add global country index for text geocoding (#89)` | `git ls-remote origin main` |
+| Commit implementacji fazy 1 `48971cd7…` | **istnieje na GitHubie**, rodzic `5a289ff3…`, `Add global country index for text geocoding`, 2026‑10‑27T22:07:28Z | `gh api repos/…/commits/48971cd7…` |
+| Dlaczego `git cat-file` go nie zna | checkout jest **płytki** (`git rev-list --all` = 2 obiekty), więc `48971cd` nie jest w lokalnym grafie; jego **treść** jest w HEAD przez merge #90 | `git cat-file -t 48971cd…` → `bad object` |
+| Zakres zmian roboczych | brak (`git status --porcelain` pusty przed edycją tego pliku) | — |
+| Baseline testów w tym sandboxie | **3710 passed, 3 skipped** | `pytest -q` |
+
+Rozbieżność `3710+3` vs zgłaszane `3711+2` jest wyjaśniona i nie jest regresją:
+suma jest ta sama (3713), a dodatkowy skip to
+`test_country_index.py:609: could not import 'babel'` — w tym sandboxie nie ma
+Babel (narzędzie generatora), więc ten jeden test jest pomijany zamiast przechodzić.
+Pozostałe skipy: `fontTools` (`test_now_i18n.py:210`) i `test_welcome_privacy.py:153`.
+
+Środowisko pomiarowe: `.venv` (w `.gitignore`), `requirements-dev.txt`,
+**geopy 2.5.0**, pytest 9.2.0.
+
+### 20.1 Aktualny przepływ forward → reverse → karta (zweryfikowane numery linii)
+
+`/teraz Tokio, Japonia` (identycznie `/dzien`, `/trend`, `/miasto X`, prompt, skróty gościa):
+
+| Krok | Funkcja / linia | Co się dzieje (zmierzone) |
+|---|---|---|
+| 1 | `_run_city_oneoff` → `geocode_city_accepted(query, lang)` — `location_bot.py:1269`, definicja `3037` | jedyne źródło prawdy forward |
+| 2 | `_geocode_query_parse` — `2464` | `('Tokio', [], 'jp')` — **faza 1 działa** |
+| 3 | `_geocode_geocoder_query` — `2517` | do geokodera idzie `Tokio` + `country_codes=jp` |
+| 4 | `_geocode_forward_candidates` — `2971` | **1 request** forward |
+| 5 | `_geocode_select_accepted` — `2886` | filtr klasy → twardy filtr kraju → dowód nazwy → `GEOCODE_OK` |
+| 6 | `_format_public_location_parts` — `1934` (wołanie `3094`) | `('Japonia', 'Japonia')` ← **tu ginie Tokio** |
+| 7 | `_resolve_location_labels(lat, lon, lang, fallback_short, fallback_display, query)` — `3239` (wołanie `1280`) | reverse + arbitraż |
+| 8 | `get_location_details_from_coords` — `2071` | **1 request** reverse → `('Suginami', 'Suginami, Japonia', 'ok')` |
+| 9 | `_reverse_label_matches_query` — `3222` | `'Suginami'` vs rdzeń `Tokio` → **False** |
+| 10 | arbitraż — `3279` | forward fallback wygrywa → karta `('Japonia', 'Japonia', 'ok')` |
+| 11 | `_run_oneoff_report` → `_put_pending_save` → tytuł karty; `_save_profile_from_location` — `1301` | `short_label` trafia do tytułu karty **i** do `Users.location_label` (`1327`) |
+
+Łączna liczba requestów dla `/teraz X`: **2** (1 forward + 1 reverse) — zmierzone.
+
+**Pomiar end‑to‑end na rzeczywistych payloadach Oracle** (atrapa geokodera, bez sieci):
+
+```
+--- 'Tokio, Japonia'
+    geocode_city_accepted: ('geocode_ok', 35.6768601, 139.7638947, 'Japonia', 'Japonia')
+    KARTA (short, display, status): ('Japonia', 'Japonia', 'ok')
+    requesty: 2 [('forward','Tokio',('country_codes','namedetails')),
+                 ('reverse','35.6768601, 139.7638947', None)]
+--- 'Tokio, Polska'
+    geocode_city_accepted: ('geocode_no_match', None, None, None, None)
+    requesty: 1 [('forward','Tokio',('country_codes','namedetails'))]
+--- GPS/pinezka (bez query)
+    ('Suginami', 'Suginami, Japonia', 'ok')   requesty: 1 (reverse)
+```
+
+Objaw produkcyjny odtworzony **dokładnie**: karta z lokalizacją „Japonia”.
+
+### 20.2 Przyczyna utraty nazwy „Tokio” (dwa fakty, oba zmierzone)
+
+Fakt 1 — `_select_short_location_label` (`1817`) nie zna pola `province`:
+
+```
+_LOCALITY_ADDRESS_FIELDS = ("city", "town", "village", "hamlet", "locality")   # 1729
+_ADMIN_ADDRESS_FIELDS    = ("municipality", "county", "state")                 # 1730
+_PUBLIC_ADDRESS_FIELDS   = _ADMIN_ADDRESS_FIELDS + ("postcode", "country")     # 1731
+```
+
+Adres zaakceptowanego kandydata (rzeczywisty forward Oracle) to
+`{"province": "Tokio", "ISO3166-2-lvl4": "JP-13", "country": "Japonia", "country_code": "jp"}`:
+
+* pola miejscowości: **brak** (`_geocode_place_values` → `[]`),
+* `municipality` / `county` / `state`: **brak** (jest `province`, którego ta lista nie zawiera),
+* `postcode`: brak → zostaje **`country` = „Japonia”**.
+
+Pomiar: `_select_short_location_label(TOKIO_FWD, query="Tokio, Japonia", lang="pl")` → `'Japonia'`;
+`_format_public_location_parts(...)` → `('Japonia', 'Japonia')`.
+
+Fakt 2 — dowód nazwy **jest** i jest mocny, ale nie dociera do etykiety:
+
+```
+_geocode_candidate_evidence("Tokio", TOKIO_FWD, TOKIO_RAW, "") -> ('tokio', 'localized')
+```
+
+`localized` pochodzi z `namedetails["name:pl"] = "Tokio"` (dozwolony klucz: reguła
+`key.startswith("name:")` w `_geocode_namedetails_values`, `2584`). Siła dowodu jest
+używana **wyłącznie** wewnątrz `_geocode_select_accepted` (wybór strong vs weak) —
+do etykiet nie trafia z niej nic. To jest dokładnie luka opisana w §11 i §12.2.
+
+Fakt 3 — arbitraż reverse/forward **nie jest** przyczyną i **nie wymaga zmiany**:
+reverse daje `Suginami` (poprawnie — to dzielnica pod punktem), `_reverse_label_matches_query`
+zwraca `False`, więc forward fallback wygrywa. Gdyby forward fallback niósł `Tokio`,
+karta pokazałaby `Tokio` / `Tokio, Japonia` bez dotykania `_resolve_location_labels`.
+Symulacja (podstawienie `short_label = "Tokio"` do tego samego formattera):
+`_format_public_location_parts` → `('Tokio', 'Tokio, Japonia')` — `province` nie duplikuje się
+w display, bo nie ma go w `_PUBLIC_ADDRESS_FIELDS`.
+
+### 20.3 Dlaczego faza 1 tego nie złapała
+
+Fixtura fazy 1 `tokyo_result()` (`test_geocode_country_forms.py:46`) buduje kandydata
+`{"city": "Tokio", "state": "Tokio", "country": "Japonia", "country_code": "jp"}` —
+czyli **z polem miejscowości**, którego rzeczywisty Nominatim dla `Tokio, Japonia`
+nie zwraca (zwraca relację `boundary/administrative` z `addresstype=province`).
+Testy fazy 1 asertują `short_label == "Tokio"` na innym kształcie danych niż produkcyjny,
+dlatego przeszły. Wniosek: testy fazy 2 muszą używać **dosłownego** payloadu Oracle.
+
+### 20.4 Nowe ustalenie: `class` vs `category` (ryzyko ukryte, zweryfikowane w źródle geopy)
+
+`_geocode_candidate_is_safe` (`2555`) czyta **wyłącznie** `raw.get("class")`:
+
+```python
+cls = _clean_location_component(raw.get("class")).casefold()
+```
+
+* geopy 2.5.0 wysyła `'format': 'json'` (Nominatim JSON v1) — zarówno w `geocode`
+  (`.venv/…/geopy/geocoders/nominatim.py:238`), jak i w `reverse` (`:356`), a `_parse_code`
+  (`:374-382`) wkłada surowy dict do `Location.raw` **bez zmian**. JSON v1 używa klucza
+  **`class`** → produkcja działa.
+* curl Oracle używał `format=jsonv2`, który nazywa to pole **`category`**.
+* Pomiar: ten sam payload z `category` zamiast `class` →
+  `_geocode_candidate_is_safe` → **False** → `geocode_no_match`, **brak karty**
+  (nie „Japonia”, tylko odmowa wyszukiwania).
+
+Konsekwencja: dziś nie ma błędu, ale każda przyszła migracja na `jsonv2` (albo zmiana
+domyślnego formatu w geopy) wyłączy **całe** wyszukiwanie tekstowe, a nie tylko Tokio.
+To jest osobna decyzja (D13), **nie** część minimalnej poprawki etykiety.
+
+### 20.5 Nowe ustalenie: docstring `localized` jest niezgodny z kodem
+
+Docstring `_geocode_candidate_evidence` (`2830`) mówi, że `localized` to egzonim
+„przy istniejących polach miejscowości”, a kod zwraca `localized` **także wtedy, gdy
+pól miejscowości nie ma** — i wtedy dopasowaną nazwą jest sama wartość z `namedetails`:
+
+```python
+if localized:
+    return (place_values[0] if place_values else localized), _GEOCODE_EVIDENCE_LOCALIZED
+```
+
+To właśnie przypadek Tokio (`place_values == []`, wynik `('tokio', 'localized')`).
+Reguła fazy 2 opiera się na tej gałęzi, więc docstring wymaga sprostowania
+(zmiana wyłącznie dokumentacyjna).
+
+### 20.6 Proponowany kontrakt evidence (addytywny, kontrakty stare bez zmian)
+
+```python
+GeocodeEvidence = namedtuple(
+    "GeocodeEvidence",
+    "matched strength source field raw_value admin_label admin_field",
+)
+# matched     : znormalizowana nazwa, która potwierdziła zapytanie ("tokio")
+# strength    : "place" | "localized" | "display"
+# source      : "address" | "namedetails" | "raw" | "postcode"
+# field       : pole, z którego pochodzi potwierdzenie ("province", "name:pl", …)
+# raw_value   : oryginalna (nieznormalizowana) wartość tego pola
+# admin_label : surowa wartość POTWIERDZONEGO pola administracyjnego albo ""
+# admin_field : nazwa tego pola albo ""
+```
+
+Rozszerzenie względem szkicu z §11.1 o `admin_label`/`admin_field` jest celowe:
+gating (klasa kandydata + siła dowodu + równość nazwy) dzieje się **przy kandydacie**,
+tam gdzie dostępne jest `raw`, a formatter dostaje już zweryfikowaną wartość.
+
+| Funkcja | Zmiana | Kontrakt |
+|---|---|---|
+| `_geocode_candidate_evidence_detail(query_name, address, raw, postcode)` | **nowa** | `GeocodeEvidence` |
+| `_geocode_candidate_evidence(...)` | cienki wrapper | **bez zmian**: `(matched, strength)` — 2 wywołania w testach |
+| `_geocode_confirmed_admin_label(query_name, address, raw, postcode)` | **nowa** | `(value, field)` albo `("", "")` |
+| `_geocode_candidate_is_administrative(raw)` | **nowa**, wydzielona gałąź administracyjna z `_geocode_candidate_is_safe` | `bool`; `is_safe` **bez zmian** |
+| `_geocode_select_accepted(...)` | bez zmian | `(status, location)` — 8 wywołań w testach |
+| `geocode_city_accepted(...)` | liczy `confirmed_admin` i przekazuje do formattera | **bez zmian**: 5‑krotka |
+| `_select_short_location_label(..., confirmed_admin=None)` | nowy opcjonalny parametr | wstecznie zgodna |
+| `_format_public_location_parts(..., confirmed_admin=None)` | nowy opcjonalny parametr | wstecznie zgodna |
+| `_resolve_location_labels(...)` | **bez zmian** (patrz 20.2, fakt 3) | — |
+| `guest_bot_handler.py` | **bez zmian** (dziedziczy przez `geocode_city_labels_status`) | — |
+
+Evidence jest liczone **raz**, lokalnie, dla już zaakceptowanego kandydata
+(`_geocode_query_context(core_query)` jest deterministyczne i bez I/O) — **zero nowych requestów**.
+
+### 20.7 Reguła wyboru końcowej etykiety (wąska, wszystkie warunki łącznie)
+
+`_geocode_confirmed_admin_label` zwraca wartość **tylko** gdy spełnione są jednocześnie:
+
+1. **R1** kandydat jest granicą administracyjną: `_geocode_candidate_is_administrative(raw)`
+   (`class ∈ {boundary, administrative}` **i** `type|addresstype == "administrative"`);
+   `class == "place"` tej reguły **nie** uruchamia,
+2. **R2** brak jakiegokolwiek pola miejscowości: `_geocode_place_values(address) == []`
+   (city/town/village/hamlet/locality mają pierwszeństwo absolutne),
+3. **R3** dowód jest mocny: `strength ∈ {place, localized}`; `display` **nigdy**
+   (to odcina przypadek „Greater London” z `test_geocode_validation.py:2604`),
+4. **R4** istnieje pole administracyjne z `_GEOCODE_LABEL_ADMIN_FIELDS`
+   (`province, state, state_district, region, district, county, municipality`),
+   którego znormalizowana wartość jest **równa** `evidence.matched`
+   (równość, nie prefiks, nie podciąg, nie tekst użytkownika),
+5. **R5** wartość jest formatowana tym samym `_format_admin_component` co dotąd
+   (prefiksy PL tylko dla polskich adresów; dla `province` brak prefiksu).
+
+Kolejność w `_select_short_location_label` — zmiana **ściśle addytywna**:
+
+```
+1. city / town / village / hamlet / locality      (bez zmian, z preferencją pełnego dopasowania)
+2. municipality / county / state                  (bez zmian, z prefiksami PL)
+3. NOWE: confirmed_admin                          (tylko R1–R5, inaczej puste)
+4. postcode (gating) → country                    (bez zmian)
+```
+
+Punkt 3 siedzi **po** istniejącej pętli administracyjnej, więc żaden obecny wynik
+`municipality`/`county`/`state` nie może się zmienić; reguła dotyka wyłącznie adresów,
+które dziś spadają do `postcode` albo `country`.
+
+Czego reguła **nie** robi (wprost, zgodnie ze zleceniem):
+
+* nie awansuje dowolnego `province`/`state` — wartość musi być równa potwierdzonej nazwie,
+* nie używa tekstu użytkownika jako etykiety (tylko strukturalne pola kandydata),
+* nie stosuje zasady „forward zawsze wygrywa” (`_resolve_location_labels` nietknięty),
+* nie promuje `display` ani `namedetails` **jako źródła** etykiety — `namedetails`
+  pozostaje wyłącznie dowodem; etykieta jest zawsze wartością pola `address`,
+* nie dodaje requestów, retry, nowych timeoutów ani nowych statusów/komunikatów.
+
+### 20.8 Lista plików
+
+| Plik | Zmiana |
+|---|---|
+| `location_bot.py` | `GeocodeEvidence` + `_geocode_candidate_evidence_detail`; `_geocode_candidate_evidence` → wrapper; `_geocode_candidate_is_administrative`; `_GEOCODE_LABEL_ADMIN_FIELDS`; `_geocode_confirmed_admin_label`; `confirmed_admin=None` w `_select_short_location_label` i `_format_public_location_parts`; `geocode_city_accepted` przekazuje `confirmed_admin`; sprostowanie docstringu `localized` |
+| `test_geocode_admin_label.py` | **nowy** plik testów fazy 2 (payloady Oracle 1:1) |
+| `RAPORT_AUDYT_WYSZUKIWANIE_KRAJOW.md` | ta sekcja + sekcja wdrożeniowa po akceptacji |
+
+**Bez zmian:** `guest_bot_handler.py`, `i18n.py`, `users_store.py`, `country_index.py`,
+`data/countries/*`, `tools/*`, `main_card.py`, `image_generator.py`, `weather_payload.py`,
+`conftest.py`, `pytest.ini`, `requirements*.txt`, `.github/workflows/*`,
+istniejące pliki testów fazy 1 (`test_geocode_validation.py`, `test_geocode_country_forms.py`,
+`test_country_index.py`, `test_card_caption.py`).
+
+### 20.9 Testy (offline, `--disable-socket`, zero Nominatima)
+
+Fixtury: **dosłowne** payloady Oracle — forward `class=boundary`, `type=administrative`,
+`addresstype=province`, `address={province, ISO3166-2-lvl4, country, country_code}`,
+`namedetails={"name": "東京都", "name:pl": "Tokio"}`; reverse `address={neighbourhood,
+quarter, city: "Suginami", ISO3166-2-lvl4, postcode, country, country_code}`.
+
+| # | Wymagany test | Asercja |
+|---|---|---|
+| 1 | forward Tokio jako `province` + `namedetails.name:pl=Tokio` | `geocode_city_accepted("Tokio, Japonia")` → `('geocode_ok', 35.6768601, 139.7638947, 'Tokio', 'Tokio, Japonia')` |
+| 2 | reverse `Suginami` + `country=Japonia` | `get_location_details_from_coords(..., query="Tokio, Japonia")` → `('Suginami', 'Suginami, Japonia', 'ok')` (formatter reverse bez zmian) |
+| 3 | końcowa etykieta nie może być samą „Japonią” | `_resolve_location_labels(...)` → `('Tokio', 'Tokio, Japonia', 'ok')`; `short != 'Japonia'` |
+| 4 | `/teraz Tokio, Polska` nadal odrzucone | `geocode_city_accepted("Tokio, Polska")` → `GEOCODE_NO_MATCH`, brak karty, 1 request |
+| 5 | city/town/village mają pierwszeństwo | kandydat `{city: "Tokio", state/province: "Tokio"}` → `'Tokio'` z pola miejscowości; parametryzacja city/town/village/hamlet/locality |
+| 6 | GPS i pinezka zachowują etykiety | `_resolve_location_labels(lat, lon, lang)` **bez query** → `('Suginami', 'Suginami, Japonia', 'ok')`; ten sam wynik przed i po zmianie |
+| 7 | brak dodatkowych requestów | licznik atrapy: dokładnie 1 forward + 1 reverse dla `/teraz`, 1 forward dla `NO_MATCH`, 1 reverse dla GPS |
+
+Testy wąskości reguły (żeby nie powstał „auto‑awans administracji”):
+
+| # | Przypadek | Oczekiwanie |
+|---|---|---|
+| 8 | `province` **nie** równa potwierdzonej nazwie (`state="województwo mazowieckie"`, dowód z `name:pl="Warszawa"`) | brak awansu → etykieta jak dziś (`'województwo mazowieckie'`) |
+| 9 | dowód wyłącznie `display` (kandydat bez `namedetails`, `name="Greater London"`, `province`) | brak awansu → etykieta jak dziś |
+| 10 | `class="place"` z `province` równym nazwie | brak awansu (R1) |
+| 11 | `province` równa nazwie, ale istnieje `city` | `city` wygrywa (R2) |
+| 12 | kandydat z `municipality`/`county`/`state` | wynik **identyczny** jak dziś (reguła po istniejącej pętli) |
+| 13 | brak `province` i brak `city` (tylko `country`) | etykieta = kraj, jak dziś |
+
+Testy kontraktów i regresje niefunkcjonalne:
+
+| # | Test |
+|---|---|
+| 14 | `_geocode_candidate_evidence` nadal zwraca 2‑krotkę; `_geocode_select_accepted` 2‑krotkę; `geocode_city_accepted` 5‑krotkę |
+| 15 | `GeocodeEvidence` dla payloadu Oracle: `matched='tokio'`, `strength='localized'`, `source='namedetails'`, `field='name:pl'`, `admin_label='Tokio'`, `admin_field='province'` |
+| 16 | `confirmed_admin` domyślnie `None` → `_select_short_location_label` i `_format_public_location_parts` zachowują się **identycznie** (przegląd istniejących asercji etykiet) |
+| 17 | `POISON` (`location.address`) nigdy nie trafia do etykiety |
+| 18 | tryb gościa (`?12 Tokio, Japonia`) → ta sama etykieta co `/teraz`, 1 forward |
+| 19 | Python 3.8: `ast.parse(feature_version=(3,8))` + brak `removeprefix/removesuffix/match` dla zmienionego pliku |
+| 20 | pełny zestaw: `pytest -q` — oczekiwane `3710 + N passed` (N = nowe testy), zero nowych faili |
+
+### 20.10 Wpływ na dane i UI — do wyraźnej akceptacji (D12)
+
+Zmiana **dotyka** `Users.location_label`, ale wyłącznie dla wąskiej klasy zapytań:
+
+| Ścieżka | Przed | Po |
+|---|---|---|
+| `/teraz Tokio, Japonia` (tytuł karty) | `Japonia` | `Tokio` |
+| `/teraz Tokio, Japonia` (caption) | `Japonia` | `Tokio, Japonia` |
+| `/miasto Tokio, Japonia` → `Users.location_label` | `Japonia` | `Tokio` |
+| skróty gościa `?12/?n/.n/?14` | `Japonia` | `Tokio` |
+| GPS / pinezka / WebApp | bez zmian | **bez zmian** |
+| `PENDING_SAVE` (zapis po GPS/pinezce) | bez zmian | **bez zmian** |
+| komunikaty i statusy | bez zmian | **bez zmian** |
+
+Nie ma migracji istniejących wierszy Users: zapis zdarzy się przy następnym świadomym
+`/miasto`. Współrzędne, `location_source`, `lat_round`/`lon_round` — bez zmian.
+
+### 20.11 Decyzje do podjęcia przed implementacją
+
+| ID | Decyzja | Rekomendacja |
+|---|---|---|
+| **D12** | Zgoda na zmianę `Users.location_label` i tytułu karty dla klasy „zaakceptowana granica administracyjna bez pola miejscowości” (tabela 20.10) | **tak** — to jest istota zgłoszonego błędu |
+| **D13** | `_geocode_candidate_is_safe`: dopuścić `category` jako alias `class` (odporność na `jsonv2`) + testy obu kształtów payloadu | **osobno**, nie w tej poprawce; dziś geopy 2.5 wysyła `format=json`, więc to tylko ryzyko przyszłe |
+| **D14** | Zakres `_GEOCODE_LABEL_ADMIN_FIELDS`: `province, state, state_district, region, district, county, municipality` (i tak osiągalne są tylko pola spoza `_ADMIN_ADDRESS_FIELDS`) | **tak**, z testem 12 pilnującym braku zmian |
+| **D15** | Arbitraż reverse/forward (§13): **nie** zmieniamy w fazie 2 — po naprawie etykiety forward i tak wygrywa poprawnie | **bez zmian** |
+
+### 20.12 Czego faza 2 świadomie NIE robi
+
+1. Zmian w GPS, pinezce, WebApp, `PENDING_SAVE`, harmonogramach, obrazkach, `weather_payload`.
+2. Nowych statusów, nowych komunikatów, zmian `i18n.py`.
+3. Dodatkowych requestów do Nominatima, retry, structured query, cache kraju.
+4. Promowania `namedetails`/`display_name` **jako źródła** etykiety.
+5. Hierarchii administracyjnej, fuzzy, transliteracji, odmiany.
+6. Wariantu B dla `georgia`, automatycznego rozstrzygania kolizji kraj–kontekst.
+7. Zmian w `guest_bot_handler.py` i w plikach testów fazy 1.
+
+Numery linii w sekcji 20 są **aktualne dla HEAD `b8130bd`** i były weryfikowane
+greppem; numery w Załączniku A pochodzą z audytu sprzed fazy 1 i po fazie 1 są
+przesunięte (np. `_geocode_query_parse` 2442 → 2464) — sekcja 20 jest wiążąca.
+
+---
+
+## 21. Faza 2 — status implementacji (po akceptacji D12/D14/D15, D13 odłożone)
+
+Zakres zrealizowany **dokładnie** zgodnie z akceptacją: `location_bot.py`,
+nowy `test_geocode_admin_label.py`, sprostowanie docstringu `localized`,
+aktualizacja tego raportu. Nic nie zostało zacommitowane ani wypushowane.
+
+### 21.1 Co zostało zmienione (`location_bot.py`)
+
+| Element | Zmiana |
+|---|---|
+| `from collections import namedtuple` | nowy import stdlib (jedyny) |
+| `GeocodeEvidence` / `_GEOCODE_NO_EVIDENCE` | **nowe**: 7‑polowy namedtuple kontraktu evidence (§20.6) |
+| `_GEOCODE_LABEL_ADMIN_FIELDS` | **nowe**: `province, state, state_district, region, district, county, municipality` (D14) |
+| `_geocode_candidate_is_administrative(raw)` | **nowa**: wydzielona gałąź administracyjna; `_geocode_candidate_is_safe` woła ją zamiast duplikować warunek (zachowanie identyczne) |
+| `_geocode_namedetails_entries` / `_geocode_raw_name_entries` / `_geocode_place_entries` | **nowe**: warianty z kluczem/polem i oryginalną pisownią |
+| `_geocode_namedetails_values` / `_geocode_raw_name_values` / `_geocode_place_values` | **bez zmian kontraktu**: teraz cienkie wrappery nad `*_entries` (ta sama kolejność i zawartość) |
+| `_geocode_candidate_evidence_detail(...)` | **nowa**: pełny `GeocodeEvidence` |
+| `_geocode_confirmed_admin_label(...)` | **nowa**: reguła R1–R5 → `(wartość, pole)` |
+| `_geocode_candidate_evidence_with_admin_label(...)` | **nowa**: jedyne miejsce wypełniające `admin_label`/`admin_field` |
+| `_geocode_candidate_evidence(...)` | **kontrakt bez zmian**: `(matched, strength)` — wrapper |
+| `_select_short_location_label(..., confirmed_admin=None)` | nowy opcjonalny parametr; wartość wchodzi **po** pętli `municipality/county/state` i **przed** `postcode/country`, przez wspólny `_format_admin_component` (kontrola R5, §21.8) |
+| `_format_public_location_parts(..., confirmed_admin=None)` | nowy opcjonalny parametr, przekazuje do short label |
+| `geocode_city_accepted(...)` | liczy evidence lokalnie i przekazuje `confirmed_admin`; **nadal 5‑krotka** |
+| docstring `_GEOCODE_EVIDENCE_LOCALIZED` i `_geocode_candidate_evidence_detail` | **sprostowanie**: `localized` obejmuje też przypadek bez pól miejscowości (dokładnie Tokio) |
+
+Kolejność wyboru krótkiej etykiety po zmianie:
+
+```
+1. city / town / village / hamlet / locality    (bez zmian)
+2. municipality / county / state                (bez zmian, z prefiksami PL)
+3. confirmed_admin                              (NOWE, tylko R1–R5)
+4. postcode (gating) → country                  (bez zmian)
+```
+
+### 21.2 Czego NIE zmieniono (zweryfikowane `git diff --stat`)
+
+`guest_bot_handler.py`, `i18n.py`, `users_store.py`, `country_index.py`, `data/`,
+`tools/`, `.github/`, `conftest.py`, `pytest.ini`, `requirements*.txt`,
+`test_geocode_validation.py`, `test_geocode_country_forms.py`,
+`test_country_index.py`, `test_card_caption.py` — **diff pusty (0 linii)**.
+
+Nie zmieniono: `_resolve_location_labels`, `_reverse_label_matches_query`,
+`get_location_details_from_coords`, `_coarse_reverse_settlement`,
+`_geocode_select_accepted`, `_geocode_candidate_is_safe` (zachowanie),
+GPS/pinezki/WebApp, `PENDING_SAVE`, komunikatów i statusów, `_GEOCODE_ADMIN_FIELDS`,
+`_ADMIN_ADDRESS_FIELDS`, `_LOCALITY_ADDRESS_FIELDS`, `_PUBLIC_ADDRESS_FIELDS`.
+**D13 (`category` jako alias `class`) nie zostało zaimplementowane** — jest
+natomiast przypięte testem charakterystycznym (§21.4, test 12).
+
+### 21.3 Weryfikacja — 11 wymaganych warunków
+
+| # | Warunek | Wynik | Dowód |
+|---|---|---|---|
+| 1 | literalny payload Oracle dla Tokio | ✅ | `test_forward_fixture_is_the_literal_oracle_payload`, `test_reverse_fixture_is_the_literal_oracle_payload`, `test_forward_fixture_has_no_settlement_field` |
+| 2 | `/teraz Tokio, Japonia` → `Tokio` / `Tokio, Japonia` | ✅ | `test_forward_labels_use_the_confirmed_province`, `test_card_label_is_not_the_country_alone`, `test_every_country_form_gives_the_same_label` |
+| 3 | `/teraz Tokio, Polska` → `GEOCODE_NO_MATCH` | ✅ | `test_wrong_country_is_still_rejected`, `test_confirmed_admin_cannot_bypass_the_hard_country_filter` |
+| 4 | dokładnie 1 forward + 1 reverse | ✅ | `test_exactly_one_forward_and_one_reverse_for_a_successful_teraz`, `test_label_helpers_do_not_touch_the_geocoder` |
+| 5 | GPS/pinezka bez zmian | ✅ | `test_gps_and_pin_keep_the_previous_label`, `test_reverse_formatter_ignores_confirmed_admin_by_default`, `test_webapp_path_has_no_query_and_no_forward` |
+| 6 | `display` nie uruchamia awansu | ✅ | `test_rule_r3_rejects_display_only_evidence`, `test_display_only_candidate_keeps_the_country_label`, `test_greater_london_style_admin_is_untouched` |
+| 7 | `class=place` nie uruchamia reguły | ✅ | `test_rule_r1_rejects_class_place`, `test_class_place_candidate_does_not_start_the_new_rule` |
+| 8 | city/town/village mają pierwszeństwo | ✅ | `test_settlement_fields_keep_absolute_priority` (5 pól), `test_rule_r2_rejects_every_settlement_field` (5 pól) |
+| 9 | kontrakty 2‑krotki i 5‑krotki | ✅ | `test_public_contracts_keep_their_arity`, `test_evidence_contract_two_tuple_is_unchanged`, `test_evidence_namedtuple_has_the_documented_fields` |
+| 10 | pełny zestaw testów przechodzi | ✅ | **3820 passed, 3 skipped** (baseline 3710 + 110 nowych) |
+| 11 | testy offline | ✅ | `pytest.ini` = `--disable-socket`; zero markerów `enable_socket`; `test_no_socket_is_needed` |
+
+Pomiar end‑to‑end po implementacji (atrapa geokodera, payloady Oracle, bez sieci):
+
+```
+'Tokio, Japonia' -> geocode_city_accepted: ('geocode_ok', 35.6768601, 139.7638947,
+                                            'Tokio', 'Tokio, Japonia')
+                    KARTA: ('Tokio', 'Tokio, Japonia', 'ok')      requesty: 2 (1 fwd + 1 rev)
+'Tokio, Polska'  -> ('geocode_no_match', None, None, None, None)  requesty: 1
+GPS/pinezka      -> ('Suginami', 'Suginami, Japonia', 'ok')       requesty: 1 (reverse)
+```
+
+Dodatkowe sprawdzenia: `ast.parse(feature_version=(3, 8))` → OK dla
+`location_bot.py`, `test_geocode_admin_label.py`, `country_index.py`;
+`python -m compileall` → OK; brak nowych linii >99 znaków w `location_bot.py`.
+
+### 21.4 Nowe testy (`test_geocode_admin_label.py`, 110 testów)
+
+| Sekcja | Zakres |
+|---|---|
+| 1 | literalność payloadów Oracle (forward + reverse), brak pól miejscowości, filtr kraju z fazy 1 |
+| 2 | kontrakt evidence: pola namedtuple, zgodność wrapper↔detail dla 6 kombinacji, `*_entries` vs stare funkcje, klucze nienazwowe (`ref`, `ISO3166-2`, `_place_name:*`, `alt_name:*`) nie są dowodem |
+| 3 | reguła R1–R5 jako unit: każde R osobno, wszystkie 7 pól administracyjnych, kolejność pól, normalizacja (case/diakrytyki), brak użycia tekstu użytkownika, brak awansu niepowiązanego regionu |
+| 3B | **kontrola R5**: mapa prefiksów, równoważność z `_format_admin_component` dla 7 pól × 2 adresy, brak prefiksu dla pól osiągalnych, payload Tokio, polski adres administracyjny, adres niepolski (6 języków), istniejące `municipality`/`county`/`state`, `confirmed_admin=None`/`""`, czyszczenie wartości |
+| 4 | etykiety forward i karta; reverse bez zmian; postcode nadal nieupubliczniany |
+| 5 | odrzucenie błędnego kraju; reguła nie omija twardego filtra `country_code`; brak karty |
+| 6 | liczba requestów (forward/reverse), helpery etykiet nie dotykają geokodera |
+| 7 | GPS / pinezka / WebApp / `get_city_from_coords` bez zmian |
+| 8 | pierwszeństwa: 5 pól miejscowości, `municipality`/`county`/`state` (adres PL i nie‑PL), `confirmed_admin` vs postcode/country, Greater London, polska granica z `municipality` |
+| 9 | kontrakty publiczne (arytmetyka krotek), adapter `geocode_city_labels_status` |
+| 10 | tryb gościa: `?12`, `?n`, `.n`, wzmianka @bot — te same etykiety, 1 forward |
+| 11 | `POISON` (`location.address`) nigdy w etykiecie, brak sieci, Python 3.8, brak nowych zależności |
+| 12 | **znane ograniczenie D13**: payload `jsonv2` z `category` → `GEOCODE_NO_MATCH` (test charakterystyczny do odwrócenia po hardeningu) |
+| 13 | spójność atrap z interfejsem geopy |
+
+### 21.5 Wpływ na dane i UI (zgodnie z D12)
+
+| Ścieżka | Przed | Po |
+|---|---|---|
+| `/teraz Tokio, Japonia` — tytuł karty | `Japonia` | **`Tokio`** |
+| `/teraz Tokio, Japonia` — caption | `Japonia` | **`Tokio, Japonia`** |
+| `/miasto Tokio, Japonia` → `Users.location_label` | `Japonia` | **`Tokio`** |
+| skróty gościa (`?12`, `?n`, `.n`, `?14`, @bot) | `Japonia` | **`Tokio`** |
+| GPS / pinezka / WebApp / `PENDING_SAVE` | `Suginami` | **bez zmian** |
+| komunikaty i statusy | — | **bez zmian** |
+| współrzędne, `location_source`, `lat_round`/`lon_round` | — | **bez zmian** |
+
+Bez migracji istniejących wierszy Users — nowa etykieta zapisuje się przy
+następnym świadomym `/miasto`.
+
+### 21.6 Znane ograniczenia po fazie 2
+
+1. **D13 odłożone**: payload `jsonv2` (`category` zamiast `class`) jest odrzucany
+   przez `_geocode_candidate_is_safe`. Produkcja (geopy 2.5.0, `format=json`)
+   zwraca `class`, więc dziś nie ma wpływu; przypięte testem charakterystycznym.
+2. **R4 wymaga pełnej równości**: `province = "Tokyo Metropolis"` przy
+   potwierdzonej nazwie „tokio” NIE awansuje (zakaz prefiksów/podciągów/fuzzy
+   wynika wprost z akceptacji D14) — etykieta zostaje dotychczasowa.
+3. Brak odmiany, transliteracji, alfabetów niełacińskich i fuzzy — bez zmian
+   względem fazy 1.
+4. `Tbilisi, Georgia` — bez zmian (wariant A z fazy 1, `context_ambiguous`).
+
+### 21.7 Do kolejnej akceptacji
+
+| Plik | Zmiana (`git diff --numstat`) |
+|---|---|
+| `location_bot.py` | **+273 / −62** |
+| `test_geocode_admin_label.py` | nowy, 1119 linii, **110 testów** |
+| `RAPORT_AUDYT_WYSZUKIWANIE_KRAJOW.md` | +546 (sekcje 20 i 21) |
+
+* `pytest -q` → **3820 passed, 3 skipped** (zero regresji względem baseline 3710 + 3),
+* `git diff --check` → exit 0, bez uwag (§21.8),
+* `git status` → tylko te trzy pliki; zabronione pliki: diff pusty,
+* `git log -1` → nadal `b8130bd` — **brak commitu / pusha / PR**, zgodnie z poleceniem.
+
+### 21.8 Kontrola R5 — rozbieżność między raportem a kodem (znaleziona i zamknięta)
+
+**Zgłoszona rozbieżność była rzeczywista.** §20.7 (R5) deklarował: „wartość jest
+formatowana tym samym `_format_admin_component` co dotąd”, a zaimplementowany kod
+zwracał `confirmed_admin` bezpośrednio, z uzasadnieniem tylko w komentarzu.
+Deklaracja ze specyfikacji była wiążąca, więc **kod został ujednolicony ze
+specyfikacją** (wariant 1), nie odwrotnie.
+
+**Pomiar rozstrzygający** (`_format_admin_component(field, value, polish)` dla
+wszystkich 7 pól × 2 wartości × `polish` ∈ {False, True}):
+
+| Pole | `polish=False` | `polish=True` | Osiągalne dla `confirmed_admin`? |
+|---|---|---|---|
+| `province` | wartość dosłowna | wartość dosłowna | **tak** |
+| `state_district` | wartość dosłowna | wartość dosłowna | **tak** |
+| `region` | wartość dosłowna | wartość dosłowna | **tak** |
+| `district` | wartość dosłowna | wartość dosłowna | **tak** |
+| `state` | wartość dosłowna | **`województwo …`** | nie — wcześniejsza pętla |
+| `county` | wartość dosłowna | **`powiat …`** | nie — wcześniejsza pętla |
+| `municipality` | wartość dosłowna | **`gmina …`** | nie — wcześniejsza pętla |
+
+Mapa prefiksów w `_format_admin_component` ma wpisy wyłącznie dla
+`municipality`/`county`/`state`; pola osiągalne to dokładnie różnica zbiorów
+`_GEOCODE_LABEL_ADMIN_FIELDS − _ADMIN_ADDRESS_FIELDS` =
+`(province, state_district, region, district)`.
+
+**Odpowiedź na pytanie kontrolne:** zachodzą oba punkty jednocześnie i nie są
+w sprzeczności —
+
+1. wartość **przechodzi** przez `_format_admin_component` (jedno źródło prawdy
+   dla prefiksów PL, tak jak deklarowała specyfikacja R5),
+2. dla pól `province`/`state_district`/`region`/`district` oznacza to **świadomie
+   brak prefiksu**, bo tych pól nie ma w mapie prefiksów; jest to więc
+   równoważne zwróceniu wartości dosłownej — **dziś zero różnicy w zachowaniu**,
+   a przy przyszłej zmianie `_ADMIN_ADDRESS_FIELDS` prefiks doda się sam.
+
+**Zmiana w kodzie** (`_select_short_location_label`, jedyne miejsce):
+
+```python
+     confirmed = _clean_location_component(confirmed_admin)
+     if confirmed:
+-        return confirmed
++        confirmed_field = next(
++            (
++                name for name in _GEOCODE_LABEL_ADMIN_FIELDS
++                if _clean_location_component(address.get(name)) == confirmed
++            ),
++            None,
++        )
++        return _format_admin_component(confirmed_field, confirmed, polish=polish)
+```
+
+**Dowód, że zachowanie się nie zmieniło:** `pytest -q` przechodził przed tą
+poprawką (3792 passed, 3 skipped) i przechodzi po niej (**3820** = 3792 + 28
+nowych testów R5, 3 skipped) — **żaden istniejący test nie wymagał zmiany
+oczekiwania**. Pomiar end‑to‑end jest identyczny przed i po:
+`Tokio` / `Tokio, Japonia`; `Tokio, Polska` → `NO_MATCH`; GPS/pinezka →
+`Suginami`; 1 forward + 1 reverse.
+
+**Nowe testy (28, sekcja 3B pliku testowego):**
+
+| Test | Co pilnuje |
+|---|---|
+| `test_prefix_map_covers_only_municipality_county_state` | mapa prefiksów: 3 pola z prefiksem, 4 osiągalne bez |
+| `test_confirmed_admin_uses_the_same_formatter_as_other_admin_fields` | 7 pól × {PL, JP}: wynik == `_format_admin_component(field, value, polish)` |
+| `test_reachable_fields_never_gain_a_prefix` | 4 pola osiągalne × {PL, JP} → wartość bez prefiksu |
+| `test_tokyo_payload_label_is_the_bare_province_name` | **payload Tokio z `province`** → `Tokio` / `Tokio, Japonia` |
+| `test_polish_administrative_address_keeps_its_prefix` | **polski adres** (`state`) → `województwo mazowieckie`, z potwierdzeniem i bez |
+| `test_polish_address_with_only_a_province_gets_no_prefix` | polski adres z samym `province` → bez prefiksu |
+| `test_non_polish_address_never_gains_a_polish_prefix` | **adres niepolski** → brak prefiksów, także dla `state`, w 6 językach |
+| `test_existing_municipality_county_state_behaviour_is_unchanged` | **istniejące pola**: `gmina`/`powiat`/`województwo` + display z krajem, niezależnie od `confirmed_admin` |
+| `test_confirmed_admin_none_is_identical_to_omitting_the_argument` | `None`/`""` == brak argumentu (reverse, GPS, pinezka) |
+| `test_confirmed_admin_is_cleaned_before_use` | czyszczenie białych znaków; `None`/`{}`/`[]`/`()` → brak awansu; kontrakty `_clean_location_component` bez zmian |
+
+**Sprawdzenia końcowe:** `pytest -q` → **3820 passed, 3 skipped**;
+`git diff --check` → **bez uwag** (sonda kontrolna: plik z ogonami daje exit 3
+i komunikat, więc brak komunikatu oznacza czystość); nowy plik testowy sprawdzony
+dodatkowo `git diff --check --no-index` + grep — 0 linii z białymi znakami na
+końcu, plik kończy się znakiem nowej linii.
+
+**Zakres nie został przekroczony:** zmieniono wyłącznie sposób sformatowania tej
+samej, nowej wartości wewnątrz reguły fazy 2. D13 (`category`) nie zostało
+zaimplementowane; `guest_bot_handler.py`, `i18n.py`, `users_store.py`,
+`country_index.py`, `data/`, `tools/`, workflowy i pliki testów fazy 1 — diff pusty.

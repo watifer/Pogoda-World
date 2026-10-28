@@ -4,6 +4,7 @@ import json
 import math
 import re
 import tempfile
+from collections import namedtuple
 from urllib.parse import parse_qs, urlsplit
 import requests
 import gspread
@@ -1814,8 +1815,16 @@ def _query_mentions_candidate_postcode(address, query):
     return False
 
 
-def _select_short_location_label(address, query=None, lang="pl"):
-    """Select one locality/admin value for cards, payloads and stored labels."""
+def _select_short_location_label(address, query=None, lang="pl", confirmed_admin=None):
+    """Select one locality/admin value for cards, payloads and stored labels.
+
+    ETAP 2: ``confirmed_admin`` to opcjonalna, POTWIERDZONA dowodem wartość pola
+    administracyjnego zaakceptowanego kandydata forward (wynik
+    ``_geocode_confirmed_admin_label``). Jest używana wyłącznie wtedy, gdy nie ma
+    ani pola miejscowości, ani ``municipality``/``county``/``state`` — czyli
+    dokładnie w sytuacji, która dotąd spadała do ``postcode`` albo ``country``.
+    ``None`` (reverse, GPS, pinezka, WebApp) oznacza zachowanie bez zmian.
+    """
     locality_values = [
         _clean_location_component(address.get(field))
         for field in _LOCALITY_ADDRESS_FIELDS
@@ -1850,6 +1859,30 @@ def _select_short_location_label(address, query=None, lang="pl"):
         value = _clean_location_component(address.get(field))
         if value:
             return _format_admin_component(field, value, polish=polish)
+    # ETAP 2 — potwierdzona nazwa administracyjna (np. ``address.province =
+    # "Tokio"`` dla zaakceptowanej relacji boundary/administrative). Wchodzi
+    # DOPIERO po istniejącej pętli municipality/county/state, więc ich
+    # pierwszeństwo jest nienaruszone, a reguła dotyczy wyłącznie adresów, które
+    # dotąd spadały do postcode albo country.
+    #
+    # R5: wartość idzie przez TEN SAM ``_format_admin_component`` co pozostałe
+    # pola administracyjne — jedno źródło prawdy dla prefiksów PL. W praktyce
+    # jest to równoważne zwróceniu wartości dosłownej, bo osiągalne tutaj pola
+    # (``province``, ``state_district``, ``region``, ``district``) nie mają
+    # wpisu w mapie prefiksów, a ``municipality``/``county``/``state`` nigdy tu
+    # nie docierają (pętla wyżej zwróciłaby je wcześniej). Różnica byłaby
+    # widoczna wyłącznie po zmianie ``_ADMIN_ADDRESS_FIELDS`` — wtedy prefiks
+    # zostanie dodany automatycznie, bez poprawek w tym miejscu.
+    confirmed = _clean_location_component(confirmed_admin)
+    if confirmed:
+        confirmed_field = next(
+            (
+                name for name in _GEOCODE_LABEL_ADMIN_FIELDS
+                if _clean_location_component(address.get(name)) == confirmed
+            ),
+            None,
+        )
+        return _format_admin_component(confirmed_field, confirmed, polish=polish)
     for field in ("postcode", "country"):
         value = _clean_location_component(address.get(field))
         if value:
@@ -1931,13 +1964,22 @@ def _format_admin_component(field, value, polish=False):
     return f"{prefix} {cleaned}" if prefix else cleaned
 
 
-def _format_public_location_parts(raw_address, query=None, mode="city", lang="pl"):
-    """Return ``(short_label, display_location)`` from an allowlist of fields."""
+def _format_public_location_parts(raw_address, query=None, mode="city", lang="pl",
+                                  confirmed_admin=None):
+    """Return ``(short_label, display_location)`` from an allowlist of fields.
+
+    ``confirmed_admin`` (ETAP 2) jest przekazywane wyłącznie ze ścieżki forward
+    (``geocode_city_accepted``) i tylko wtedy, gdy kandydat spełnił R1–R5
+    ``_geocode_confirmed_admin_label``. Reverse, GPS, pinezka i WebApp wołają tę
+    funkcję bez tego parametru, więc ich etykiety pozostają niezmienione.
+    """
     address = _nominatim_address_components(raw_address)
     if not address:
         return "", ""
 
-    short_label = _select_short_location_label(address, query=query, lang=lang)
+    short_label = _select_short_location_label(
+        address, query=query, lang=lang, confirmed_admin=confirmed_admin
+    )
     if not short_label:
         return "", ""
 
@@ -2210,8 +2252,41 @@ _GEOCODE_CITY_ALIASES = {
 _GEOCODE_NAMEDETAILS_KEYS = ("name", "int_name", "official_name", "alt_name")
 # Siła dowodu dopasowania (patrz _geocode_candidate_evidence).
 _GEOCODE_EVIDENCE_PLACE = "place"          # pola miejscowości
-_GEOCODE_EVIDENCE_LOCALIZED = "localized"  # egzonim z namedetails przy polach miejscowości
+_GEOCODE_EVIDENCE_LOCALIZED = "localized"  # egzonim z namedetails (także bez pól miejscowości)
 _GEOCODE_EVIDENCE_DISPLAY = "display"      # tylko name/display_name — dowód słaby
+
+# ============================================================================
+# ETAP 2 — KONTRAKT EVIDENCE (addytywny; stare kontrakty krotek bez zmian)
+# ============================================================================
+# ``_geocode_candidate_evidence`` nadal zwraca ``(matched, strength)``. Pełny
+# dowód (skąd pochodzi potwierdzenie i czy istnieje potwierdzone pole
+# administracyjne) zwraca ``_geocode_candidate_evidence_detail``.
+#
+#   matched     — znormalizowana nazwa, która potwierdziła zapytanie ("tokio")
+#   strength    — "place" | "localized" | "display" | None
+#   source      — "address" | "namedetails" | "raw" | "postcode" | ""
+#   field       — pole źródłowe potwierdzenia ("city", "name:pl", "name", …)
+#   raw_value   — oryginalna (nieznormalizowana) wartość tego pola
+#   admin_label — surowa wartość POTWIERDZONEGO pola administracyjnego albo ""
+#   admin_field — nazwa tego pola albo ""
+#
+# ``admin_label`` jest wypełniane TYLKO dla potwierdzonej granicy
+# administracyjnej bez pól miejscowości (patrz _geocode_confirmed_admin_label).
+GeocodeEvidence = namedtuple(
+    "GeocodeEvidence",
+    "matched strength source field raw_value admin_label admin_field",
+)
+_GEOCODE_NO_EVIDENCE = GeocodeEvidence("", None, "", "", "", "", "")
+
+# ETAP 2 — pola administracyjne, które MOGĄ stać się etykietą, ale WYŁĄCZNIE po
+# potwierdzeniu dowodem (nigdy automatycznie). ``municipality``, ``county`` i
+# ``state`` są tu tylko dla kompletności: ``_select_short_location_label``
+# zwraca je wcześniej, własną pętlą ``_ADMIN_ADDRESS_FIELDS``, więc nowa reguła
+# ich nie przejmuje i nie zmienia ich pierwszeństwa.
+_GEOCODE_LABEL_ADMIN_FIELDS = (
+    "province", "state", "state_district", "region", "district",
+    "county", "municipality",
+)
 
 # Pola miejscowości = dowód, że geokoder wskazał TO miejsce, o które pytano.
 _GEOCODE_PLACE_FIELDS = ("city", "town", "village", "hamlet", "locality")
@@ -2552,6 +2627,21 @@ def _geocode_query_is_too_short(query):
     return len(name.replace(" ", "")) < GEOCODE_MIN_QUERY_CHARS
 
 
+def _geocode_candidate_is_administrative(raw):
+    """Czy kandydat jest POTWIERDZONĄ granicą administracyjną (ETAP 2).
+
+    To jest dokładnie gałąź administracyjna ``_geocode_candidate_is_safe``,
+    wydzielona bez zmiany zachowania: ``class`` (albo legacy ``administrative``)
+    plus potwierdzony ``type``/``addresstype == "administrative"``. ETAP 2 pyta
+    o nią osobno, bo awans potwierdzonej nazwy administracyjnej na etykietę
+    wolno zrobić wyłącznie dla granicy administracyjnej — nigdy dla
+    ``class == "place"`` i nigdy dla POI.
+    """
+    cls = _clean_location_component(raw.get("class")).casefold()
+    typ = _clean_location_component(raw.get("type") or raw.get("addresstype")).casefold()
+    return cls in ("boundary", "administrative") and typ == "administrative"
+
+
 def _geocode_candidate_is_safe(raw):
     """Klasa kandydata, która w ogóle może być bazą dla lokalizacji pogodowej.
 
@@ -2573,12 +2663,31 @@ def _geocode_candidate_is_safe(raw):
     bzdurny wynik, albo fałszywą niepewność przez nazwę wspólną z miastem.
     """
     cls = _clean_location_component(raw.get("class")).casefold()
-    typ = _clean_location_component(raw.get("type") or raw.get("addresstype")).casefold()
     if cls == "place":
         return True
-    if cls in ("boundary", "administrative"):
-        return typ == "administrative"
-    return False
+    return _geocode_candidate_is_administrative(raw)
+
+
+def _geocode_namedetails_entries(raw):
+    """``(klucz, wartość)`` z ``namedetails`` — wyłącznie dozwolone klucze.
+
+    ETAP 2: ta sama lista i ta sama kolejność co ``_geocode_namedetails_values``,
+    ale z kluczem (np. ``name:pl``), dzięki czemu evidence może powiedzieć, SKĄD
+    pochodzi potwierdzenie nazwy. Gdy ``namedetails`` jest zwykłym napisem,
+    kluczem jest ``"namedetails"``.
+    """
+    details = raw.get("namedetails")
+    entries = []
+    if isinstance(details, dict):
+        for key, value in details.items():
+            key_text = _clean_location_component(key).casefold()
+            if key_text in _GEOCODE_NAMEDETAILS_KEYS or key_text.startswith("name:"):
+                cleaned = _clean_location_component(value)
+                if cleaned:
+                    entries.append((key_text, cleaned))
+    elif isinstance(details, str) and details.strip():
+        entries.append(("namedetails", details.strip()))
+    return entries
 
 
 def _geocode_namedetails_values(raw):
@@ -2589,18 +2698,24 @@ def _geocode_namedetails_values(raw):
     jest best-effort: gdy geopy go nie przyjmie, mapa go nie zwróci i walidacja
     działa dalej na pozostałych dowodach.
     """
-    details = raw.get("namedetails")
-    values = []
-    if isinstance(details, dict):
-        for key, value in details.items():
-            key_text = _clean_location_component(key).casefold()
-            if key_text in _GEOCODE_NAMEDETAILS_KEYS or key_text.startswith("name:"):
-                cleaned = _clean_location_component(value)
-                if cleaned:
-                    values.append(cleaned)
-    elif isinstance(details, str) and details.strip():
-        values.append(details.strip())
-    return values
+    return [value for _key, value in _geocode_namedetails_entries(raw)]
+
+
+def _geocode_raw_name_entries(raw):
+    """``(pole, wartość)`` dla surowych nazw kandydata (ETAP 2).
+
+    Kolejność identyczna jak w ``_geocode_raw_name_values``: ``raw["name"]``,
+    potem ``namedetails``, potem nagłówek ``display_name``.
+    """
+    entries = []
+    name = _clean_location_component(raw.get("name"))
+    if name:
+        entries.append(("name", name))
+    entries.extend(_geocode_namedetails_entries(raw))
+    display = _clean_location_component(raw.get("display_name"))
+    if display:
+        entries.append(("display_name_head", display.split(",")[0].strip()))
+    return entries
 
 
 def _geocode_raw_name_values(raw):
@@ -2609,27 +2724,26 @@ def _geocode_raw_name_values(raw):
     Używane WYŁĄCZNIE jako fallback, gdy geokoder nie podał żadnych pól
     miejscowości — nigdy nie nadpisują sprzecznych danych z tych pól.
     """
-    values = []
-    name = _clean_location_component(raw.get("name"))
-    if name:
-        values.append(name)
-    values.extend(_geocode_namedetails_values(raw))
-    display = _clean_location_component(raw.get("display_name"))
-    if display:
-        values.append(display.split(",")[0].strip())
-    return values
+    return [value for _field, value in _geocode_raw_name_entries(raw)]
+
+
+def _geocode_place_entries(address):
+    """``(pole, wartość, wartość znormalizowana)`` dla pól miejscowości (ETAP 2).
+
+    Evidence potrzebuje nazwy pola i oryginalnej pisowni, a walidacja nazwy
+    nadal idzie po wartości znormalizowanej — dokładnie jak dotąd.
+    """
+    entries = []
+    for field in _GEOCODE_PLACE_FIELDS:
+        normalized = _normalize_location_text(address.get(field))
+        if normalized:
+            entries.append((field, _clean_location_component(address.get(field)), normalized))
+    return entries
 
 
 def _geocode_place_values(address):
     """Znormalizowane nazwy z pól miejscowości (dowód dopasowania)."""
-    return [
-        normalized
-        for normalized in (
-            _normalize_location_text(address.get(field))
-            for field in _GEOCODE_PLACE_FIELDS
-        )
-        if normalized
-    ]
+    return [normalized for _field, _cleaned, normalized in _geocode_place_entries(address)]
 
 
 def _geocode_context_values(raw, address):
@@ -2827,55 +2941,143 @@ def _geocode_distance_km(lat_a, lon_a, lat_b, lon_b):
     return (lat_span ** 2 + lon_span ** 2) ** 0.5
 
 
-def _geocode_candidate_evidence(query_name, address, raw, postcode):
-    """``(dopasowana nazwa, siła dowodu)`` albo ``("", None)``.
+def _geocode_candidate_evidence_detail(query_name, address, raw, postcode):
+    """Pełny dowód dopasowania: ``GeocodeEvidence`` (ETAP 2).
 
     Trzy siły dowodu (od najmocniejszej):
       * ``place``     — nazwa z PÓL MIEJSCOWOŚCI (tożsamość kandydata),
-      * ``localized`` — egzonim z ``namedetails`` przy istniejących polach
-                        miejscowości (np. ``name:pl`` = "Paryż" dla "Paris");
-                        nie nadpisuje danych z pól miejscowości, więc zwracana
-                        nazwa to nadal pole miejscowości,
+      * ``localized`` — egzonim/nazwa z ``namedetails`` (np. ``name:pl`` =
+                        "Paryż" dla "Paris"). Gdy pola miejscowości ISTNIEJĄ,
+                        tożsamością zostaje pierwsze z nich ("Paris"), nie
+                        egzonim ("Paryż"). Gdy pól miejscowości NIE MA — a tak
+                        wygląda rzeczywista relacja granicy administracyjnej
+                        (``Tokio`` z ``addresstype=province`` ma tylko
+                        ``address.province``) — dopasowaną nazwą jest wartość
+                        z ``namedetails``. Dowód pozostaje MOCNY, bo pochodzi ze
+                        strukturalnych danych geokodera, a nie z ``display_name``,
       * ``display``   — tylko surowa nazwa / nagłówek ``display_name``, gdy
                         geokoder nie podał ŻADNEGO pola miejscowości. Dowód
                         słaby — stąd bezpiecznik ``GEOCODE_UNCERTAIN``.
+
+    Dodatkowo (ETAP 2) zwracane są źródło i pole potwierdzenia oraz oryginalna
+    pisownia wartości. Pola ``admin_label``/``admin_field`` wypełnia dopiero
+    ``_geocode_candidate_evidence_with_admin_label``.
     """
     if not query_name:
         # Sam kod pocztowy jest własnym dowodem (jak w etapie 1).
-        return (postcode, _GEOCODE_EVIDENCE_PLACE) if postcode else ("", None)
+        if postcode:
+            return GeocodeEvidence(
+                postcode, _GEOCODE_EVIDENCE_PLACE, "postcode", "postcode", postcode, "", ""
+            )
+        return _GEOCODE_NO_EVIDENCE
 
     variants = _geocode_query_variants(query_name)
-    place_values = _geocode_place_values(address)
+    place_entries = _geocode_place_entries(address)
+    place_values = [entry[2] for entry in place_entries]
     matched_place = next(
-        (value for value in place_values if _geocode_name_matches_any(variants, value)), ""
+        (entry for entry in place_entries if _geocode_name_matches_any(variants, entry[2])),
+        None,
     )
-    if matched_place:
-        return matched_place, _GEOCODE_EVIDENCE_PLACE
+    if matched_place is not None:
+        return GeocodeEvidence(
+            matched_place[2], _GEOCODE_EVIDENCE_PLACE, "address",
+            matched_place[0], matched_place[1], "", "",
+        )
 
     localized = next(
         (
-            normalized
-            for normalized in (
-                _normalize_location_text(value) for value in _geocode_namedetails_values(raw)
-            )
-            if _geocode_name_matches_any(variants, normalized)
+            (key, value, _normalize_location_text(value))
+            for key, value in _geocode_namedetails_entries(raw)
+            if _geocode_name_matches_any(variants, _normalize_location_text(value))
         ),
-        "",
+        None,
     )
-    if localized:
-        # Tożsamością zostaje pole miejscowości ("Paris"), nie egzonim ("Paryż").
-        return (place_values[0] if place_values else localized), _GEOCODE_EVIDENCE_LOCALIZED
+    if localized is not None:
+        # Tożsamością zostaje pole miejscowości ("Paris"), nie egzonim ("Paryż");
+        # bez pól miejscowości — dopasowana nazwa z namedetails.
+        matched = place_values[0] if place_values else localized[2]
+        return GeocodeEvidence(
+            matched, _GEOCODE_EVIDENCE_LOCALIZED, "namedetails",
+            localized[0], localized[1], "", "",
+        )
 
     if place_values:
         # Pola miejscowości istnieją, ale nie potwierdzają zapytania — surowa
         # nazwa nie może nadpisać sprzecznych danych strukturalnych.
-        return "", None
+        return _GEOCODE_NO_EVIDENCE
 
-    for value in _geocode_raw_name_values(raw):
+    for field, value in _geocode_raw_name_entries(raw):
         normalized = _normalize_location_text(value)
         if _geocode_name_matches_any(variants, normalized):
-            return normalized, _GEOCODE_EVIDENCE_DISPLAY
-    return "", None
+            return GeocodeEvidence(
+                normalized, _GEOCODE_EVIDENCE_DISPLAY, "raw", field, value, "", ""
+            )
+    return _GEOCODE_NO_EVIDENCE
+
+
+def _geocode_confirmed_admin_label(query_name, address, raw, postcode):
+    """``(wartość, pole)`` potwierdzonej nazwy administracyjnej albo ``("", "")``.
+
+    ETAP 2 — wąska reguła, wszystkie warunki ŁĄCZNIE:
+      R1 kandydat jest POTWIERDZONĄ granicą administracyjną (``class=place``
+         i POI jej nie uruchamiają),
+      R2 nie ma ŻADNEGO pola miejscowości (city/town/village/hamlet/locality),
+      R3 dowód jest mocny (``place`` albo ``localized``; ``display`` nigdy),
+      R4 istnieje pole administracyjne z ``_GEOCODE_LABEL_ADMIN_FIELDS``, którego
+         znormalizowana wartość jest RÓWNA dopasowanej nazwie — pełne
+         dopasowanie, bez prefiksów, podciągów i fuzzy matchingu,
+      R5 zwracana jest surowa wartość TEGO pola, nigdy tekst użytkownika.
+
+    Bez tej reguły zaakceptowana relacja ``boundary/administrative`` (np. Tokio:
+    ``address.province = "Tokio"``, ``namedetails["name:pl"] = "Tokio"``) nie ma
+    ani pola miejscowości, ani ``municipality``/``county``/``state``, więc
+    etykieta spadała do ``country`` i karta pokazywała samą „Japonię”.
+
+    Reguła NIE awansuje dowolnego regionu: ``state = "województwo mazowieckie"``
+    przy potwierdzonej nazwie „warszawa” nie przechodzi R4 i etykieta zostaje
+    taka jak dotąd.
+    """
+    if not _geocode_candidate_is_administrative(raw):
+        return "", ""                                          # R1
+    if _geocode_place_values(address):
+        return "", ""                                          # R2
+    evidence = _geocode_candidate_evidence_detail(query_name, address, raw, postcode)
+    if evidence.strength not in (_GEOCODE_EVIDENCE_PLACE, _GEOCODE_EVIDENCE_LOCALIZED):
+        return "", ""                                          # R3
+    if not evidence.matched:
+        return "", ""
+    for field in _GEOCODE_LABEL_ADMIN_FIELDS:
+        value = _clean_location_component(address.get(field))
+        if value and _normalize_location_text(value) == evidence.matched:
+            return value, field                                # R4 + R5
+    return "", ""
+
+
+def _geocode_candidate_evidence_with_admin_label(query_name, address, raw, postcode):
+    """``GeocodeEvidence`` uzupełniony o potwierdzoną etykietę administracyjną.
+
+    Jedyne miejsce, które wypełnia ``admin_label``/``admin_field``. Obliczenie
+    jest lokalne i deterministyczne (żadnego I/O, żadnego dodatkowego requestu).
+    """
+    evidence = _geocode_candidate_evidence_detail(query_name, address, raw, postcode)
+    admin_label, admin_field = _geocode_confirmed_admin_label(
+        query_name, address, raw, postcode
+    )
+    if not admin_label:
+        return evidence
+    return evidence._replace(admin_label=admin_label, admin_field=admin_field)
+
+
+def _geocode_candidate_evidence(query_name, address, raw, postcode):
+    """``(dopasowana nazwa, siła dowodu)`` albo ``("", None)``.
+
+    Kontrakt etapu 1 bez zmian: cienki wrapper na
+    ``_geocode_candidate_evidence_detail`` (ETAP 2). Kolejność sprawdzeń i siły
+    dowodu są identyczne; źródło, pole i potwierdzona wartość administracyjna
+    są dostępne wyłącznie w wariancie ``_detail``.
+    """
+    evidence = _geocode_candidate_evidence_detail(query_name, address, raw, postcode)
+    return evidence.matched, evidence.strength
 
 
 def _geocode_matched_place_name(query_name, address, raw, postcode):
@@ -3091,8 +3293,17 @@ def geocode_city_accepted(city_name, lang="pl"):
     raw = raw if isinstance(raw, dict) else {}
     address = _nominatim_address_components(raw)
     mode = _location_mode_for_query(query, address)
+    # ETAP 2: zaakceptowana relacja boundary/administrative bez pola
+    # miejscowości (np. Tokio z address.province) nie może spaść do etykiety
+    # kraju. Evidence liczymy lokalnie dla TEGO kandydata — bez dodatkowego
+    # requestu do geokodera i bez zmiany publicznego kontraktu (5-krotka).
+    query_name, _contexts, postcode = _geocode_query_context(core_query)
+    evidence = _geocode_candidate_evidence_with_admin_label(
+        query_name, address, raw, postcode
+    )
     short_label, display_location = _format_public_location_parts(
-        address, query=query, mode=mode, lang=lang
+        address, query=query, mode=mode, lang=lang,
+        confirmed_admin=evidence.admin_label,
     )
     if not short_label or not display_location:
         short_label = FIELD_LOCATION_LABEL
