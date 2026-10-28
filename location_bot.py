@@ -2254,6 +2254,20 @@ _GEOCODE_NAMEDETAILS_KEYS = ("name", "int_name", "official_name", "alt_name")
 _GEOCODE_EVIDENCE_PLACE = "place"          # pola miejscowości
 _GEOCODE_EVIDENCE_LOCALIZED = "localized"  # egzonim z namedetails (także bez pól miejscowości)
 _GEOCODE_EVIDENCE_DISPLAY = "display"      # tylko name/display_name — dowód słaby
+# Jawny ranking siły dowodu: place > localized > display.
+# Używany WYŁĄCZNIE wewnątrz deduplikacji (ta sama tożsamość i to samo
+# miejsce) — patrz ``_geocode_select_accepted``. Nie zmienia końcowej
+# selekcji RÓŻNYCH lokalizacji: tam nadal rządzi kolejność Nominatima.
+_GEOCODE_EVIDENCE_RANK = {
+    _GEOCODE_EVIDENCE_PLACE: 3,
+    _GEOCODE_EVIDENCE_LOCALIZED: 2,
+    _GEOCODE_EVIDENCE_DISPLAY: 1,
+}
+
+
+def _geocode_evidence_rank(strength):
+    """Ranga siły dowodu; brak dowodu (``None``) jest najsłabszy."""
+    return _GEOCODE_EVIDENCE_RANK.get(strength, 0)
 
 # ============================================================================
 # ETAP 2 — KONTRAKT EVIDENCE (addytywny; stare kontrakty krotek bez zmian)
@@ -3093,6 +3107,12 @@ def _geocode_select_accepted(query, candidates, country_code=None, admin_context
     (gdy zapytanie zawierało jawny kraj), dowód dopasowania nazwy i brak
     sprzecznego kontekstu. Zero zwalidowanych = ``GEOCODE_NO_MATCH``.
 
+    Wyjątek od „pierwszy wygrywa” dotyczy WYŁĄCZNIE duplikatów: gdy kandydat
+    ma tę samą tożsamość (nazwa + kraj) i leży w promieniu
+    ``_GEOCODE_SAME_PLACE_KM`` od już przyjętego, zostaje ten z mocniejszym
+    dowodem (``place`` > ``localized`` > ``display``), a przy remisie —
+    pierwszy. Różne lokalizacje zachowują kolejność Nominatima bez zmian.
+
     ``GEOCODE_UNCERTAIN`` zostaje wyłącznie jako rzadki bezpiecznik: gdy dowód
     pochodzi TYLKO z surowej nazwy / nagłówka ``display_name`` (bez pól
     miejscowości i bez dopasowanych ``namedetails``) i geokoder zwrócił więcej
@@ -3141,11 +3161,29 @@ def _geocode_select_accepted(query, candidates, country_code=None, admin_context
             continue
 
         identity = _geocode_candidate_identity(raw, address, matched)
-        if any(
-            known_identity == identity
-            and _geocode_same_place(known_location, location)
-            for known_identity, known_location in seen
-        ):
+
+        # Ta sama tożsamość i to samo miejsce — Nominatim zwraca jedną
+        # miejscowość zwykle dwa razy (raz jako punkt, raz jako relację
+        # granicy, np. Hel: boundary/administrative i boundary/town). Zostaje
+        # kandydat z MOCNIEJSZYM dowodem (place > localized > display); przy
+        # remisie siły wygrywa pierwszy, czyli dotychczasowa kolejność
+        # Nominatima. RÓŻNE lokalizacje nie podlegają temu rankingowi.
+        duplicate_index = next(
+            (
+                index
+                for index, (known_identity, known_location) in enumerate(seen)
+                if known_identity == identity
+                and _geocode_same_place(known_location, location)
+            ),
+            None,
+        )
+        if duplicate_index is not None:
+            if _geocode_evidence_rank(strength) <= _geocode_evidence_rank(
+                accepted[duplicate_index][1]
+            ):
+                continue
+            seen[duplicate_index] = (identity, location)
+            accepted[duplicate_index] = (location, strength)
             continue
         seen.append((identity, location))
         accepted.append((location, strength))

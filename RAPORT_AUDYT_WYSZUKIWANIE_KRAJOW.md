@@ -1682,3 +1682,181 @@ końcu, plik kończy się znakiem nowej linii.
 samej, nowej wartości wewnątrz reguły fazy 2. D13 (`category`) nie zostało
 zaimplementowane; `guest_bot_handler.py`, `i18n.py`, `users_store.py`,
 `country_index.py`, `data/`, `tools/`, workflowy i pliki testów fazy 1 — diff pusty.
+
+---
+
+## 22. Hel — utracony ranking dowodów w deduplikacji (audyt + poprawka)
+
+**Status: zaimplementowane i zweryfikowane.** Zakres: `location_bot.py`
+(+43/−5) oraz nowy `test_geocode_evidence_rank.py` (37 testów). Decyzje
+**D16 = NIE** (brak globalnego rankingu; `strong[0]` bez zmian) i
+**D17 = TAK** (ranking wyłącznie wewnątrz deduplikacji).
+
+### 22.0 Literalne payloady Oracle
+
+Request **dokładnie** taki, jak wysyła bot (a nie `q=Hel, Polska` jako wolny
+tekst — to było źródłem wcześniejszej, błędnej rekonstrukcji):
+
+```
+…/search?q=Hel&countrycodes=pl&format=json&addressdetails=1&namedetails=1&limit=7&accept-language=pl
+```
+
+Wracają **2** wyniki (`limit=7`), w tej kolejności:
+
+| # | `addresstype` | `place_rank` | lat, lon | `address` | `namedetails` | dowód |
+|---|---|---|---|---|---|---|
+| 1 | `administrative` | 16 | **54.6237094, 18.7275009** | `administrative=Hel`, `county=powiat pucki`, `state=województwo pomorskie`, `postcode=84-150`, `country=Polska`, `country_code=pl` | `name=Hel`, `name:de=Hela`, `name:pl=Hel`, `name:csb=Hél` | **`localized`** (`source=namedetails`, `field=name`) |
+| 2 | `town` | 14 | **54.6066432, 18.8027076** | **`town=Hel`**, `county=powiat pucki`, `state=województwo pomorskie`, `postcode=84-150`, `country=Polska`, `country_code=pl` | `name=Hel`, `name:pl=Hel`, `name:ru`, `name:sr`, `name:uk` | **`place`** (`source=address`, `field=town`) |
+
+Oba mają `class=boundary`, `type=administrative` i `country_code=pl` — twardy
+filtr kraju przepuszcza oba. Odległość między nimi: **≈5,2 km (5207 m)**
+(`_GEOCODE_SAME_PLACE_KM = 10.0`).
+
+Reverse — oba pomiary, oba literalne:
+
+| Punkt | `class` / `type` / `addresstype` | `address` | pole miejscowości |
+|---|---|---|---|
+| **54.6066432, 18.8027076** (kandydat town) | `building` / `yes` / `building` | `town=Hel`, `county=powiat pucki`, `state=województwo pomorskie`, `country=Polska`, `country_code=pl` | **TAK — `town=Hel`** |
+| 54.6237094, 18.7275009 (kandydat administrative) | `military` / `training_area` / `military` | `military=Strefa 5…`, `administrative=Hel`, `county=powiat pucki`, …, `country_code=pl` | **NIE** |
+
+`class=building` w reverse **nie jest** przeszkodą: etykiety biorą się
+wyłącznie ze strukturalnych pól `address`, więc sama obecność `town=Hel`
+wystarcza do etykiety `Hel`.
+
+### 22.1 Przyczyna produkcyjnego błędu
+
+```
+_geocode_select_accepted("Hel", [#1 administrative, #2 town], country_code="pl")
+
+#1: safe → kraj ok → matched='hel'  strength=localized → przyjęty
+#2: safe → kraj ok → matched='hel'  strength=place
+     identity #1 = ('hel','pl')     identity #2 = ('hel','pl')   ← to samo
+     _geocode_same_place(#1,#2) = True (5207 m < 10 km)
+     → DEDUP: #2 ODRZUCONY, zanim w ogóle trafia do `accepted`
+accepted = [(#1, localized)] → strong = [#1] → zwrócony #1
+```
+
+Kaskada dalej:
+
+1. wybrany #1 nie ma pola miejscowości ani `municipality`, ma `county`
+   → `_select_short_location_label` zwraca **`powiat pucki`**;
+2. reverse w punkcie #1 **też** nie ma pola miejscowości
+   → `_reverse_label_matches_query('powiat pucki', 'Hel, Polska')` = **False**;
+3. zdegradowany forward fallback wygrywa
+   → karta **`powiat pucki` / `powiat pucki, województwo pomorskie, Polska`**.
+
+Objaw odtworzony offline co do znaku, wraz z liczbą requestów (1 forward +
+1 reverse). **Kluczowy wniosek:** wystarczyło naprawić wybór kandydata —
+żadna zmiana w formatterze nie była potrzebna.
+
+### 22.2 Decyzje D16 i D17
+
+| ID | Decyzja | Skutek w kodzie |
+|---|---|---|
+| **D16** | **NIE** — brak globalnego rankingu przy końcowej selekcji różnych lokalizacji | `strong[0]` **bez zmian**; kolejność Nominatima rządzi dla różnych miejsc |
+| **D17** | **TAK** — ranking wewnątrz deduplikacji tej samej tożsamości i lokalizacji | mocniejszy dowód **zastępuje** słabszego; **remis → zostaje pierwszy** |
+
+Ranking jest jawny i w jednym miejscu:
+
+```python
+_GEOCODE_EVIDENCE_RANK = {
+    _GEOCODE_EVIDENCE_PLACE: 3,
+    _GEOCODE_EVIDENCE_LOCALIZED: 2,
+    _GEOCODE_EVIDENCE_DISPLAY: 1,
+}
+
+
+def _geocode_evidence_rank(strength):
+    """Ranga siły dowodu; brak dowodu (``None``) jest najsłabszy."""
+    return _GEOCODE_EVIDENCE_RANK.get(strength, 0)
+```
+
+### 22.3 Zakres zmiany — ranking zmienia TYLKO deduplikację
+
+| Element | Zmiana |
+|---|---|
+| `_GEOCODE_EVIDENCE_RANK`, `_geocode_evidence_rank` | **nowe** (stała + helper) |
+| docstring `_geocode_select_accepted` | udokumentowany wyjątek od „pierwszy wygrywa” |
+| dedup (`_geocode_select_accepted`) | `next(...)` zamiast `any(...)` + podmiana na mocniejszy dowód |
+| `strong = [...]` / `return GEOCODE_OK, strong[0]` | **bez zmian (D16)** |
+| `GEOCODE_UNCERTAIN`, filtr klasy, twardy filtr kraju, `_geocode_context_conflicts` | **bez zmian** |
+| kontrakty krotek, liczba requestów, `country_index`, GPS, pinezka, WebApp, etykiety reverse, D13, wariant B dla Georgia | **bez zmian** |
+
+Po poprawce wszystkie trzy formy zapytania dają ten sam, poprawny wynik:
+
+```
+'Hel'         → forward=('Hel', 'Hel, powiat pucki, województwo pomorskie, Polska')
+'Hel, Polska' → reverse='Hel'  KARTA=('Hel', 'Hel, powiat pucki, województwo pomorskie, Polska')
+'Hel,PL'      → 1 forward (q=Hel, countrycodes=pl) + 1 reverse (54.6066432, 18.8027076)
+```
+
+### 22.4 Znalezione ograniczenie: `0.0 or float("inf")` — ODŁOŻONE, NIEZMIENIANE
+
+`_geocode_same_place` liczy:
+
+```python
+return (_geocode_distance_km(...) or float("inf")) <= _GEOCODE_SAME_PLACE_KM
+```
+
+Odległość `0.0` jest **falsy**, więc `0.0 or inf` → `inf` → `inf <= 10.0`
+jest fałszem. Dwa kandydaty o współrzędnych **identycznych co do znaku nie są
+uznane za to samo miejsce**. Produkcji to nie dotyka (Nominatim nie zwraca
+dwóch obiektów w jednym punkcie; dla Hel to 5207 m), ale jest to realna
+pułapka.
+
+**Decyzja: nie naprawiać w tej zmianie.** Odwrócenie zachowania zamieniłoby
+część `GEOCODE_UNCERTAIN` na `GEOCODE_OK` i wymaga własnego przeglądu.
+Przypięte testem charakterystycznym
+`test_known_limitation_zero_distance_is_not_the_same_place` — tak samo, jak
+D13 w §21.4. Fixtury syntetyczne w nowym pliku używają dwóch **różnych**
+punktów w progu (`SPOT_A`, `SPOT_B`, ≈640 m), żeby nie polegać na tym
+ograniczeniu.
+
+### 22.5 Testy (`test_geocode_evidence_rank.py`, 37 testów)
+
+| Grupa | Testy |
+|---|---|
+| kontrakt rankingu | stała `place > localized > display`; `None`/nieznane → 0; fixtury mają zadeklarowaną siłę |
+| fixtury Oracle Hel | `town` jest w #2 (nie w #1); kandydaci w progu 10 km; reverse town-punktu ma `town=Hel`; **`class=building`/`type=yes` nadal daje etykietę `Hel`**; reverse w punkcie admin nie ma pola miejscowości (dowód przyczyny) |
+| 1–4 (D17) | localized→place wygrywa place · display→place wygrywa place · place→localized zostaje place · remis (place i display) zostawia pierwszy |
+| 5–6 (D16) | ta sama nazwa > 10 km → **bez dedupu** (dowód: `UNCERTAIN`, nie `OK`) · różne lokalizacje → pierwszy wygrywa **mimo słabszego dowodu** |
+| 7–8 (Hel) | literalny Hel → wybrany `town=Hel` (×3 formy) · kraj nigdy w `q` · etykieta `Hel` (×3) · karta `Hel` / `Hel, powiat pucki, województwo pomorskie, Polska` · reverse leci w 54.6066432, 18.8027076 · dokładnie 1 forward + 1 reverse |
+| 9 (regresje) | Tokio bez zmian · Ełk (fixtura **syntetyczna**, nie Oracle) · GPS/pinezka · reverse nie dziedziczy `confirmed_admin` |
+
+**Dowód, że testy łapią regresję** — nowy plik uruchomiony ze starą
+deduplikacją przywróconą w pamięci (plugin, repo nietknięte):
+
+```
+9 failed, 28 passed
+  test_1_localized_first_place_second_same_place_wins_place
+  test_2_display_first_place_second_same_place_wins_place
+  test_7_hel_oracle_..._wins_town[Hel] [Hel, Polska] [Hel,PL]
+  test_8_hel_card_label_is_hel[Hel] [Hel, Polska] [Hel,PL]
+  test_8b_reverse_town_point_is_queried_with_the_town_coordinates
+```
+
+Uwaga uczciwości: `test_8b_hel_resolved_card_title_is_hel` na starym kodzie
+**przechodzi** — atrapa zwraca nową fixturę reverse (`town=Hel`) niezależnie
+od współrzędnych zapytania, a poprawna nazwa i tak pochodzi z reverse.
+Regresję wyboru kandydata łapią `test_7_*`, `test_8_*` i
+`test_8b_reverse_town_point_is_queried_with_the_town_coordinates`.
+
+### 22.6 Weryfikacja
+
+| Kontrola | Wynik |
+|---|---|
+| `pytest -q` | **3857 passed, 3 skipped** (3820 bazowo + 37 nowych) |
+| testy fazy 2 (`test_geocode_admin_label.py`) | **110 passed** |
+| `git diff --check` | **exit 0**, bez uwag |
+| `ast.parse(feature_version=(3, 8))` | OK dla `location_bot.py` i nowego pliku |
+| długie linie / końcowe spacje | linie dodane czyste (27/48 w `location_bot.py` to stan z HEAD) |
+
+### 22.7 Czego ta zmiana NIE robi
+
+1. Nie wprowadza globalnego rankingu (D16) — `strong[0]` nienaruszone.
+2. Nie naprawia `0.0 or float("inf")` (§22.4) — odłożone.
+3. Nie zmienia GPS, pinezki, WebApp, `PENDING_SAVE`, etykiet reverse, D13
+   (`category` jako alias `class`), wariantu B dla Georgia, `country_index`,
+   kontraktów krotek ani liczby requestów.
+4. Nie dotyka `guest_bot_handler.py`, `i18n.py`, `users_store.py`, `data/`,
+   `tools/`, workflowów ani żadnego istniejącego pliku testów.
