@@ -103,6 +103,9 @@ STRINGS = {
     "moon_full_today_clear": "Dziś pełnia Księżyca o godz. {time}. Niebo może być tej nocy wyraźnie jaśniejsze.",
     "moon_full_today": "Dziś pełnia Księżyca o godz. {time}.",
     "moon_new_today": "Dziś nów Księżyca ({time}) — noc będzie wyjątkowo ciemna.",
+    "moon_full_tomorrow_clear": "Jutro pełnia Księżyca o godz. {time}. Już tej nocy niebo może być wyraźnie jaśniejsze.",
+    "moon_full_tomorrow": "Jutro pełnia Księżyca o godz. {time}.",
+    "moon_new_tomorrow": "Jutro nów Księżyca o godz. {time}.",
     "trend_moon_full_date": "Pełnia {date}",
     "trend_moon_new_date": "Nów {date}"
   },
@@ -197,6 +200,9 @@ STRINGS = {
     "moon_full_today_clear": "Full moon today at {time}. The sky may be noticeably brighter tonight.",
     "moon_full_today": "Full moon today at {time}.",
     "moon_new_today": "New moon today ({time}) — the night will be exceptionally dark.",
+    "moon_full_tomorrow_clear": "Full moon tomorrow at {time}. The sky may already be noticeably brighter tonight.",
+    "moon_full_tomorrow": "Full moon tomorrow at {time}.",
+    "moon_new_tomorrow": "New moon tomorrow at {time}.",
     "trend_moon_full_date": "Full moon {date}",
     "trend_moon_new_date": "New moon {date}"
   },
@@ -291,6 +297,9 @@ STRINGS = {
     "moon_full_today_clear": "Pleine lune aujourd'hui à {time}. Le ciel pourrait être nettement plus lumineux cette nuit.",
     "moon_full_today": "Pleine lune aujourd'hui à {time}.",
     "moon_new_today": "Nouvelle lune aujourd'hui ({time}) — la nuit sera exceptionnellement sombre.",
+    "moon_full_tomorrow_clear": "Pleine lune demain à {time}. Le ciel pourrait déjà être nettement plus lumineux cette nuit.",
+    "moon_full_tomorrow": "Pleine lune demain à {time}.",
+    "moon_new_tomorrow": "Nouvelle lune demain à {time}.",
     "trend_moon_full_date": "Pleine lune {date}",
     "trend_moon_new_date": "Nouvelle lune {date}"
   },
@@ -385,6 +394,9 @@ STRINGS = {
     "moon_full_today_clear": "Heute Vollmond um {time} Uhr. Der Himmel kann in dieser Nacht deutlich heller sein.",
     "moon_full_today": "Heute Vollmond um {time} Uhr.",
     "moon_new_today": "Heute Neumond ({time} Uhr) — die Nacht wird besonders dunkel sein.",
+    "moon_full_tomorrow_clear": "Morgen Vollmond um {time} Uhr. Schon in dieser Nacht kann der Himmel deutlich heller sein.",
+    "moon_full_tomorrow": "Morgen Vollmond um {time} Uhr.",
+    "moon_new_tomorrow": "Morgen Neumond um {time} Uhr.",
     "trend_moon_full_date": "Vollmond {date}",
     "trend_moon_new_date": "Neumond {date}"
 
@@ -480,6 +492,9 @@ STRINGS = {
     "moon_full_today_clear": "Hoy luna llena a las {time}. El cielo puede verse claramente más iluminado esta noche.",
     "moon_full_today": "Hoy luna llena a las {time}.",
     "moon_new_today": "Hoy luna nueva ({time}) — la noche será excepcionalmente oscura.",
+    "moon_full_tomorrow_clear": "Mañana luna llena a las {time}. Ya esta noche el cielo puede verse claramente más iluminado.",
+    "moon_full_tomorrow": "Mañana luna llena a las {time}.",
+    "moon_new_tomorrow": "Mañana luna nueva a las {time}.",
     "trend_moon_full_date": "Luna llena {date}",
     "trend_moon_new_date": "Luna nueva {date}"
   },
@@ -574,6 +589,9 @@ STRINGS = {
     "moon_full_today_clear": "Fullmåne i dag kl. {time}. Himmelen kan bli merkbart lysere i natt.",
     "moon_full_today": "Fullmåne i dag kl. {time}.",
     "moon_new_today": "Nymåne i dag ({time}) — natten vil bli ekstra mørk.",
+    "moon_full_tomorrow_clear": "Fullmåne i morgen kl. {time}. Allerede i natt kan himmelen bli merkbart lysere.",
+    "moon_full_tomorrow": "Fullmåne i morgen kl. {time}.",
+    "moon_new_tomorrow": "Nymåne i morgen kl. {time}.",
     "trend_moon_full_date": "Fullmåne {date}",
     "trend_moon_new_date": "Nymåne {date}"
   }
@@ -2039,6 +2057,9 @@ _PARAMETERIZED_TIME_I18N_KEYS = (
     "moon_full_today_clear",
     "moon_full_today",
     "moon_new_today",
+    "moon_full_tomorrow_clear",
+    "moon_full_tomorrow",
+    "moon_new_tomorrow",
 )
 
 
