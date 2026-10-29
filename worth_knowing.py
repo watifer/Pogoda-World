@@ -1056,6 +1056,18 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                        is_afternoon_report, tomorrow_morning_events, max_wind, gust_kmh, ta, current_hour, coastal_day_alert=False):
     candidates = []
 
+    # W aktywnym /day `ta` obejmuje dzisiejszą datę. Kotwiczenie daty chroni
+    # również przed przypadkowym włączeniem jutra przy wejściu wielodniowym.
+    future_ta = []
+    if ta:
+        today_str = ta[0].get("time_local", "")[:10]
+        future_ta = [
+            h for h in ta
+            if len(h.get("time_local", "")) >= 13
+            and h["time_local"][:10] == today_str
+            and int(h["time_local"][11:13]) >= current_hour
+        ]
+
     # === NOWOCZESNE DANE: UV, BURZE i DUCHOTA (Najwyższy priorytet) ===
     if ta:
         try:
@@ -1063,9 +1075,9 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
         except Exception:
             month = 5
             
-        max_uv = max((_f(h.get("uv_index")) for h in ta), default=0)
-        max_thunder = max((_f(h.get("thunder_prob")) for h in ta), default=0)
-        max_dewpoint = max((_f(h.get("dewpoint_c")) for h in ta), default=-99)
+        max_uv = max((_f(h.get("uv_index")) for h in future_ta), default=0)
+        max_thunder = max((_f(h.get("thunder_prob")) for h in future_ta), default=0)
+        max_dewpoint = max((_f(h.get("dewpoint_c")) for h in future_ta), default=-99)
         
         # 1. ALERT BURZOWY
         if max_thunder >= 25.0:
@@ -1082,7 +1094,7 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
         sun_windows = []
         uv_peaks = []
         
-        for h in ta:
+        for h in future_ta:
             try:
                 hh = int(h["time_local"][11:13])
                 if 10 <= hh <= 16:
@@ -1103,7 +1115,7 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
 
         # [POPRAWKA 2]: Obliczamy opad i grube chmury w środku dnia (10-16)
         daytime_precip = 0
-        for h in ta:
+        for h in future_ta:
             try:
                 if 10 <= int(h["time_local"][11:13]) <= 16:
                     daytime_precip += _f(h.get("precip_mm"))
@@ -1160,10 +1172,6 @@ def _candidates_level1(blocks, temp_min, temp_max, total_precip_mm,
                     "wx": ["temp_change"]
                 })
     # ==========================================================
-
-    future_ta = []
-    if ta:
-        future_ta = [h for h in ta if len(h.get("time_local", "")) >= 13 and int(h["time_local"][11:13]) >= current_hour]
 
     cold_hr, cold_temp, warm_hr, warm_temp = None, None, None, None
     if future_ta:

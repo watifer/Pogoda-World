@@ -135,6 +135,83 @@ def _kmh_from_ms(ms):
     return None if ms is None else round(ms * 3.6, 1)
 
 
+# Surowe wartości są utrwalane na granicy parserów, zanim rekord OM trafi do
+# współdzielonego cache i zanim fuzja zacznie nadpisywać pola kanoniczne.
+# Osobne rekordy Yr pozostają surowymi rekordami pomocniczymi; na rekord OM
+# kopiujemy dodatkowo sparowane wartości Yr, żeby oba modele były dostępne bez
+# odtwarzania ich z pól już sfuzowanych.
+_OM_RAW_FIELDS = (
+    "temp_c",
+    "dewpoint_c",
+    "rh_pct",
+    "wind_kmh",
+    "gust_kmh",
+    "wind_dir_deg",
+    "clouds_pct",
+    "clouds_low_pct",
+    "clouds_mid_pct",
+    "clouds_high_pct",
+    "pressure_hpa",
+    "uv_index",
+    "precip_mm",
+    "weather_code",
+)
+_OM_PROVENANCE_FIELDS = _OM_RAW_FIELDS + ("precip_prob_pct", "symbol_code")
+_YR_PROVENANCE_FIELDS = (
+    "temp_c",
+    "dewpoint_c",
+    "rh_pct",
+    "wind_kmh",
+    "gust_kmh",
+    "wind_dir_deg",
+    "clouds_pct",
+    "clouds_low_pct",
+    "clouds_mid_pct",
+    "clouds_high_pct",
+    "pressure_hpa",
+    "uv_index",
+    "thunder_prob",
+    "precip_mm",
+    "weather_code",
+    "symbol_code",
+)
+_YR_RAW_ON_OM = {
+    "temp_c": "temp_c_yr",
+    "dewpoint_c": "dewpoint_c_yr",
+    "rh_pct": "rh_pct_yr",
+    "wind_kmh": "wind_kmh_yr",
+    "gust_kmh": "gust_kmh_yr",
+    "wind_dir_deg": "wind_dir_deg_yr",
+    "pressure_hpa": "pressure_hpa_yr",
+    "uv_index": "uv_index_clear_sky_yr",
+    "thunder_prob": "thunder_prob_yr",
+    "precip_mm": "precip_mm_yr",
+    "symbol_code": "symbol_code_yr",
+}
+
+
+def _add_om_raw_and_provenance(hour: dict, precip_prob_raw) -> None:
+    for field in _OM_RAW_FIELDS:
+        hour[f"{field}_om"] = hour.get(field)
+
+    # Kanoniczny POP ma historyczny fallback None -> 0. Surowa wartość musi
+    # zachować rzeczywisty brak danych, bez zmiany tego fallbacku.
+    hour["precip_prob_pct_om"] = precip_prob_raw
+
+    for field in _OM_PROVENANCE_FIELDS:
+        hour[f"{field}_source"] = "openmeteo"
+    hour["uv_index_semantics"] = "standard"
+
+
+def _add_yr_raw_and_provenance(hour: dict) -> None:
+    # Yr udostępnia tutaj UV dla bezchmurnego nieba, nie zwykłe UV. Nie tworzymy
+    # pola uv_index_yr, które mogłoby sugerować inną semantykę.
+    hour["uv_index_clear_sky_yr"] = hour.get("uv_index")
+    for field in _YR_PROVENANCE_FIELDS:
+        hour[f"{field}_source"] = "yrno"
+    hour["uv_index_semantics"] = "clear_sky"
+
+
 def _to_local(dt_utc: datetime, tz: ZoneInfo) -> datetime:
     return dt_utc.astimezone(tz)
     
@@ -193,7 +270,7 @@ def _fetch_yrno(lat: float, lon: float, tz: ZoneInfo) -> tuple[list, str]:
                    .get("details", {})
                    .get("probability_of_thunder"))
                   
-        hours.append({
+        hour = {
             "time_local":      t_loc.isoformat(timespec="minutes"),
             "temp_c":          details.get("air_temperature"),
             "dewpoint_c":      details.get("dew_point_temperature"),
@@ -212,7 +289,9 @@ def _fetch_yrno(lat: float, lon: float, tz: ZoneInfo) -> tuple[list, str]:
             "weather_code":    None,
             "symbol_code":     symbol,
             "source":          "yrno",
-        })
+        }
+        _add_yr_raw_and_provenance(hour)
+        hours.append(hour)
     return hours, updated_at_loc
 
 
@@ -278,7 +357,7 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
     hours = []
     for i, t_str in enumerate(times):
         t_loc = datetime.fromisoformat(t_str).replace(tzinfo=tz)
-        hours.append({
+        hour = {
             "time_local":      t_loc.isoformat(timespec="minutes"),
             "temp_c":          h["temperature_2m"][i],
             "dewpoint_c":      h["dewpoint_2m"][i],
@@ -297,7 +376,9 @@ def _fetch_openmeteo(lat: float, lon: float, tz: ZoneInfo) -> list:
             "weather_code":    h["weather_code"][i],
             "symbol_code":     None,
             "source":          "openmeteo",
-        })
+        }
+        _add_om_raw_and_provenance(hour, prob[i])
+        hours.append(hour)
         
     # Zapisujemy do cache przed zwrotem
     _OPENMETEO_CACHE[key] = (now_ts, hours)
@@ -527,40 +608,62 @@ def build_payload_for_location(
             t = om["time_local"]
             yr = yr_dict.get(t)
             if yr:
+                # Najpierw zachowujemy sparowane surowe dane Yr. Pola kanoniczne
+                # są poniżej nadpisywane dokładnie według dotychczasowych zasad.
+                for field, raw_field in _YR_RAW_ON_OM.items():
+                    om[raw_field] = yr.get(field)
+
                 # 1. Kopiujemy TWARDE, PRAWDZIWE DANE od Norwegów
-                if yr.get("temp_c") is not None: om["temp_c"] = yr["temp_c"]
-                if yr.get("precip_mm") is not None: om["precip_mm"] = yr["precip_mm"]
+                if yr.get("temp_c") is not None:
+                    om["temp_c"] = yr["temp_c"]
+                    om["temp_c_source"] = "yrno"
+                if yr.get("precip_mm") is not None:
+                    om["precip_mm"] = yr["precip_mm"]
+                    om["precip_mm_source"] = "yrno"
                 
-                # ZACHOWUJEMY chmury OM, ale dopisujemy chmury Yr jako alternatywę do konsensusu:
+                # ZACHOWUJEMY chmury OM, ale dopisujemy chmury Yr jako alternatywę do konsensusu.
+                # Nie dodajemy istniejących kluczy *_yr z None: ich obecność jest
+                # istotna dla dotychczasowych konsumentów, w tym modułu nadmorskiego.
                 if yr.get("clouds_pct") is not None:      om["clouds_pct_yr"] = yr["clouds_pct"]
                 if yr.get("clouds_low_pct") is not None:  om["clouds_low_pct_yr"] = yr["clouds_low_pct"]
                 if yr.get("clouds_mid_pct") is not None:  om["clouds_mid_pct_yr"] = yr["clouds_mid_pct"]
                 if yr.get("clouds_high_pct") is not None: om["clouds_high_pct_yr"] = yr["clouds_high_pct"]
                 # Burze i indeks UV
-                if yr.get("uv_index") is not None: om["uv_index"] = yr["uv_index"]
-                if yr.get("thunder_prob") is not None: om["thunder_prob"] = yr["thunder_prob"]
+                if yr.get("uv_index") is not None:
+                    om["uv_index"] = yr["uv_index"]
+                    om["uv_index_source"] = "yrno"
+                    om["uv_index_semantics"] = "clear_sky"
+                if yr.get("thunder_prob") is not None:
+                    om["thunder_prob"] = yr["thunder_prob"]
+                    om["thunder_prob_source"] = "yrno"
                 
                 # 2. Opcjonalna asysta kodów zjawisk dla mechanizmu klasyfikacji opadów
                 sym = yr.get("symbol_code", "")
                 if sym:
                     s = sym.lower()
                     om["symbol_code"] = sym # Zapisujemy też oryginalny symbol Yr.no!
-                    
-                    if "clearsky" in s: om["weather_code"] = 0
-                    elif "fair" in s: om["weather_code"] = 1
-                    elif "partlycloudy" in s: om["weather_code"] = 2
-                    elif s == "cloudy": om["weather_code"] = 3
-                    elif "fog" in s: om["weather_code"] = 45
-                    elif "thunder" in s: om["weather_code"] = 95
-                    elif "heavyrainshowers" in s: om["weather_code"] = 82
-                    elif "lightrainshowers" in s: om["weather_code"] = 80
-                    elif "rainshowers" in s: om["weather_code"] = 81
-                    elif "heavyrain" in s: om["weather_code"] = 65
-                    elif "lightrain" in s: om["weather_code"] = 61
-                    elif "rain" in s: om["weather_code"] = 63
-                    elif "heavysnow" in s: om["weather_code"] = 75
-                    elif "lightsnow" in s: om["weather_code"] = 71
-                    elif "snow" in s: om["weather_code"] = 73
+                    om["symbol_code_source"] = "yrno"
+                    yr_weather_code = None
+
+                    if "clearsky" in s: yr_weather_code = 0
+                    elif "fair" in s: yr_weather_code = 1
+                    elif "partlycloudy" in s: yr_weather_code = 2
+                    elif s == "cloudy": yr_weather_code = 3
+                    elif "fog" in s: yr_weather_code = 45
+                    elif "thunder" in s: yr_weather_code = 95
+                    elif "heavyrainshowers" in s: yr_weather_code = 82
+                    elif "lightrainshowers" in s: yr_weather_code = 80
+                    elif "rainshowers" in s: yr_weather_code = 81
+                    elif "heavyrain" in s: yr_weather_code = 65
+                    elif "lightrain" in s: yr_weather_code = 61
+                    elif "rain" in s: yr_weather_code = 63
+                    elif "heavysnow" in s: yr_weather_code = 75
+                    elif "lightsnow" in s: yr_weather_code = 71
+                    elif "snow" in s: yr_weather_code = 73
+
+                    if yr_weather_code is not None:
+                        om["weather_code"] = yr_weather_code
+                        om["weather_code_source"] = "yrno_symbol_code"
 
     # Dodajemy obie listy DOKŁADNIE tak, jak było oryginalnie
     if om_hours: hours_all.extend(om_hours)
