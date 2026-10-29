@@ -426,9 +426,12 @@ def _moon_phase_info(target_dt: datetime, tz=None, phase: str = "full") -> Optio
     abs_delta = abs(delta_to_phase)
     if phase == "new":
         illumination = (1.0 - math.cos(2.0 * math.pi * abs_delta / _SYNODIC_MONTH_DAYS)) / 2.0
-        if day_diff != 0:
+        if day_diff == 0:
+            bucket = "new_today"
+        elif day_diff == 1:
+            bucket = "new_before_1"
+        else:
             return None
-        bucket = "new_today"
     else:
         illumination = (1.0 + math.cos(2.0 * math.pi * abs_delta / _SYNODIC_MONTH_DAYS)) / 2.0
         if abs(day_diff) > 3:
@@ -627,10 +630,11 @@ def _build_moon_night_candidate(payload: dict, alerts: List[str] = None, trust_b
         return None
     tz, report_dt_local = ctx
 
-    # 1. NÓW KSIĘŻYCA — tylko w dokładny lokalny dzień nowiu (niezależnie od zachmurzenia i liczby modeli)
+    # 1. NÓW KSIĘŻYCA — dzień nowiu oraz dzień poprzedzający (niezależnie od zachmurzenia i liczby modeli)
     new_phase = _moon_phase_info(report_dt_local, tz=tz, phase="new")
-    if new_phase and new_phase["bucket"] == "new_today":
-        text = t("pl", "moon_new_today", time=new_phase["time_local_hm"])
+    if new_phase and new_phase["bucket"] in ("new_today", "new_before_1"):
+        new_key = "moon_new_today" if new_phase["bucket"] == "new_today" else "moon_new_tomorrow"
+        text = t("pl", new_key, time=new_phase["time_local_hm"])
         return {
             "priority": MOON_TIP_PRIORITY,
             "text": text,
@@ -639,7 +643,7 @@ def _build_moon_night_candidate(payload: dict, alerts: List[str] = None, trust_b
             "wx": [],
         }
 
-    # 2. PEŁNIA KSIĘŻYCA — dokładny dzień pełni vs koszyki before_1..3 / after_1..3
+    # 2. PEŁNIA KSIĘŻYCA — dzień pełni, dzień przed pełnią vs koszyki before_2..3 / after_1..3
     full_phase = _moon_phase_info(report_dt_local, tz=tz, phase="full")
     if not full_phase:
         return None
@@ -658,7 +662,20 @@ def _build_moon_night_candidate(payload: dict, alerts: List[str] = None, trust_b
             "wx": [],
         }
 
-    # Dla pozostałych dni (before_1..3 / after_1..3) obowiązuje pełna bramka 2 modeli i pogodnej nocy
+    if bucket == "before_1":
+        if _can_show_clear_moon_night(payload, lat, lon):
+            text = t("pl", "moon_full_tomorrow_clear", time=full_phase["time_local_hm"])
+        else:
+            text = t("pl", "moon_full_tomorrow", time=full_phase["time_local_hm"])
+        return {
+            "priority": MOON_TIP_PRIORITY,
+            "text": text,
+            "category": "moon_night",
+            "kind": "opportunity",
+            "wx": [],
+        }
+
+    # Dla pozostałych dni (before_2..3 / after_1..3) obowiązuje pełna bramka 2 modeli i pogodnej nocy
     if not _can_show_clear_moon_night(payload, lat, lon):
         return None
 
@@ -1795,7 +1812,7 @@ def build_worth_knowing(
                 trust_block = True
     # --------------------------
     # Dodatkowy tip o pełni/nowiu Księżyca: NIE konkuruje w rankingu WK i NIE jest blokowany
-    # przez sekcję „Uważaj”. Dokładny dzień pełni/nowiu działa także przy 1 modelu.
+    # przez sekcję „Uważaj”. Dzień pełni/nowiu oraz dzień wcześniej działają także przy 1 modelu.
     moon_candidate = _build_moon_night_candidate(payload, alerts=alerts, trust_block=trust_block)
 
     # [POPRAWKA 1b]: Awaryjny zwrot, gdy mamy tylko 1 model (z zachowaniem astronomicznego komunikatu pełni/nowiu)
