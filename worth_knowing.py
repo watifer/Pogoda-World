@@ -1734,7 +1734,9 @@ def _wx_tags(c: dict) -> list[str]:
     return []
 
 def enforce_priority_policy(c: dict) -> dict:
-    pr = int(c.get("priority", 99) or 99)
+    raw_priority = c.get("priority", 99)
+    # Zero jako priorytet jest poprawne; pozostałe wartości falsy zachowują fallback.
+    pr = 0 if type(raw_priority) is int and raw_priority == 0 else int(raw_priority or 99)
     cat = str(c.get("category") or "")
     wx_tags = set(_wx_tags(c))
 
