@@ -687,8 +687,24 @@ def build_payload_for_location(
         name,
         fetched_at_local=now_dt.isoformat(timespec="seconds")
     )
-    
-   
+
+    # ETAP 1: równoległa diagnostyka surowa. Wyłącznie obserwacyjna — nie jest
+    # przekazywana do daily_source, confidence_gate, layoutów, WK ani alertów.
+    # Ewentualny błąd tej diagnostyki nie może wpłynąć na istniejący payload.
+    try:
+        from daily_diagnostics_matched import build_daily_diagnostics_matched
+
+        daily_diag_matched = build_daily_diagnostics_matched(forecast_hours)
+    except Exception as e:
+        print(f"[weather_payload] Diagnostyka matched pominięta: {type(e).__name__}: {e}")
+        daily_diag_matched = {
+            "version": "matched_v1",
+            "days": {},
+            "totals": {},
+            "coverage_status_counts": {},
+            "error": f"{type(e).__name__}: {e}",
+        }
+
 
     owm_live = None
     if ENABLE_OWM_NOWCAST:
@@ -714,6 +730,7 @@ def build_payload_for_location(
         "hours":              forecast_hours,
         "alerts":             active_alerts,
         "daily_diag":         daily_diag,
+        "daily_diag_matched": daily_diag_matched,
         "owm_current":        owm_live,
         "lang":               lang,
     }
