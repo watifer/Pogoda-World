@@ -144,28 +144,33 @@ def send_telegram_photo(chat_id: str, image_path: str,
 
 
 
+def _build_gspread_client():
+    """Buduje autoryzowanego klienta Sheets z env/pliku (bez żadnych zapytań)."""
+    import gspread
+    from google.oauth2.service_account import Credentials
+
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive.readonly",
+    ]
+    creds_env = os.environ.get("GOOGLE_CREDS_JSON")
+    if creds_env and creds_env.startswith("{"):
+        creds_dict = json.loads(creds_env)
+        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    else:
+        creds_path = creds_env or "credentials.json"
+        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+    return gspread.authorize(creds)
+
+
 def _load_scheduler_users_from_sheet(client=None) -> list[dict]:
     """Czyta rekordy scheduler’a wyłącznie z zakładki Users.
 
     Celowo ignoruje GOOGLE_SHEET_TAB i nie próbuje kart Formularz/legacy.
     ``client`` jest opcjonalny wyłącznie po to, by testować źródło bez sieci.
     """
-    import gspread
-    from google.oauth2.service_account import Credentials
-
     if client is None:
-        scopes = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive.readonly",
-        ]
-        creds_env = os.environ.get("GOOGLE_CREDS_JSON")
-        if creds_env and creds_env.startswith("{"):
-            creds_dict = json.loads(creds_env)
-            creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
-        else:
-            creds_path = creds_env or "credentials.json"
-            creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
-        client = gspread.authorize(creds)
+        client = _build_gspread_client()
 
     sheet = None
     if SHEET_ID:
@@ -631,21 +636,93 @@ def _send_card_to_user(user: dict, is_quiet: bool = False, is_now: bool = False,
         print(f"[main_card] ❌ Błąd wysyłki do {chat_id}")
         return False
 
-def run_smoke_test(target_chat_id: str, is_now: bool = False, is_future: bool = False):
+def _find_smoke_user(target_chat_id: str, client=None):
+    """Lookup użytkownika smoke testu — to samo źródło co produkcyjny bot.
 
-    """Admin-only path: wysyła kartę do podanego chat_id ignorując okna czasowe i cache."""
+    Czyta skoroszyt ``Pogoda_Users`` / zakładkę ``Users`` przez ``users_store``
+    (tak jak ``location_bot._load_users_snapshot``), a nie listę schedulera.
+    Dzięki temu smoke znajduje także aktywnych użytkowników bez ustawionych
+    godzin raportów; godziny raportów nie są tu wymagane, bo smoke pomija
+    scheduler. Wymagany jest natomiast efektywny dostęp
+    (``users_store.effective_access_allowed``), aktywny profil
+    (``profile_status == "active"``, jak ``_saved_users_profile``) i lokalizacja.
+
+    Zwraca ``(user, "")`` przy sukcesie albo ``(None, powód)``, gdzie powód to
+    ``"not_found"``, ``"inactive"`` lub ``"no_location"``. ``user`` ma kształt
+    wymagany przez ``_send_card_to_user``. ``client`` jest opcjonalny wyłącznie
+    po to, by testować źródło bez sieci.
+    """
+    import users_store
+
+    if client is None:
+        client = _build_gspread_client()
+
+    worksheet = users_store.get_ws(client)
+    if worksheet is None:
+        raise RuntimeError(
+            f"Nie mogę otworzyć zakładki {users_store.USERS_TAB} "
+            f"w arkuszu {users_store.SHEET_TITLE}"
+        )
+
+    users_map = users_store.load_users_map(worksheet)
+    row = users_map.get(users_store.norm_chat_id(target_chat_id))
+    if row is None:
+        return None, "not_found"
+
+    if not users_store.effective_access_allowed(row):
+        return None, "inactive"
+    if str(row.get("profile_status", "") or "").strip().lower() != "active":
+        return None, "inactive"
+
+    try:
+        lat = float(str(row.get("lat_round", "") or "").replace(",", ".").strip())
+        lon = float(str(row.get("lon_round", "") or "").replace(",", ".").strip())
+    except (TypeError, ValueError):
+        return None, "no_location"
+    if (not math.isfinite(lat) or not math.isfinite(lon)
+            or not -90 <= lat <= 90 or not -180 <= lon <= 180):
+        return None, "no_location"
+
+    user = {
+        "chat_id": users_store.norm_chat_id(target_chat_id),
+        "lat": lat,
+        "lon": lon,
+        "tz": _resolve_tz(lat, lon),
+        "name": str(row.get("location_label", "") or "").strip() or "Twoja okolica",
+        "lang": users_store.get_lang(users_map, target_chat_id) or "en",
+        # Smoke pomija scheduler, więc godziny raportów nie są potrzebne.
+        "godzina_rano": "",
+        "godzina_wieczor": "",
+    }
+    return user, ""
+
+
+def run_smoke_test(target_chat_id: str, is_now: bool = False, is_future: bool = False,
+                   client=None) -> bool:
+
+    """Admin-only path: wysyła kartę do podanego chat_id ignorując okna czasowe i cache.
+
+    Użytkownika szuka w zakładce Users przez ``users_store`` (jak produkcyjny
+    bot), a nie na przefiltrowanej liście schedulera.
+    """
     print(f"[SMOKE TEST] Uruchamiam test dla chat_id: {target_chat_id}...")
     try:
-        raw = _load_scheduler_users_from_sheet()
-        users = _parse_scheduler_users(raw)
+        user, reason = _find_smoke_user(target_chat_id, client=client)
     except Exception as e:
         print(f"[SMOKE TEST] Błąd ładowania bazy: {e}")
-        return
+        return False
 
-    user = next((u for u in users if str(u["chat_id"]) == target_chat_id), None)
     if not user:
-        print(f"[SMOKE TEST] Nie znaleziono użytkownika {target_chat_id} w arkuszu.")
-        return
+        if reason == "inactive":
+            print(f"[SMOKE TEST] Użytkownik {target_chat_id} jest nieaktywny "
+                  f"(brak aktywnego dostępu lub profilu w Users).")
+        elif reason == "no_location":
+            print(f"[SMOKE TEST] Użytkownik {target_chat_id} nie ma zapisanej "
+                  f"lokalizacji w Users.")
+        else:
+            print(f"[SMOKE TEST] Nie znaleziono użytkownika {target_chat_id} "
+                  f"w arkuszu Pogoda_Users (zakładka Users).")
+        return False
 
     print(f"[SMOKE TEST] Znalazłem użytkownika: {user['name']}. Omijam cache i scheduler.")
     success = _send_card_to_user(user, is_now=is_now, is_future=is_future)
@@ -653,6 +730,7 @@ def run_smoke_test(target_chat_id: str, is_now: bool = False, is_future: bool = 
         print("[SMOKE TEST] Zakończony pełnym sukcesem.")
     else:
         print("[SMOKE TEST] Zakończony błędem na etapie wysyłki/renderu.")
+    return bool(success)
 
 # ═══════════════════════════════════════
 # ENTRYPOINT
