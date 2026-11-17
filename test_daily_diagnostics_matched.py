@@ -632,6 +632,99 @@ def test_fused_row_without_raw_om_field_never_reconstructs_om_from_canonical():
 
 
 # ─────────────────────────────────────────────────────────────
+# ETAP 2 regression: per-status characterization
+# (Obszar 5 — no_yr_records, suma statusów, jawnie None nigdy 0)
+# ─────────────────────────────────────────────────────────────
+
+
+def test_no_yr_records_status_when_only_openmeteo_present():
+    base = datetime(2026, 5, 10, 12, 0, tzinfo=TZ)
+    diag = build_daily_diagnostics_matched([_om_hour(base, 10.0)])
+    day = _day(diag, "2026-05-10")
+
+    assert day["coverage_status"] == STATUS_NO_YR_RECORDS
+    assert day["n_om_records"] == 1
+    assert day["n_yr_records"] == 0
+    assert day["n_common_timestamps"] == 0
+    # Brak par -> jawne None, nigdy sztuczne 0.0 (rejestr §3.3).
+    assert day["matched_temperature_count"] == 0
+    assert day["max_abs_spread_c"] is None
+    assert day["mean_abs_spread_c"] is None
+
+
+def test_status_priority_no_om_beats_no_yr_when_day_is_empty():
+    # Dzień bez żadnych rekordów nie może powstać wprost z listy godzin,
+    # ale mieszanka rekordów z różnych dni pokazuje priorytet statusów:
+    # dzień tylko z Yr -> no_om_records, dzień tylko z OM -> no_yr_records.
+    base = datetime(2026, 5, 10, 12, 0, tzinfo=TZ)
+    diag = build_daily_diagnostics_matched([
+        _yr_hour(base, 10.0),
+        _om_hour(base + timedelta(days=1), 10.0),
+    ])
+    assert _day(diag, "2026-05-10")["coverage_status"] == STATUS_NO_OM_RECORDS
+    assert _day(diag, "2026-05-11")["coverage_status"] == STATUS_NO_YR_RECORDS
+
+
+def test_status_chain_no_yr_before_no_common_hours():
+    # Rekord Yr jest z innej godziny: jest Yr (nie no_yr), ale brak wspólnych
+    # timestampów -> no_common_hours (kolejność statusów w rejestrze §3.3).
+    base = datetime(2026, 5, 10, 12, 0, tzinfo=TZ)
+    diag = build_daily_diagnostics_matched([
+        _om_hour(base, 10.0),
+        _yr_hour(base + timedelta(hours=1), 10.0),
+    ])
+    day = _day(diag, "2026-05-10")
+    assert day["coverage_status"] == STATUS_NO_COMMON_HOURS
+    assert day["max_abs_spread_c"] is None
+    assert day["mean_abs_spread_c"] is None
+
+
+def test_coverage_status_counts_sum_to_number_of_days():
+    base = datetime(2026, 5, 10, 12, 0, tzinfo=TZ)
+    hours = []
+    # dzień 1: matched
+    hours += [_om_hour(base, 10.0), _yr_hour(base, 20.0)]
+    # dzień 2: no_yr_records
+    hours += [_om_hour(base + timedelta(days=1), 10.0)]
+    # dzień 3: no_om_records
+    hours += [_yr_hour(base + timedelta(days=2), 10.0)]
+    # dzień 3 (inna godzina, wspólny ts bez temperatury OM -> ta sama doba):
+    # zostaje no_om_records; dokładamy dzień 4: no_common_hours
+    hours += [_om_hour(base + timedelta(days=3), 10.0),
+              _yr_hour(base + timedelta(days=3, hours=1), 10.0)]
+    # dzień 5: no_matched_temperature (wspólny ts, brak pary temperatur)
+    fused = {
+        "time_local": _iso(base + timedelta(days=4)),
+        "temp_c": 20.0, "temp_c_source": "yrno", "temp_c_yr": 20.0,
+        "source": "openmeteo",
+    }
+    hours += [fused, _yr_hour(base + timedelta(days=4), 20.0)]
+    # dzień 6: partial_coverage (jeden wspólny ts + dodatkowe timestampy OM)
+    d6 = base + timedelta(days=5)
+    hours += [_om_hour(d6, 10.0), _yr_hour(d6, 20.0), _om_hour(d6 + timedelta(hours=1), 11.0)]
+
+    diag = build_daily_diagnostics_matched(hours)
+    counts = diag["coverage_status_counts"]
+
+    assert counts[STATUS_MATCHED] == 1
+    assert counts[STATUS_NO_YR_RECORDS] == 1
+    assert counts[STATUS_NO_OM_RECORDS] == 1
+    assert counts[STATUS_NO_COMMON_HOURS] == 1
+    assert counts[STATUS_NO_MATCHED_TEMPERATURE] == 1
+    assert counts[STATUS_PARTIAL_COVERAGE] == 1
+    assert sum(counts.values()) == len(diag["days"]) == 6
+
+
+def test_envelope_constants_are_pinned():
+    diag = build_daily_diagnostics_matched([])
+    assert diag["coverage_threshold"] is None
+    assert diag["observation_only"] is True
+    assert diag["unit"] == "C"
+    assert diag["days"] == {}
+    assert sum(diag["coverage_status_counts"].values()) == 0
+
+
+# ─────────────────────────────────────────────────────────────
 # Extra guards: read-only, no audit side effects
 # ─────────────────────────────────────────────────────────────
 
