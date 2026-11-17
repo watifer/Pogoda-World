@@ -5,12 +5,14 @@
 > pozostały poza repozytorium i nie są częścią tego katalogu — patrz `README.md`
 > i `manifest.md` w tym katalogu.
 
-Audyt ściśle read-only: repo bez zmian (`git status` czysty, HEAD `33f0662`), brak commitów/pushów/PR.
+Audyt ściśle read-only: repo bez zmian (`git status` czysty, HEAD `33f0662` — **stan
+repozytorium w momencie analizy**, przed zapisaniem dokumentów audytu w repozytorium),
+brak commitów/pushów/PR w trakcie analizy.
 Wszystkie artefakty poza repo: `/home/user/audit-tydzien/` (`analiza_sesja3.py`, `sesja3_wyniki.json`,
 `ablacja_owm.py/.json`, `konsumenci_diag.py/.json`, `stats_dodatkowe.py/.json`).
 Layouty liczono prawdziwym kodem repo (`prepare_future_layout`, `prepare_layout`, `prepare_now_layout`,
 `owm_nowcast`, `daily_source`, `worth_knowing`) importowanym w trybie offline (stub `requests`) —
-repo nie było modyfikowane.
+repo nie było modyfikowane (stan w momencie analizy).
 
 ## Rozliczenie końcowe plików
 

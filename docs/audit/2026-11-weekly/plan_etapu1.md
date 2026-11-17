@@ -3,8 +3,11 @@
 **Podstawa:** `docs/audit/2026-11-weekly/dokument_decyzji_architektonicznej.md` (§4 model
 7 warstw, §5 mapa etapów i bramek) oraz `raport_koncowy.md` w tym samym katalogu.
 **Charakter tego dokumentu:** wyłącznie planowanie na podstawie read-only rozpoznania
-kodu (gałąź `arena/228fdd32-pogoda-world`, HEAD `61c92ba`). **Nie zmieniono żadnego
-pliku kodu, testu ani konfiguracji; z tego etapu nie powstał żaden commit.**
+kodu (gałąź `arena/228fdd32-pogoda-world`, HEAD `61c92ba` — stan repozytorium
+w momencie rozpoznania kodu na potrzeby tego planu; zapis dokumentów archiwalnych
+w repozytorium zakończono później commitem archiwizacji `7155fc0`, patrz `README.md`).
+**Nie zmieniono żadnego pliku kodu, testu ani konfiguracji; z tego etapu nie powstał
+żaden commit.**
 **Cel etapu 1 (bramka A):** zaakceptowana na piśmie specyfikacja kontraktu warstw,
 semantyki `coverage_status` i rejestru konsumentów. Żaden konsument nie jest
 przełączany; `daily_diag_matched` pozostaje `observation_only=True`.
@@ -422,5 +425,6 @@ istniejącym wpisie nie jest błędem.
 
 *Plan przygotowany read-only na podstawie kodu repozytorium i raportów audytu.
 Żaden plik repozytorium nie został zmodyfikowany na potrzeby tego dokumentu;
-archiwizacja audytu w `docs/audit/2026-11-weekly/` (commity `314cdf0`, `61c92ba`)
-jest od tego planu niezależna.*
+archiwizacja dokumentów audytu w `docs/audit/2026-11-weekly/` (commity archiwizacji:
+`314cdf0`, `61c92ba`, `7155fc0`) nastąpiła po jego napisaniu i jest od treści planu
+niezależna.*

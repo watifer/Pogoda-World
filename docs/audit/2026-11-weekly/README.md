@@ -8,7 +8,9 @@ bez danych pogodowych, kart, logów ani plików roboczych.
 
 - **Audyt: ZAKOŃCZONY.** Nie zbiera się kolejnego pakietu danych.
 - **Brak zmian produkcyjnych.** Audyt nie zmienił kodu, konfiguracji, payloadów,
-  kart ani alertów; jedyna zmiana w repozytorium to dodanie tego katalogu dokumentacji.
+  kart ani alertów; jedyna zmiana w repozytorium to dodanie tego katalogu dokumentacji
+  (stan repozytorium w momencie archiwizacji — patrz też sekcja
+  „Stan repozytorium a treść archiwum" poniżej).
 - **Dokument architektoniczny: zaakceptowany wyłącznie w zakresie D-TERAZ** (§2
   `dokument_decyzji_architektonicznej.md` — decyzje zamrażające/dokumentacyjne).
   **Decyzje D-SHADOW (§3) pozostają odroczone** i wymagają shadow mode oraz danych UX.
@@ -18,6 +20,19 @@ bez danych pogodowych, kart, logów ani plików roboczych.
 - **`is_volatile`, WK (worth knowing) i alerty pozostają bez zmian**, tak samo
   progi, wybór źródła dnia w `daily_source`, reguły korekty OWM, reguły coast
   i rendering kart.
+
+## Stan repozytorium a treść archiwum
+
+Wzmianki o stanie repozytorium w dokumentach tego katalogu odnoszą się do dwóch
+różnych momentów i nie należy ich mieszać:
+
+- **Analiza offline:** stan historyczny wskazany w raporcie końcowym — repozytorium
+  w momencie analizy było bez zmian (`git status` czysty, HEAD `33f0662`), a audyt nie
+  wprowadzał żadnych commitów, pushów ani PR.
+- **Archiwizacja dokumentów:** zapis tego katalogu w repozytorium nastąpił wyłącznie
+  commitami dokumentacyjnymi `314cdf0`, `61c92ba` i `7155fc0`; **aktualny commit
+  archiwizacji to `7155fc0`**. Żaden z nich nie zmienia kodu aplikacji.
+- **Bieżący stan archiwum:** repo czyste po `7155fc0`.
 
 ## Zakres audytu
 
