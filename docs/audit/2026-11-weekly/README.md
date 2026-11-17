@@ -30,9 +30,11 @@ różnych momentów i nie należy ich mieszać:
   w momencie analizy było bez zmian (`git status` czysty, HEAD `33f0662`), a audyt nie
   wprowadzał żadnych commitów, pushów ani PR.
 - **Archiwizacja dokumentów:** zapis tego katalogu w repozytorium nastąpił wyłącznie
-  commitami dokumentacyjnymi `314cdf0`, `61c92ba` i `7155fc0`; **aktualny commit
-  archiwizacji to `7155fc0`**. Żaden z nich nie zmienia kodu aplikacji.
-- **Bieżący stan archiwum:** repo czyste po `7155fc0`.
+  commitami dokumentacyjnymi: `314cdf0` (pierwsza archiwizacja), `61c92ba`
+  (nota archiwalna), `7155fc0` (archiwizacja noty o braku pełnej wersji i planu
+  etapu 1) oraz `632f1fc` (korekta spójności metadanych); **aktualny końcowy
+  commit archiwizacji: `632f1fc`**. Żaden z nich nie zmienia kodu aplikacji.
+- **Bieżący stan archiwum:** repo czyste po `632f1fc`.
 
 ## Zakres audytu
 

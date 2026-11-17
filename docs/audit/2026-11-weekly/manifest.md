@@ -4,9 +4,11 @@ Lista głównych analizowanych artefaktów i ich statusu. Kolumna „W repozytor
 mówi, czy artefakt znajduje się w tym katalogu, czy pozostał w archiwum audytu
 poza repozytorium (celowo — patrz `README.md`, sekcja „Czego tu nie ma").
 
-Archiwizacja dokumentów tego katalogu: commity archiwizacji `314cdf0`, `61c92ba`,
-`7155fc0` (aktualny commit archiwizacji: `7155fc0`); bieżący stan archiwum: repo
-czyste po `7155fc0`. Stan repozytorium w momencie analizy offline opisuje raport
+Archiwizacja dokumentów tego katalogu: commity archiwizacji `314cdf0` (pierwsza
+archiwizacja), `61c92ba` (nota archiwalna), `7155fc0` (archiwizacja noty o braku
+pełnej wersji i planu etapu 1) oraz `632f1fc` (korekta spójności metadanych);
+aktualny końcowy commit archiwizacji: `632f1fc`; bieżący stan archiwum: repo
+czyste po `632f1fc`. Stan repozytorium w momencie analizy offline opisuje raport
 końcowy — rozróżnienie momentów: `README.md`, sekcja „Stan repozytorium
 a treść archiwum".
 
