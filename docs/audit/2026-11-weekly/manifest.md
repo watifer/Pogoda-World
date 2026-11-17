@@ -12,6 +12,8 @@ poza repozytorium (celowo — patrz `README.md`, sekcja „Czego tu nie ma").
 | `dokument_decyzji_architektonicznej.md` | decyzje D-TERAZ / D-SHADOW, model 7 warstw, mapa etapów 1–5 | D-TERAZ zaakceptowane; D-SHADOW odroczone. Wykaz zadań §6 niekompletny w źródle (nota archiwalna w dokumencie) | **Tak** (ten katalog) |
 | `README.md` | zakres, status, ograniczenia audytu | Aktualny na dzień utrwalenia | **Tak** (ten katalog) |
 | Raporty sesji 1 i 2 (`raport_sesja1.md`, `raport_sesja2.md`) | wyniki częściowe sprzed domknięcia tygodnia | Historyczne; wnioski przejęte i miejscami skorygowane przez raport końcowy (m.in. fazy Księżyca, liczba logów 462) | Nie (archiwum audytu) |
+| `plan_etapu1.md` | plan realizacji etapu 1 na podstawie dokumentu decyzji i rozpoznania kodu | Zapisany jako planowanie; żadne zadanie nie zostało wdrożone | **Tak** (ten katalog) |
+| `brak_pełnej_wersji_dokumentu.md` | nota o poszukiwaniach pełnej wersji dokumentu decyzji (archiwum lokalne, historia git, Google Drive) | Pełnej wersji nie znaleziono; braku nie odtworzono | **Tak** (ten katalog) |
 | Manifest roboczy audytu (`manifest.json`, 114 runów / 33 sesje kolektora + 10 sesji tylko-logowych) | inwentaryzacja całego pakietu | Zakończona; źródło rozliczeń w raportach | Nie (archiwum audytu) |
 
 ## Dane wejściowe pakietu (przeanalizowane)

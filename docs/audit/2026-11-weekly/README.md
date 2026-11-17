@@ -71,6 +71,8 @@ bez danych pogodowych, kart, logów ani plików roboczych.
 | `raport_koncowy.md` | pełny raport końcowy audytu (sesja 3, domknięcie tygodnia) |
 | `dokument_decyzji_architektonicznej.md` | decyzje D-TERAZ (zaakceptowane), D-SHADOW (odroczone), model 7 warstw, mapa etapów 1–5 z bramkami. **Uwaga:** szczegółowy wykaz zadań z §6 nie zachował się w archiwum źródłowym (nota archiwalna w dokumencie) |
 | `manifest.md` | lista głównych analizowanych artefaktów i ich statusu (także tych poza repozytorium) |
+| `plan_etapu1.md` | plan realizacji etapu 1 (kontrakt danych i statusy coverage): inwentaryzacja plików/funkcji/testów, mapowanie na 7 warstw, kontrakty danych, raport w czterech kategoriach wdrożeniowych; wyłącznie planowanie, bez wdrożeń |
+| `brak_pełnej_wersji_dokumentu.md` | nota o poszukiwaniach pełnej wersji dokumentu decyzji: gdzie szukano, czego brakuje, które decyzje pozostają ważne |
 
 ## Czego tu nie ma (świadomie)
 
