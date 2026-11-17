@@ -350,7 +350,17 @@ Etap 5  Decyzja o progach i konsumentach            → Bramka E: osobne ADR per
 
 ## 6. Zadania
 
+> **NOTA ARCHIWALNA (dodana przy utrwaleniu w repozytorium):** archiwum źródłowe
+> dokumentu decyzji urywa się w tym miejscu — szczegółowy wykaz zadań etapu 1–5
+> (w dokumencie roboczym oznaczany jako Z1.1–Z5.3) oraz końcowa lista zakazów nie
+> zachowały się w żadnym z dostępnych archiwów i **nie zostały odtworzone**,
+> żeby nie przypisywać dokumentowi treści, której nie da się zweryfikować.
+> Zachowane części dokumentu (problemy P1–P7, decyzje D-TERAZ i D-SHADOW, model
+> 7 warstw oraz mapa etapów i bramek A–E w §5) są kompletne; akceptacja D-TERAZ
+> nie zależy od brakującego wykazu. Przed rozpoczęciem etapu 2 wykaz zadań należy
+> odtworzyć na podstawie §5 niniejszego dokumentu oraz planu realizacji etapu 1.
+
 Legenda kolumn: **Payload/Karta/Alerty** = czy wykonanie zadania zmienia odpowiednio:
 strukturę lub wartości payloadu produkcyjnego, wygląd kart dla użytkownika, treść lub
-występowanie alertów. „Nie" oznacza twardy wymóg zadania, nie przewidy
-...[truncated 15821 chars]
+występowanie alertów. „Nie" oznacza twardy wymóg zadania. [Treść wykazu zadań nie
+zachowała się w archiwum źródłowym — patrz nota archiwalna powyżej.]

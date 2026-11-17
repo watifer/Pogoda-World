@@ -69,7 +69,7 @@ bez danych pogodowych, kart, logów ani plików roboczych.
 |---|---|
 | `README.md` | ten opis: zakres, status, ograniczenia |
 | `raport_koncowy.md` | pełny raport końcowy audytu (sesja 3, domknięcie tygodnia) |
-| `dokument_decyzji_architektonicznej.md` | decyzje D-TERAZ (zaakceptowane), D-SHADOW (odroczone), model 7 warstw, plan etapów 1–5 z bramkami |
+| `dokument_decyzji_architektonicznej.md` | decyzje D-TERAZ (zaakceptowane), D-SHADOW (odroczone), model 7 warstw, mapa etapów 1–5 z bramkami. **Uwaga:** szczegółowy wykaz zadań z §6 nie zachował się w archiwum źródłowym (nota archiwalna w dokumencie) |
 | `manifest.md` | lista głównych analizowanych artefaktów i ich statusu (także tych poza repozytorium) |
 
 ## Czego tu nie ma (świadomie)
